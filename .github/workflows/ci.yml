@@ -1,0 +1,41 @@
+name: BakePlan checks
+on:
+  push:
+    branches: ['feature/bakeplan-scaffold']
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: windows-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.14'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Install locked dependencies
+        run: |
+          python -m venv .venv
+          .\.venv\Scripts\python.exe -m pip install -r backend/requirements.lock -r tools/requirements.lock
+          npm.cmd ci
+          npm.cmd --prefix frontend ci
+          npx.cmd playwright install chromium
+      - name: Backend and offline evaluation
+        run: |
+          .\.venv\Scripts\python.exe -m ruff check backend tools
+          .\.venv\Scripts\python.exe -m pytest backend/tests -q
+          .\.venv\Scripts\python.exe -m unittest discover -s tools/tests -v
+      - name: Frontend
+        working-directory: frontend
+        run: |
+          npm.cmd run lint
+          npm.cmd run typecheck
+          npm.cmd test
+          npm.cmd run build
+      - name: Browser flow and restart
+        run: npm.cmd run test:e2e

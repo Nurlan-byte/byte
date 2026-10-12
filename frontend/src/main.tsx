@@ -71,8 +71,9 @@ function App() {
     [error, setError] = useState(""),
     [notice, setNotice] = useState("");
   const [target, setTarget] = useState(() => businessDate(1)),
-    [cutoff, setCutoff] = useState(businessDate()),
+    [cutoff, setCutoff] = useState(businessDate(-1)),
     [method, setMethod] = useState("B1");
+  const [targetOpen, setTargetOpen] = useState(true);
   async function run(fn: () => Promise<void>) {
     setBusy(true);
     setError("");
@@ -125,7 +126,7 @@ function App() {
           <pre>{error}</pre>
         </div>
       )}
-      {notice && (
+      {notice && !busy && (
         <div role="status" className="success">
           {notice}
         </div>
@@ -222,7 +223,12 @@ function App() {
       </section>
       <section>
         <h2>2. Расчёт и ручная проверка</h2>
+        <p>Срез включает только завершённые дни строго раньше сегодня. При задержке учёта сдвиньте его назад: время фактической готовности данных не проверяется.</p>
         <div className="controls">
+          <label>
+            Целевой день открыт
+            <input type="checkbox" checked={targetOpen} onChange={(e) => setTargetOpen(e.target.checked)} />
+          </label>
           <label>
             Дата плана
             <input
@@ -258,6 +264,7 @@ function App() {
                   cutoff,
                   method,
                   mode: target <= businessDate() ? "replay" : "operational",
+                  target_is_open: targetOpen,
                 }),
               ),
             )

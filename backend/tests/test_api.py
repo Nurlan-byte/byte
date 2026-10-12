@@ -200,6 +200,7 @@ def test_carryover_manual(client):
 def test_exact_csv_shape_and_health(client):
     assert client.get("/api/health").json()["db_status"] == "ok"
     for text in [
+        ",".join(REQUIRED) + "\n2026-10-05,p1,true,0,100,80\n",
         sample().replace("2026-08-17", "20260817"),
         sample().replace("date,product_id", "date,date,product_id"),
         sample() + "2026-09-01,p1,true,0,1,1,0,0,0,none,extra\n",
@@ -228,3 +229,78 @@ def test_snapshots_survive_config_change_and_same_key_race(client, monkeypatch):
     assert results[0].json() == results[1].json()
     assert results[0].json()["items"][0]["max_daily_qty"] == 100
     assert client.get(f"/api/plans/{p['id']}").json()["items"][0]["confirmed_qty"] == 84
+
+
+def test_high_deficit_requires_manual(client):
+    lines = sample().splitlines()
+    text = "\n".join(
+        [lines[0]]
+        + [
+            line.replace(",none", ",unknown")
+            if not line.startswith("2026-10-05")
+            else line
+            for line in lines[1:]
+        ]
+    )
+    item = plan(client, text)["items"][0]
+    assert item["forecast_mean"] == 80
+    assert item["method"] == "manual"
+    assert item["recommended_qty"] == 0
+    assert item["observed_open_n"] == 8
+    assert item["deficit_or_unknown_n"] == 7
+
+
+def test_operational_confirmation_date_and_safe_retry(client, monkeypatch):
+    import backend.app as module
+
+    tomorrow = module.business_today() + timedelta(days=1)
+    data = client.post(
+        "/api/datasets", json={"csv_text": sample(), "source": "synthetic"}
+    ).json()
+    p = client.post(
+        "/api/plans",
+        json={
+            "dataset_id": data["id"],
+            "target_date": str(tomorrow),
+            "cutoff": "2026-10-11",
+        },
+    ).json()
+    b = body(p)
+    original = client.post(f"/api/plans/{p['id']}/confirm", json=b)
+    assert original.status_code == 200
+    monkeypatch.setattr(module, "business_today", lambda: tomorrow)
+    assert (
+        client.post(f"/api/plans/{p['id']}/confirm", json=b).json() == original.json()
+    )
+    assert (
+        client.post(
+            f"/api/plans/{p['id']}/confirm", json=body(original.json(), "later")
+        ).status_code
+        == 409
+    )
+
+
+def test_closed_target_zero_and_confirmation_guard(client):
+    p = plan(client, sample() + "2026-10-12,p1,false,0,0,0,0,0,0,none\n")
+    assert p["items"][0]["forecast_mean"] is None
+    assert p["items"][0]["recommended_qty"] == 0
+    b = body(p)
+    b["quantities"]["p1"] = 12
+    assert client.post(f"/api/plans/{p['id']}/confirm", json=b).status_code == 422
+    data = client.post(
+        "/api/datasets", json={"csv_text": sample(), "source": "synthetic"}
+    ).json()
+    all_closed = client.post(
+        "/api/plans",
+        json={
+            "dataset_id": data["id"],
+            "target_date": "2026-10-12",
+            "cutoff": "2026-10-11",
+            "mode": "replay",
+            "target_is_open": False,
+        },
+    ).json()
+    assert all(
+        i["recommended_qty"] == 0 and i["forecast_mean"] is None
+        for i in all_closed["items"]
+    )

@@ -34,6 +34,12 @@ CATALOG = [
 QUANTITIES = ["opening", "produced", "sold", "waste", "closing", "other_out"]
 REQUIRED = ["date", "product_id", "is_open", *QUANTITIES, "stockout_status"]
 VERSION = "baseline-1"
+
+
+def business_today():
+    return datetime.now(timezone(timedelta(hours=5))).date()
+
+
 for _product in CATALOG:
     _product.update(active_from=None, active_to=None, price=None, cost=None)
 
@@ -81,6 +87,7 @@ class PlanRequest(BaseModel):
     cutoff: date
     method: Literal["B0", "B1"] = "B1"
     mode: Literal["replay", "operational"] = "operational"
+    target_is_open: bool = True
 
 
 class ConfirmRequest(BaseModel):
@@ -108,7 +115,7 @@ def parse_csv(text):
             if not re.fullmatch(r"\d{4}-\d{2}-\d{2}", raw["date"]):
                 raise ValueError("Дата должна иметь формат YYYY-MM-DD")
             d = date.fromisoformat(raw["date"])
-            if d > datetime.now(timezone(timedelta(hours=5))).date():
+            if d > business_today():
                 raise ValueError("дата истории находится в будущем")
             product = raw["product_id"]
             if product not in {p["product_id"] for p in CATALOG}:
@@ -233,12 +240,12 @@ def datasets():
 
 @app.post("/api/plans", status_code=201)
 def create_plan(body: PlanRequest):
-    if body.cutoff > datetime.now(timezone(timedelta(hours=5))).date():
-        raise HTTPException(422, "Срез не может находиться в будущем")
-    if (
-        body.mode == "operational"
-        and body.target_date <= datetime.now(timezone(timedelta(hours=5))).date()
-    ):
+    if body.cutoff >= business_today():
+        raise HTTPException(
+            422,
+            "Консервативный срез включает только завершённые календарные дни до сегодня",
+        )
+    if body.mode == "operational" and body.target_date <= business_today():
         raise HTTPException(422, "Прошедшая дата требует явного режима replay")
     if body.cutoff >= body.target_date:
         raise HTTPException(
@@ -249,6 +256,23 @@ def create_plan(body: PlanRequest):
         dataset = fetch(con, "datasets", body.dataset_id)
         items = []
         for product in CATALOG:
+            target_open = body.target_is_open and not any(
+                r["date"] == str(body.target_date)
+                and r["product_id"] == product["product_id"]
+                and not r["is_open"]
+                for r in dataset["rows"]
+            )
+            observed = [
+                r
+                for r in dataset["rows"]
+                if r["product_id"] == product["product_id"]
+                and r["is_open"]
+                and body.target_date - timedelta(days=56)
+                <= date.fromisoformat(r["date"])
+                <= body.cutoff
+            ]
+            deficit_n = sum(r["stockout_status"] != "none" for r in observed)
+            high_deficit = bool(observed) and deficit_n / len(observed) > 0.5
             suitable = [
                 r
                 for r in dataset["rows"]
@@ -268,6 +292,7 @@ def create_plan(body: PlanRequest):
             ]
             suitable.sort(key=lambda r: r["date"], reverse=True)
             carryover = any(r["opening"] or r["closing"] for r in suitable)
+            eligible_n = len(suitable)
             if carryover:
                 suitable = []
             selected = (
@@ -286,6 +311,10 @@ def create_plan(body: PlanRequest):
                 warnings.append(
                     "Остатки между днями: базовая однодневная модель отключена, требуется ручной расчёт."
                 )
+            if high_deficit:
+                warnings.append(
+                    "Более 50% наблюдаемых открытых дней имеют дефицит или неизвестное наличие: автоматическая рекомендация отключена, нужен ручной план."
+                )
             mean = (
                 sum(r["sold"] for r in selected) / len(selected) if selected else None
             )
@@ -297,6 +326,13 @@ def create_plan(body: PlanRequest):
                 if mean is not None
                 else 0
             )
+            if high_deficit:
+                qty = 0
+            if not target_open:
+                mean, qty, selected = None, 0, []
+                warnings.append(
+                    "Целевой день закрыт: обычный выпуск равен 0, ручное увеличение запрещено."
+                )
             if not selected:
                 warnings.append(
                     "Нет подходящей истории: ручное решение обязательно; 0 — заготовка, не прогноз."
@@ -311,10 +347,15 @@ def create_plan(body: PlanRequest):
                     forecast_mean=mean,
                     recommended_qty=qty,
                     confirmed_qty=None,
-                    method=body.method if selected else "manual",
+                    method=body.method if selected and not high_deficit else "manual",
+                    diagnostic_method=body.method,
+                    target_is_open=target_open,
                     warnings=warnings,
                     used_dates=[r["date"] for r in selected],
                     n=len(selected),
+                    observed_open_n=len(observed),
+                    eligible_weekday_n=eligible_n,
+                    deficit_or_unknown_n=deficit_n,
                 )
             )
         plan = {
@@ -334,6 +375,7 @@ def create_plan(body: PlanRequest):
             "items": items,
             "mode": body.mode,
             "timezone": "Asia/Qyzylorda",
+            "availability_assumption": "Only completed calendar days strictly before today; all daily totals assumed available after day end, no intraday forecasting.",
         }
         encoded = json.dumps(plan)
         con.execute("INSERT INTO plans VALUES (?,?)", (plan["id"], encoded))
@@ -372,6 +414,14 @@ def confirm(ident: str, body: ConfirmRequest):
                 )
             return json.loads(previous[1])
         plan = fetch(con, "plans", ident)
+        if (
+            plan["mode"] == "operational"
+            and date.fromisoformat(plan["target_date"]) <= business_today()
+        ):
+            raise HTTPException(
+                409,
+                "Дата рабочего плана уже наступила: создайте новый план или используйте историческое воспроизведение",
+            )
         if body.revision != plan["revision"]:
             raise HTTPException(409, "План изменён. Перезагрузите актуальную версию")
         if set(body.quantities) != {p["product_id"] for p in plan["items"]}:
@@ -380,6 +430,7 @@ def confirm(ident: str, body: ConfirmRequest):
             q = body.quantities[item["product_id"]]
             if (
                 q < 0
+                or (not item.get("target_is_open", True) and q != 0)
                 or q > item["max_daily_qty"] // item["batch_size"] * item["batch_size"]
                 or q % item["batch_size"]
             ):
