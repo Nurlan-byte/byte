@@ -9,8 +9,8 @@
 | Frontend ESLint и TypeScript | прошли |
 | Frontend Vitest | 1 прошёл |
 | Vite production build | прошёл |
-| Playwright Chromium | 4 прошли, 12.9с |
-| Offline Poisson pipeline unittest | 6 прошли, включая фактическое обучение |
+| Playwright Chromium | 5 прошли, 14.4с, включая задержанный ответ подтверждения |
+| Offline Poisson pipeline unittest | 7 прошли, включая фактическое обучение и CLI в отсутствующий вложенный каталог |
 | npm audit root/frontend | 0 известных уязвимостей при установке |
 | Startup по README | Windows: новая корневая .venv, зависимости, отдельные API/Vite процессы в E2E |
 | Linux/macOS | не запускались |

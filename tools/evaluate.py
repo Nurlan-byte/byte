@@ -122,6 +122,7 @@ def main() -> None:
     args = parser.parse_args()
     rows = read_rows(args.csv)
     report = evaluate(rows, args.source, hashlib.sha256(args.csv.read_bytes()).hexdigest(), args.split_date)
+    args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")
     print(report["status"])
 

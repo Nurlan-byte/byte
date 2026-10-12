@@ -29,6 +29,31 @@ test('synthetic CSV → B1 → valid manual confirmation → reload → history 
   expect(csv).toContain(',65.0,60,84,');
 });
 
+test('quantity edits are locked while confirmation response is delayed', async ({ page }) => {
+  await page.goto('/');
+  await page.getByLabel('Содержимое CSV').fill(await fs.readFile('fixtures/synthetic_demo.csv', 'utf8'));
+  await page.getByRole('button', { name: 'Проверить и импортировать' }).click();
+  await page.getByLabel('Дата плана').fill('2026-10-12');
+  await page.getByLabel('Данные доступны до').fill('2026-10-11');
+  await page.getByRole('button', { name: 'Рассчитать план' }).click();
+  const quantity = page.locator('tbody tr').first().getByRole('spinbutton');
+  await quantity.fill('84');
+  let release!: () => void;
+  const pending = new Promise<void>(resolve => { release = resolve; });
+  await page.route('**/api/plans/*/confirm', async route => {
+    const response = await route.fetch();
+    await pending;
+    await route.fulfill({ response });
+  });
+  await page.getByRole('button', { name: 'Подтвердить и сохранить' }).click();
+  await expect(quantity).toBeDisabled();
+  await expect(quantity).toHaveValue('84');
+  release();
+  await expect(page.getByRole('status')).toContainText('сохран');
+  await expect(quantity).toBeEnabled();
+  await expect(quantity).toHaveValue('84');
+});
+
 test('invalid balance is rejected visibly and creates no plan', async ({ page, request }) => {
   const before = await (await request.get('http://127.0.0.1:8000/api/plans')).json();
   await page.goto('/');

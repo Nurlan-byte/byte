@@ -314,6 +314,7 @@ function App() {
                         <input
                           aria-label={`Количество ${i.name}`}
                           type="number"
+                          disabled={busy}
                           min="0"
                           max={
                             Math.floor(i.max_daily_qty / i.batch_size) *

@@ -73,5 +73,18 @@ class EvaluationTests(unittest.TestCase):
                     read_rows(path)
 
 
+    def test_documented_cli_creates_nested_output_directory(self):
+        import json
+        import subprocess
+        import sys
+        root = Path(__file__).parents[2]
+        with tempfile.TemporaryDirectory(dir=root) as directory:
+            output = Path(directory) / "absent" / "private" / "local-report.json"
+            self.assertFalse(output.parent.exists())
+            result = subprocess.run([sys.executable, str(root / "tools/evaluate.py"), str(root / "fixtures/synthetic_demo.csv"), "--source", "synthetic", "--split-date", "2026-09-28", "--output", str(output)], capture_output=True, text=True, timeout=120)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertEqual(json.loads(output.read_text(encoding="utf-8"))["status"], "evaluated")
+
+
 if __name__ == "__main__":
     unittest.main()
