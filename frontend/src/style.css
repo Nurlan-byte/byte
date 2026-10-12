@@ -1,0 +1,183 @@
+:root {
+  font-family: Inter, Arial, sans-serif;
+  color: #26332c;
+  background: #f4f2ec;
+  font-synthesis: none;
+}
+* {
+  box-sizing: border-box;
+}
+body {
+  margin: 0;
+}
+main {
+  max-width: 1120px;
+  margin: auto;
+  padding: 36px 24px;
+}
+header {
+  margin-bottom: 26px;
+}
+.brand {
+  font-size: 24px;
+  font-weight: 800;
+  color: #32664c;
+}
+.tag {
+  float: right;
+  font-size: 13px;
+  color: #65766b;
+}
+h1 {
+  font-size: 40px;
+  letter-spacing: -1.4px;
+  margin: 30px 0 10px;
+}
+h2 {
+  font-size: 22px;
+  margin-top: 0;
+}
+p {
+  line-height: 1.6;
+}
+aside {
+  border-left: 4px solid #d49e3d;
+  background: #fff4d9;
+  padding: 16px 20px;
+  line-height: 1.5;
+}
+section {
+  background: white;
+  border: 1px solid #dedfd6;
+  border-radius: 16px;
+  padding: 26px;
+  margin-top: 22px;
+  box-shadow: 0 3px 12px #26332c05;
+}
+.controls {
+  display: flex;
+  gap: 18px;
+  flex-wrap: wrap;
+  margin: 18px 0;
+}
+label {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  font-size: 14px;
+  font-weight: 600;
+  flex: 1;
+  min-width: 190px;
+}
+input,
+select,
+textarea {
+  font: inherit;
+  border: 1px solid #bdc8bf;
+  border-radius: 7px;
+  padding: 10px;
+  background: #fff;
+  color: #26332c;
+}
+textarea {
+  font-family: monospace;
+  width: 100%;
+  resize: vertical;
+}
+button {
+  background: #32664c;
+  color: white;
+  border: 0;
+  border-radius: 8px;
+  padding: 12px 18px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  margin-top: 14px;
+}
+button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+.secondary {
+  background: #eef3ee;
+  color: #32664c;
+}
+a {
+  color: #32664c;
+  margin-left: 14px;
+}
+.muted,
+footer {
+  color: #6b766f;
+  font-size: 14px;
+}
+.error {
+  color: #8a2f2f;
+  background: #fff0ed;
+  padding: 12px;
+  border-radius: 7px;
+}
+.success {
+  color: #24583e;
+  background: #edf7ef;
+  padding: 12px;
+  border-radius: 7px;
+}
+pre {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font-size: 13px;
+}
+.table {
+  overflow-x: auto;
+}
+table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 20px 0;
+}
+th {
+  text-align: left;
+  background: #f4f5ef;
+  font-size: 13px;
+}
+th,
+td {
+  padding: 14px 12px;
+  border-bottom: 1px solid #e3e7df;
+  vertical-align: top;
+}
+td input {
+  width: 110px;
+}
+small {
+  display: block;
+  font-size: 12px;
+  line-height: 1.5;
+  margin-top: 5px;
+  color: #66766a;
+}
+ul {
+  list-style: none;
+  padding: 0;
+}
+footer {
+  margin: 26px 0;
+}
+@media (max-width: 650px) {
+  h1 {
+    font-size: 30px;
+  }
+  .tag {
+    float: none;
+    display: block;
+    margin-top: 8px;
+  }
+  main {
+    padding: 20px 12px;
+  }
+  section {
+    padding: 20px 16px;
+  }
+}

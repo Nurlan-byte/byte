@@ -5,6 +5,7 @@ import hashlib
 import io
 import json
 import os
+import re
 import sqlite3
 import uuid
 from contextlib import contextmanager
@@ -90,7 +91,11 @@ class ConfirmRequest(BaseModel):
 
 def parse_csv(text):
     reader = csv.DictReader(io.StringIO(text.lstrip("\ufeff")))
-    if reader.fieldnames is None or any(c not in reader.fieldnames for c in REQUIRED):
+    if (
+        reader.fieldnames is None
+        or len(reader.fieldnames) != len(set(reader.fieldnames))
+        or any(c not in reader.fieldnames for c in REQUIRED)
+    ):
         raise HTTPException(
             422,
             {"errors": ["Отсутствуют обязательные колонки: " + ", ".join(REQUIRED)]},
@@ -98,6 +103,10 @@ def parse_csv(text):
     rows, errors, seen = [], [], set()
     for line, raw in enumerate(reader, 2):
         try:
+            if None in raw or any(v is None for v in raw.values()):
+                raise ValueError("Число полей строки не соответствует заголовку")
+            if not re.fullmatch(r"\d{4}-\d{2}-\d{2}", raw["date"]):
+                raise ValueError("Дата должна иметь формат YYYY-MM-DD")
             d = date.fromisoformat(raw["date"])
             if d > datetime.now(timezone(timedelta(hours=5))).date():
                 raise ValueError("дата истории находится в будущем")
@@ -149,6 +158,16 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+@app.get("/api/health")
+def health():
+    try:
+        with connection() as con:
+            con.execute("SELECT 1")
+    except OSError, sqlite3.Error:
+        raise HTTPException(503, "Хранилище недоступно") from None
+    return {"status": "ok", "app_version": "0.1.0", "db_status": "ok"}
 
 
 @app.middleware("http")
@@ -214,6 +233,8 @@ def datasets():
 
 @app.post("/api/plans", status_code=201)
 def create_plan(body: PlanRequest):
+    if body.cutoff > datetime.now(timezone(timedelta(hours=5))).date():
+        raise HTTPException(422, "Срез не может находиться в будущем")
     if (
         body.mode == "operational"
         and body.target_date <= datetime.now(timezone(timedelta(hours=5))).date()
@@ -306,6 +327,10 @@ def create_plan(body: PlanRequest):
             "source": dataset["source"],
             "dataset_version": dataset["version"],
             "config_version": VERSION,
+            "config_hash": hashlib.sha256(
+                json.dumps(CATALOG, sort_keys=True).encode()
+            ).hexdigest(),
+            "created_at": datetime.now(timezone.utc).isoformat(),
             "items": items,
             "mode": body.mode,
             "timezone": "Asia/Qyzylorda",
@@ -363,7 +388,11 @@ def confirm(ident: str, body: ConfirmRequest):
                     f"{item['name']}: количество должно быть кратно партии и в пределах максимума",
                 )
             item["confirmed_qty"] = q
-        plan.update(revision=plan["revision"] + 1, status="confirmed")
+        plan.update(
+            revision=plan["revision"] + 1,
+            status="confirmed",
+            confirmed_at=datetime.now(timezone.utc).isoformat(),
+        )
         payload = json.dumps(plan)
         con.execute("UPDATE plans SET payload=? WHERE id=?", (payload, ident))
         con.execute(

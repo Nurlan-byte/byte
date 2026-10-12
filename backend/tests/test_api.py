@@ -156,3 +156,75 @@ def test_concurrent_confirm(client):
             )
         )
     assert sorted(results) == [200, 409]
+
+
+def test_active_dates_and_impossible_batch(client, monkeypatch):
+    monkeypatch.setitem(CATALOG[0], "active_from", "2026-10-06")
+    monkeypatch.setitem(CATALOG[1], "max_daily_qty", 5)
+    p = plan(client)
+    assert p["items"][0]["forecast_mean"] is None
+    assert p["items"][1]["recommended_qty"] == 0
+    assert any("партии" in w for w in p["items"][1]["warnings"])
+
+
+def test_replay_and_future_date_validation(client):
+    data = client.post(
+        "/api/datasets", json={"csv_text": sample(), "source": "synthetic"}
+    ).json()
+    r = client.post(
+        "/api/plans",
+        json={
+            "dataset_id": data["id"],
+            "target_date": "2026-10-12",
+            "cutoff": "2026-10-11",
+        },
+    )
+    assert r.status_code == 422
+    assert (
+        client.post(
+            "/api/datasets",
+            json={
+                "csv_text": sample().replace("2026-08-17", "2099-08-17"),
+                "source": "local",
+            },
+        ).status_code
+        == 422
+    )
+
+
+def test_carryover_manual(client):
+    text = sample().replace(",true,0,10,10,0,0,0,none", ",true,1,10,10,0,1,0,none")
+    assert plan(client, text)["items"][0]["method"] == "manual"
+
+
+def test_exact_csv_shape_and_health(client):
+    assert client.get("/api/health").json()["db_status"] == "ok"
+    for text in [
+        sample().replace("2026-08-17", "20260817"),
+        sample().replace("date,product_id", "date,date,product_id"),
+        sample() + "2026-09-01,p1,true,0,1,1,0,0,0,none,extra\n",
+    ]:
+        assert (
+            client.post(
+                "/api/datasets", json={"csv_text": text, "source": "synthetic"}
+            ).status_code
+            == 422
+        )
+    assert client.get("/api/datasets").json() == []
+
+
+def test_snapshots_survive_config_change_and_same_key_race(client, monkeypatch):
+    p = plan(client)
+    b = body(p)
+    b["quantities"]["p1"] = 84
+    monkeypatch.setitem(CATALOG[0], "max_daily_qty", 12)
+    with ThreadPoolExecutor(2) as pool:
+        results = list(
+            pool.map(
+                lambda _: client.post(f"/api/plans/{p['id']}/confirm", json=b), range(2)
+            )
+        )
+    assert [r.status_code for r in results] == [200, 200]
+    assert results[0].json() == results[1].json()
+    assert results[0].json()["items"][0]["max_daily_qty"] == 100
+    assert client.get(f"/api/plans/{p['id']}").json()["items"][0]["confirmed_qty"] == 84
