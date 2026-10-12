@@ -20,6 +20,7 @@ jobs:
           node-version: '24'
       - name: Install locked dependencies
         run: |
+          $PSNativeCommandUseErrorActionPreference = $true
           python -m venv .venv
           .\.venv\Scripts\python.exe -m pip install -r backend/requirements.lock -r tools/requirements.lock
           npm.cmd ci
@@ -27,12 +28,14 @@ jobs:
           npx.cmd playwright install chromium
       - name: Backend and offline evaluation
         run: |
+          $PSNativeCommandUseErrorActionPreference = $true
           .\.venv\Scripts\python.exe -m ruff check backend tools
           .\.venv\Scripts\python.exe -m pytest backend/tests -q
           .\.venv\Scripts\python.exe -m unittest discover -s tools/tests -v
       - name: Frontend
         working-directory: frontend
         run: |
+          $PSNativeCommandUseErrorActionPreference = $true
           npm.cmd run lint
           npm.cmd run typecheck
           npm.cmd test
