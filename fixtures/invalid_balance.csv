@@ -1,0 +1,2 @@
+date,product_id,is_open,opening,produced,sold,waste,closing,other_out,stockout_status
+2026-10-05,p1,true,0,100,80,19,0,0,none

@@ -1,4 +1,7 @@
 .venv/
+.venv-evaluation/
+.deps-evaluation/
+.deps/
 __pycache__/
 .pytest_cache/
 .ruff_cache/
