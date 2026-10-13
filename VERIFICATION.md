@@ -1,53 +1,51 @@
-# ML integration verification, 2026-10-13
+# Проверка стабилизации MVP, 14.10.2026 (UTC+5)
 
-Cloud Linux checkout of `feature/bakeplan-scaffold`, based on unchanged commit `86c23e516916ac56ebac30a28a27317d841bcc5f`. Original history and authors were retained. New release: API 0.3.0 / SQLite schema 3 / `residual-ridge-100-v1-experimental`.
+Новая ветка `feature/bakeplan-mvp-stabilization` начинается с неизменённого remote `8b8ad0195210c18b9756255db6a7136e0c026206`. В исходной версии [CI](https://github.com/Nurlan-byte/byte/actions/runs/38453855717) прошёл 152 backend, 37 offline, 8 frontend и 12 E2E проверок. Это исторический результат, не доказательство новой версии. Старый полный протокол сохранён отдельно: [HISTORICAL_VERIFICATION](docs/HISTORICAL_VERIFICATION.md).
 
-Executed against the integrated code before publication:
+## Текущий код
 
-- Python 3.14.8, Node 24.19.0; locked dependencies installed.
-- `python -m pytest backend/tests -q`: **152 passed**. Covers ML core, API lifecycle, per-bakery and target isolation, chronology, snapshot/JSON integrity, persisted versions and restart, bounded errors, atomic idempotency, v3 migrations, and production safety guards.
-- `python -m unittest discover -s tools/tests -q`: **37 passed**. Existing offline research checks remain intact.
-- `python -m ruff check backend tools`: passed.
-- Frontend lint, TypeScript, production build: passed; **7 frontend tests passed**, including rendered target-isolation and legacy-data controls.
-- Non-browser Playwright API retry and real API-process restart scenarios: **2 passed**. The restart scenario now also trains a model, obtains an ML forecast, confirms an ML plan, kills/restarts the API, and verifies unchanged model/forecast/plan plus idempotent training and confirmation retries.
-- Independent code review rechecked the initial high-count fallback and active-catalog-history defects after correction; no remaining code-review blocker was found.
-- `git diff --check`: passed.
+Python 3.14.8, Node 24.19.0, cloud Linux. SQLite schema 3 сохранена. Новый протокол `residual-ridge-100-v2-horizon-2-experimental`: обучающие признаки и holdout используют t−2, доступность обучающих меток ограничена первым cutoff holdout. Синтетические данные, не реальная история.
 
-Local full browser execution is **blocked, not passed**. The pinned Chromium archive download was invalid in this environment. Installed Chromium was then tried through the supported execution path, including sandbox escalation, but this cloud runtime denied its required local socket (`Operation not permitted`). The Playwright suite contains 12 scenarios, including four new ML UI flows. CI runs the full suite on Windows after publication; check the Actions result for the exact delivered commit. Optional `BAKEPLAN_CHROMIUM_PATH` selects an already-installed browser without changing the default CI browser.
+Точный SHA публикации и ссылки на его CI фиксируются в draft PR; сверяйте именно этот SHA, а не только зелёный badge ветки. До зелёного CI финального SHA браузерный и контейнерный этапы не считаются пройденными. Локальная проверка ниже относится к подготовленному к публикации дереву кода, а не к последующим изменениям.
 
-Existing Starlette/httpx deprecation and physical-core-detection warnings did not fail the tests. No private CSV, SQLite, generated model artifact, or claimed economic result was added to Git. Synthetic checks demonstrate software behavior, not real-data accuracy. Actual bakery validation and a fresh forward shadow pilot at the real data-availability horizon remain open.
-
----
-
-# Проверка каркаса BakePlan
-
-Фактически выполнено на Penguin, Windows, Python3.14.2, Node24.13.0; октябрь2026. Автотесты используют только синтетические данные; отдельный внешний sales-only прогон выполнен приватно. Команды и зависимости находятся в README и lock-файлах.
-
-| Проверка | Результат |
+| Этап | Фактически выполнено в cloud workspace |
 |---|---|
-| Backend pytest | 27 прошли |
-| Ruff backend/tools | прошёл |
-| Frontend ESLint и TypeScript | прошли |
-| Frontend Vitest | 4 прошли |
-| Vite production build | прошёл |
-| Playwright Chromium | 8 прошли, 15.8с; задержанное подтверждение, 413, non-JSON и пагинация |
-| Offline/sales-only unittest | 25 прошли, включая общее ядро, обучение, temporal/zero-проверки и воспроизводимый CLI |
-| npm audit root/frontend | 0 известных уязвимостей при установке |
-| Startup по README | Windows: новая корневая .venv, зависимости, отдельные API/Vite процессы в E2E |
-| Linux/macOS | не запускались |
+| Backend и deployment unit/regression tests | **202 passed** (включая 30 deployment/backup/readiness проверок) |
+| Offline, включая frozen forward-window CLI | **42 passed**, включая 5 новых проверок forward-window |
+| Python Ruff | backend, tools, scripts — passed |
+| Frontend | lint, TypeScript, 18 unit/component tests, production build прошли |
+| Реальный API process restart и idempotency | 2 non-browser Playwright сценария прошли; snapshot/model/forecast/plan/retry/export пережили restart |
+| Browser E2E | 18 сценариев обнаружены; полный запуск передан Windows CI |
+| Backup/restore | Linux tests проверяют 7 таблиц, неизменность payload/retry keys, committed WAL, manifest/hash, повреждение, отказ перезаписи и новый файл восстановления |
+| Docker/Caddy/HTTPS | Docker, Podman и Caddy в этом cloud workspace отсутствуют. Dockerfile/Compose/Caddy написаны; shell syntax и локальные contract tests не являются фактическим контейнерным запуском. Linux CI собирает и проверяет disposable loopback demo |
+| Independent review | Отдельный reviewer проверил CSV, подтверждения, guards, ML chronology/common cohorts, frontend, whole-site auth/CSRF и backup/restore; code-review блокеров не осталось |
+| Hosted/manual QA | Не выполнено: нет выбранного хоста/домена и операторских секретов. Второе устройство, trusted TLS, реальный restore drill и ручной просмотр остаются открыты |
 
-Backend: отказ всего CSV при дроби/NaN/неизвестном товаре/дубликате/балансе; короткая строка, повторный заголовок и лишние поля дают422. Проверены B0=80/B1=65, исключение stockout, пропуски, нулевые остатки после списания, влияние целевого/будущего дня, партии и максимум96, активные даты, перенос остатков и отсутствие истории. Большинство stockout/unknown переводит рекомендацию в ручной режим с сохранением диагностического baseline. Закрытый целевой день по явному календарю даёт0 и запрещает ручное увеличение. Историческое воспроизведение помечено, устаревший рабочий черновик нельзя подтвердить; ранее успешный безопасный retry возвращается до проверки даты. Срез ограничен завершёнными календарными днями; фактический timestamp публикации данных не проверяется.
+Известное ограничение этого cloud runtime: Chromium ранее не смог открыть требуемый локальный socket (`Operation not permitted`). Нельзя выдавать обнаружение E2E или unit render за браузерную/ручную проверку. CI запускает 16 browser + 2 API/process сценария на Windows. Linux-only snapshot/entrypoint tests явно пропускаются на Windows и обязательно выполняются в отдельном Linux job. Изолированное CI demo использует публичные одноразовые test-fixture credentials, только loopback, затем удаляет свой отдельный проект и тома. Это не публичное размещение.
 
-Транзакции: две новые подтверждающие операции с одной revision дают один успех и409; одинаковый ключ/тело при одновременном повторе дают одинаковый результат; изменённый ключ/тело и устаревшая revision конфликтуют. Изменение каталога не меняет сохранённые ограничения старого плана.
+## Команды повторения из корня
 
-Browser: импорт → B1 → попытка90 блокируется → ручные84 → подтверждение → перезагрузка → история → CSV с synthetic. Отдельный тест действительно останавливает и снова запускает uvicorn на18001 с тем же SQLite, проверяет идентичность плана и экспорта после другого успешного импорта. База находится во временном каталоге, серверы тестов завершены; тестовые порты18000/18001/15173 не затрагивают обычный запуск на8000/5173.
+```sh
+.venv/bin/python -m pip install -r backend/requirements.lock -r tools/requirements.lock
+.venv/bin/python -m pytest backend/tests -q
+.venv/bin/python -m unittest discover -s tools/tests -v
+.venv/bin/python -m ruff check backend tools scripts
+npm --prefix frontend ci
+npm --prefix frontend run lint
+npm --prefix frontend run typecheck
+npm --prefix frontend test
+npm --prefix frontend run build
+npm ci
+npx playwright install chromium
+npm run test:e2e
+# Только Linux с Docker Engine и Compose >= 2.24.4, изолированное disposable demo:
+bash scripts/test_containers.sh
+```
 
-Найденный при повторной интеграции сбой E2E: одновременно отображались два role=status в коротком промежутке между сохранением и загрузкой истории. Исправлено отображение статуса в UI; повторный полный прогон прошёл. Тест не ослаблялся. Обнаруженная статическим просмотром неверная подготовка второго импорта в restart-тесте заменена на валидный импорт с обязательной проверкой201.
+На Windows используйте `.\.venv\Scripts\python.exe`, `npm.cmd`, `npx.cmd`; Docker snapshot-путь выполняется в Linux/container. Команды setup, запуска, доступа и восстановления находятся в [README](README.md) и [DEPLOYMENT](docs/DEPLOYMENT.md).
 
-Есть предупреждение библиотеки Starlette о будущем переходе TestClient с httpx на httpx2; текущие проверки проходят на закреплённой среде. CI добавлен отдельно; локальные результаты не означают успешного GitHub Actions до фактического запуска.
+Существующее предупреждение Starlette/httpx и предупреждение определения физических CPU не означают падение проверок. Private-отчёт CLI на синтетике содержит 65 общих пар при указанном в [EVALUATION](docs/EVALUATION.md) периоде; это проверка процедуры, не вывод о точности. Никаких реальных CSV, SQLite, секретов или якобы доказанной экономии в Git нет.
 
-Реальная история, независимый final test качества, местный пилот, оценка экономии, Linux/macOS и публичный hosting не проверены. ML остаётся отдельным исследовательским инструментом, не источником рабочего плана. Нет обещания качества или полноты производственного расписания.
+## Критерий внешней приёмки
 
-Рефакторинг: миграция сохраняет точные legacy payloads, dataset_id всех дубликатов и ссылки планов; SQLitebackup проверен, повторный startup безопасен. Мигрированный план прочитан, подтверждён и экспортирован. Конкурентные импорты возвращают один канонический ID при уникальном ключе source/schema/hash. Списки проверены как metadata-only даже без чтения payload. Изменение post-cutoff фактов не меняет items целиком (прогноз, даты, допуск, рекомендации, предупреждения). Статический независимый просмотр P0 не выявил.
-
-Sales-only этап: сохранены все48 прежних проверок, добавлены16 регрессий (всего64). Фиксированы train/validation/test и выбор5 пищевых позиций по train-only покрытию. Приватный corrected BreadBasket CSV проверен по SHA256, реальный исследовательский CLI выполнен для двух zero-политик. В полный приватный отчёт включены общий/per-item MAE/WAPE, одинаковые paired-даты и покрытие. Он оценивает товарные строки, не физические изделия/спрос. Сырые внешние записи и прогнозы по этим записям в Git не включены; только URL/hash/provenance и синтетический пример. Инвентарные поля не создавались, API/SQLite/рабочий план не менялись. Тесты подтверждают временной cutoff, train-only selection, baseline parity, nullWAPE при нулевом знаменателе, отказ при недостатке paired-дней, синтетическую маркировку и одинаковый JSON при повторном запуске.
+Диас записывает SHA и окружение, затем независимо проходит [manual QA](docs/manual-qa.md) и [90-секундный сценарий](docs/DEMO.md). Развёртывание считается проверенным только после whole-site auth/CSRF, импорта/обучения/фактического метода, ручного подтверждения/export, рестарта и восстановления на выбранном хосте, включая доступ с другого устройства. Независимая реальная оценка и журнал времени доступности фактов остаются отдельной задачей команды. [Windows/Docker-инструкция](docs/LOCAL_WINDOWS.md) подготовлена как локальный резерв; на ноутбуке пользователя она ещё не выполнена.
