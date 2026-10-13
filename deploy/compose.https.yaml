@@ -1,0 +1,13 @@
+# Explicit public exposure only. Requires Docker Compose >= 2.24.4 (!override).
+services:
+  gateway:
+    command: ["caddy", "run", "--config", "/etc/caddy/Caddyfile.https", "--adapter", "caddyfile"]
+    environment:
+      BAKEPLAN_DOMAIN: ${BAKEPLAN_DOMAIN:?Set the approved DNS hostname, without scheme or port}
+      BAKEPLAN_ACME_EMAIL: ${BAKEPLAN_ACME_EMAIL:?Set the operator-approved certificate email}
+    ports: !override
+      - "80:80"
+      - "443:443"
+    healthcheck:
+      # This local-only listener has no app content and is never host-published.
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1:8081/ready"]

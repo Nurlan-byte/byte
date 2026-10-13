@@ -2,7 +2,7 @@
 
 import json
 import sqlite3
-from contextlib import asynccontextmanager
+from contextlib import asynccontextmanager, closing
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
@@ -30,6 +30,7 @@ from backend.services import (
 from backend.storage import (
     NotFound,
     initialize_database,
+    database_path,
     connection,
     fetch,
     get_dataset,
@@ -119,8 +120,12 @@ def parse_csv(text):
 @app.get("/api/health")
 def health():
     try:
-        with connection() as con:
-            con.execute("SELECT 1")
+        uri = database_path().resolve().as_uri() + "?mode=ro"
+        with closing(sqlite3.connect(uri, uri=True, timeout=3)) as con:
+            # A plain SELECT 1 also succeeds against an empty/wrong SQLite file.
+            # Compile reads from the core persisted objects without scanning them.
+            for table in ("datasets", "plans", "models"):
+                con.execute(f"SELECT id,payload FROM {table} LIMIT 0")
     except OSError, sqlite3.Error:
         raise HTTPException(503, "Хранилище недоступно") from None
     return {"status": "ok", "app_version": "0.3.0", "db_status": "ok"}
