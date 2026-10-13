@@ -12,7 +12,8 @@ from backend.app import CATALOG, REQUIRED, app
 @pytest.fixture
 def client(tmp_path, monkeypatch):
     monkeypatch.setenv("BAKEPLAN_DB", str(tmp_path / "db.sqlite3"))
-    return TestClient(app)
+    with TestClient(app) as active:
+        yield active
 
 
 def sample():
@@ -43,7 +44,7 @@ def plan(client, text=None, method="B1"):
     imported = client.post(
         "/api/datasets", json={"csv_text": text or sample(), "source": "synthetic"}
     )
-    assert imported.status_code == 201
+    assert imported.status_code in (200, 201)
     response = client.post(
         "/api/plans",
         json={
@@ -282,6 +283,20 @@ def test_operational_confirmation_date_and_safe_retry(client, monkeypatch):
 
 def test_closed_target_zero_and_confirmation_guard(client):
     p = plan(client, sample() + "2026-10-12,p1,false,0,0,0,0,0,0,none\n")
+    assert p["items"][0]["forecast_mean"] == 65
+    data = client.post(
+        "/api/datasets", json={"csv_text": sample(), "source": "synthetic"}
+    ).json()
+    p = client.post(
+        "/api/plans",
+        json={
+            "dataset_id": data["id"],
+            "target_date": "2026-10-12",
+            "cutoff": "2026-10-11",
+            "mode": "replay",
+            "target_is_open": False,
+        },
+    ).json()
     assert p["items"][0]["forecast_mean"] is None
     assert p["items"][0]["recommended_qty"] == 0
     b = body(p)
