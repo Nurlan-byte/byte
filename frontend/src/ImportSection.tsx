@@ -4,6 +4,38 @@ import { businessDate } from "./dates";
 import type { Dataset, DatasetTarget } from "./types";
 import type { SectionProps } from "./sectionProps";
 
+type SavedDataset = Pick<Dataset, "id" | "source">;
+
+export function SavedDatasetSelect({
+  datasets,
+  value,
+  onChange,
+  disabled,
+}: {
+  datasets: SavedDataset[];
+  value: string;
+  onChange: (value: string) => void;
+  disabled: boolean;
+}) {
+  return (
+    <div>
+      <label htmlFor="saved-dataset">Сохранённый набор</label>
+      <select
+        id="saved-dataset"
+        disabled={disabled}
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+      >
+        {datasets.map((entry) => (
+          <option value={entry.id} key={entry.id}>
+            {entry.id} · {entry.source}
+          </option>
+        ))}
+      </select>
+    </div>
+  );
+}
+
 function syntheticSalesCsv() {
   const end = new Date(`${businessDate(-1)}T00:00:00Z`);
   const rows = ["date,product_id,item_line_count"];
@@ -56,7 +88,7 @@ export function ImportSection({
   | "setNotice"
   | "run"
 >) {
-  const [saved, setSaved] = useState<Pick<Dataset, "id" | "source">[]>([]);
+  const [saved, setSaved] = useState<SavedDataset[]>([]);
   const [savedId, setSavedId] = useState("");
   const [savedLoaded, setSavedLoaded] = useState(false);
   const salesOnly = dataTarget === "item_line_count";
@@ -88,20 +120,12 @@ export function ImportSection({
         </button>
         {!!saved.length && (
           <div className="controls">
-            <label>
-              Сохранённый набор
-              <select
-                disabled={busy}
-                value={savedId}
-                onChange={(e) => setSavedId(e.target.value)}
-              >
-                {saved.map((entry) => (
-                  <option value={entry.id} key={entry.id}>
-                    {entry.id} · {entry.source}
-                  </option>
-                ))}
-              </select>
-            </label>
+            <SavedDatasetSelect
+              datasets={saved}
+              value={savedId}
+              onChange={setSavedId}
+              disabled={busy}
+            />
             <button
               className="secondary"
               disabled={busy || !savedId}

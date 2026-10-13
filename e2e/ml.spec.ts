@@ -75,8 +75,18 @@ test('explicit units → train/status → ML forecast → safeguarded plan → c
 
   await page.reload();
   await page.getByText('Продолжить работу с сохранённым набором', { exact: true }).click();
+  const datasetsLoaded = page.waitForResponse(response =>
+    new URL(response.url()).pathname === '/api/datasets' && response.request().method() === 'GET');
   await page.getByRole('button', { name: 'Обновить наборы' }).click();
-  await page.getByLabel('Сохранённый набор', { exact: true }).selectOption(dataset.id);
+  const datasetsResponse = await datasetsLoaded;
+  expect(datasetsResponse.ok()).toBeTruthy();
+  expect((await datasetsResponse.json()).map((entry: { id: string }) => entry.id)).toContain(dataset.id);
+  const savedDataset = page.getByLabel('Сохранённый набор', { exact: true });
+  await expect(savedDataset).toBeVisible();
+  await expect(savedDataset).toBeEnabled();
+  await expect(savedDataset.locator(`option[value="${dataset.id}"]`)).toHaveCount(1);
+  await savedDataset.selectOption(dataset.id);
+  await expect(savedDataset).toHaveValue(dataset.id);
   await page.getByRole('button', { name: 'Открыть набор', exact: true }).click();
   await page.getByRole('button', { name: 'Обновить модели' }).click();
   await expect(page.getByTestId('model-summary')).toContainText(models[0].id);

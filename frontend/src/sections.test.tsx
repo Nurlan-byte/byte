@@ -2,6 +2,7 @@ import { expect, test, vi } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
 import { PlanningSection } from "./PlanningSection";
 import { ModelSection } from "./ModelSection";
+import { SavedDatasetSelect } from "./ImportSection";
 import type { Dataset, Plan } from "./types";
 
 const units: Dataset = {
@@ -108,4 +109,26 @@ test("legacy metadata visibly disables training until explicit reimport", () => 
   expect(html).toMatch(/<button disabled="">Обучить модель<\/button>/);
   expect(html).toContain("Получить прогноз");
   expect(html).not.toContain('type="number"');
+});
+
+test("saved dataset control has an exact stable label independent of its options", () => {
+  const html = renderToStaticMarkup(
+    <SavedDatasetSelect
+      datasets={[
+        { id: "first-dataset", source: "synthetic" },
+        { id: "second-dataset", source: "local" },
+      ]}
+      value="second-dataset"
+      onChange={vi.fn()}
+      disabled={false}
+    />,
+  );
+  expect(html).toContain(
+    '<label for="saved-dataset">Сохранённый набор</label>',
+  );
+  expect(html).toContain('<select id="saved-dataset">');
+  expect(html).toContain(
+    '<option value="second-dataset" selected="">second-dataset · local</option>',
+  );
+  expect(html).not.toMatch(/<label[^>]*>[^<]*<select/);
 });
