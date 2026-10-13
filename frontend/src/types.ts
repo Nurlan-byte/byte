@@ -1,3 +1,5 @@
+export type DatasetTarget = "sold_units" | "item_line_count";
+export type MeasurementUnit = "physical_unit" | "item_line";
 export type Item = {
   product_id: string;
   name: string;
@@ -7,6 +9,9 @@ export type Item = {
   recommended_qty: number;
   confirmed_qty: number | null;
   method: string;
+  diagnostic_method?: string;
+  model_id?: string | null;
+  fallback_reason?: string | null;
   warnings: string[];
   used_dates?: string[];
   n?: number;
@@ -24,10 +29,63 @@ export type Plan = PlanSummary & {
   items: Item[];
   cutoff: string;
   mode?: string;
+  model_id?: string | null;
+  model_version?: string;
+  protocol_version?: string;
+  target?: DatasetTarget;
+  unit?: MeasurementUnit;
 };
 export type Dataset = {
   id: string;
   source: string;
   row_count?: number;
   diagnostics?: string[];
+  bakery_id: string;
+  target: DatasetTarget;
+  unit: MeasurementUnit;
+  provenance: string;
+  schema_version: string;
+  dataset_version?: string;
+  version?: string;
+  metadata_declared?: boolean;
+};
+export type ModelSummary = {
+  id: string;
+  status: "ready" | "not_ready";
+  reason?: string | null;
+  training_cutoff: string;
+  target: DatasetTarget;
+  unit: MeasurementUnit;
+  bakery_id: string;
+  dataset_id: string;
+  dataset_version: string;
+  protocol_version: string;
+  evaluation?: {
+    protocol?: string;
+    experimental?: boolean;
+    paired_n?: number;
+    b1_mae?: number | null;
+    ml_mae?: number | null;
+    coverage?: number;
+    fit_end?: string | null;
+    holdout_start?: string | null;
+    holdout_end?: string | null;
+  };
+  products: Record<string, { status: string; reason?: string | null }>;
+};
+export type Forecast = {
+  dataset_id: string;
+  bakery_id: string;
+  target: DatasetTarget;
+  unit: MeasurementUnit;
+  model_id: string | null;
+  items: {
+    product_id: string;
+    forecast_mean: number | null;
+    b1_mean: number | null;
+    method: string;
+    fallback_reason?: string | null;
+    used_dates?: string[];
+    n?: number;
+  }[];
 };

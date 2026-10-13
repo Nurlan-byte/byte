@@ -45,6 +45,15 @@ export function PlanningSection({
   | "show"
   | "refreshHistory"
 >) {
+  if (dataset?.target === "item_line_count" || dataset?.unit === "item_line") {
+    return (
+      <aside className="sales-only" data-testid="sales-only-notice">
+        Строки продаж не преобразуются в физические штуки. Для производственного
+        плана импортируйте отдельную историю sold_units / physical_unit с
+        балансом.
+      </aside>
+    );
+  }
   return (
     <section>
       <h2>2. Расчёт и ручная проверка</h2>
@@ -57,6 +66,7 @@ export function PlanningSection({
         <label>
           Целевой день открыт
           <input
+            disabled={busy}
             type="checkbox"
             checked={targetOpen}
             onChange={(e) => setTargetOpen(e.target.checked)}
@@ -65,6 +75,7 @@ export function PlanningSection({
         <label>
           Дата плана
           <input
+            disabled={busy}
             type="date"
             value={target}
             onChange={(e) => setTarget(e.target.value)}
@@ -73,6 +84,7 @@ export function PlanningSection({
         <label>
           Данные доступны до
           <input
+            disabled={busy}
             type="date"
             value={cutoff}
             onChange={(e) => setCutoff(e.target.value)}
@@ -80,8 +92,15 @@ export function PlanningSection({
         </label>
         <label>
           Базовый метод
-          <select value={method} onChange={(e) => setMethod(e.target.value)}>
+          <select
+            disabled={busy}
+            value={method}
+            onChange={(e) => setMethod(e.target.value)}
+          >
             <option value="B1">B1 · до 4 прошлых таких дней недели</option>
+            <option value="ML">
+              ML · последняя подходящая модель, иначе B1
+            </option>
             <option value="B0">B0 · тот же день неделю назад</option>
           </select>
         </label>
@@ -115,8 +134,18 @@ export function PlanningSection({
               : "Операционный план"}{" "}
             · {plan.status} · версия {plan.revision}
           </p>
+          <p className="muted">
+            Набор плана: {plan.dataset_id} · срез: {plan.cutoff} ·{" "}
+            {plan.target ?? "sold_units"} / {plan.unit ?? "physical_unit"}
+          </p>
+          {plan.model_id && (
+            <p>
+              Снимок модели: {plan.model_id} · протокол:{" "}
+              {plan.protocol_version ?? "не указан"}
+            </p>
+          )}
           <div className="table">
-            <table>
+            <table data-testid="plan-table">
               <thead>
                 <tr>
                   <th>Товар</th>
@@ -175,6 +204,18 @@ export function PlanningSection({
                     </td>
                     <td>
                       {i.method}
+                      {i.diagnostic_method &&
+                        i.diagnostic_method !== i.method && (
+                          <small>
+                            Метод диагностического прогноза:{" "}
+                            {i.diagnostic_method}. Автоматический выпуск
+                            отключён.
+                          </small>
+                        )}
+                      {i.model_id && <small>Снимок модели: {i.model_id}</small>}
+                      {i.fallback_reason && (
+                        <small>Причина перехода: {i.fallback_reason}</small>
+                      )}
                       <small>
                         Подходящих наблюдений:{" "}
                         {i.n ?? i.used_dates?.length ?? 0}

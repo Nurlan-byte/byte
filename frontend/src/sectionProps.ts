@@ -1,11 +1,17 @@
 import type { Dispatch, SetStateAction, RefObject } from "react";
-import type { Dataset, Plan } from "./types";
+import type { Dataset, DatasetTarget, Plan } from "./types";
 type Setter<T> = Dispatch<SetStateAction<T>>;
 export type SectionProps = {
   csv: string;
   setCsv: Setter<string>;
   source: string;
   setSource: Setter<string>;
+  bakeryId: string;
+  setBakeryId: Setter<string>;
+  dataTarget: DatasetTarget;
+  setDataTarget: Setter<DatasetTarget>;
+  provenance: string;
+  setProvenance: Setter<string>;
   dataset: Dataset | null;
   setDataset: Setter<Dataset | null>;
   plan: Plan | null;

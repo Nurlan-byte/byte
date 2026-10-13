@@ -1,9 +1,10 @@
 import { useState, useRef } from "react";
 import { api } from "./api";
-import type { Dataset, Plan, PlanSummary } from "./types";
+import type { Dataset, DatasetTarget, Plan, PlanSummary } from "./types";
 import { businessDate } from "./dates";
 import { validQuantity } from "./quantities";
 import { ImportSection } from "./ImportSection";
+import { ModelSection } from "./ModelSection";
 import { PlanningSection } from "./PlanningSection";
 import { HistorySection, HISTORY_PAGE_SIZE } from "./HistorySection";
 export function App() {
@@ -16,6 +17,12 @@ export function App() {
     [busy, setBusy] = useState(false),
     [error, setError] = useState(""),
     [notice, setNotice] = useState("");
+  const [bakeryId, setBakeryId] = useState("demo");
+  const [dataTarget, setDataTarget] = useState<DatasetTarget>("sold_units");
+  const [provenance, setProvenance] = useState(
+    "Синтетическая демонстрация BakePlan",
+  );
+  const running = useRef(false);
   const [target, setTarget] = useState(() => businessDate(1)),
     [cutoff, setCutoff] = useState(businessDate(-1)),
     [method, setMethod] = useState("B1");
@@ -31,6 +38,8 @@ export function App() {
     setHistoryLoaded(true);
   }
   async function run(fn: () => Promise<void>) {
+    if (running.current) return;
+    running.current = true;
     setBusy(true);
     setError("");
     setNotice("");
@@ -39,6 +48,7 @@ export function App() {
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
+      running.current = false;
       setBusy(false);
     }
   }
@@ -69,6 +79,12 @@ export function App() {
     setSource,
     dataset,
     setDataset,
+    bakeryId,
+    setBakeryId,
+    dataTarget,
+    setDataTarget,
+    provenance,
+    setProvenance,
     plan,
     setPlan,
     busy,
@@ -97,7 +113,7 @@ export function App() {
         <span className="tag">Локальный прототип · одна пекарня</span>
         <h1>План выпечки на завтра</h1>
         <p>
-          История продаж → базовый расчёт → ручная проверка → сохранённый план.
+          История → прогноз B0/B1 или ML → ручная проверка → сохранённый план.
         </p>
       </header>
       <aside>
@@ -117,17 +133,23 @@ export function App() {
       )}
       {busy && <p role="status">Выполняется…</p>}
       <ImportSection {...sectionProps} />
+      {dataset && (
+        <ModelSection key={dataset.id} {...sectionProps} dataset={dataset} />
+      )}
       <PlanningSection {...sectionProps} />
-      <HistorySection
-        history={history}
-        offset={historyOffset}
-        loaded={historyLoaded}
-        busy={busy}
-        onPage={(offset) => void run(() => loadHistory(offset))}
-        onLoad={(id) =>
-          void run(async () => show(await api<Plan>(`/plans/${id}`)))
-        }
-      />
+      {dataset?.target !== "item_line_count" &&
+        dataset?.unit !== "item_line" && (
+          <HistorySection
+            history={history}
+            offset={historyOffset}
+            loaded={historyLoaded}
+            busy={busy}
+            onPage={(offset) => void run(() => loadHistory(offset))}
+            onLoad={(id) =>
+              void run(async () => show(await api<Plan>(`/plans/${id}`)))
+            }
+          />
+        )}
       <footer>
         Без подтверждённой реальной истории точность и экономия не заявляются.
         Часовой пояс пекарни: Asia/Qyzylorda.

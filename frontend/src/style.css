@@ -181,3 +181,36 @@ footer {
     padding: 20px 16px;
   }
 }
+
+.actions {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.model-card {
+  border: 1px solid #dce5dd;
+  border-radius: 10px;
+  padding: 16px;
+  margin-top: 18px;
+  overflow-wrap: anywhere;
+}
+.model-card p,
+.success p {
+  margin: 6px 0;
+}
+.model-card h3 {
+  margin-top: 0;
+}
+summary {
+  cursor: pointer;
+  color: #32664c;
+}
+.sales-only {
+  margin-top: 22px;
+}
+input:disabled,
+select:disabled,
+textarea:disabled {
+  background: #f4f5f1;
+  color: #68766b;
+}

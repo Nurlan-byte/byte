@@ -1,3 +1,24 @@
+# ML integration verification, 2026-10-13
+
+Cloud Linux checkout of `feature/bakeplan-scaffold`, based on unchanged commit `86c23e516916ac56ebac30a28a27317d841bcc5f`. Original history and authors were retained. New release: API 0.3.0 / SQLite schema 3 / `residual-ridge-100-v1-experimental`.
+
+Executed against the integrated code before publication:
+
+- Python 3.14.8, Node 24.19.0; locked dependencies installed.
+- `python -m pytest backend/tests -q`: **152 passed**. Covers ML core, API lifecycle, per-bakery and target isolation, chronology, snapshot/JSON integrity, persisted versions and restart, bounded errors, atomic idempotency, v3 migrations, and production safety guards.
+- `python -m unittest discover -s tools/tests -q`: **37 passed**. Existing offline research checks remain intact.
+- `python -m ruff check backend tools`: passed.
+- Frontend lint, TypeScript, production build: passed; **7 frontend tests passed**, including rendered target-isolation and legacy-data controls.
+- Non-browser Playwright API retry and real API-process restart scenarios: **2 passed**.
+- Independent code review rechecked the initial high-count fallback and active-catalog-history defects after correction; no remaining code-review blocker was found.
+- `git diff --check`: passed.
+
+Local full browser execution is **blocked, not passed**. The pinned Chromium archive download was invalid in this environment. Installed Chromium was then tried through the supported execution path, including sandbox escalation, but this cloud runtime denied its required local socket (`Operation not permitted`). The Playwright suite contains 12 scenarios, including four new ML UI flows. CI runs the full suite on Windows after publication; check the Actions result for the exact delivered commit. Optional `BAKEPLAN_CHROMIUM_PATH` selects an already-installed browser without changing the default CI browser.
+
+Existing Starlette/httpx deprecation and physical-core-detection warnings did not fail the tests. No private CSV, SQLite, generated model artifact, or claimed economic result was added to Git. Synthetic checks demonstrate software behavior, not real-data accuracy. Actual bakery validation and a fresh forward shadow pilot at the real data-availability horizon remain open.
+
+---
+
 # Проверка каркаса BakePlan
 
 Фактически выполнено на Penguin, Windows, Python3.14.2, Node24.13.0; октябрь2026. Автотесты используют только синтетические данные; отдельный внешний sales-only прогон выполнен приватно. Команды и зависимости находятся в README и lock-файлах.
