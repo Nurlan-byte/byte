@@ -564,3 +564,125 @@ def test_sales_numeric_limit_preserves_b1_and_rejects_overflow(client):
     assert result["method"] == "B1"
     assert result["forecast_mean"] == 1_000_000_000
     assert result["fallback_reason"]
+
+
+def test_horizon_contract_and_applicability_are_visible_through_api(client):
+    dataset = import_dataset(client)
+    model = train(client, dataset).json()
+    evaluation = model["evaluation"]
+    assert model["protocol_version"] == "residual-ridge-100-v2-horizon-2-experimental"
+    assert evaluation["horizon_days"] == 2
+    assert (
+        evaluation["first_holdout_cutoff"]
+        == (
+            date.fromisoformat(evaluation["holdout_start"]) - timedelta(days=2)
+        ).isoformat()
+    )
+    assert evaluation["fit_end"] <= evaluation["first_holdout_cutoff"]
+    assert evaluation["coverage_denominator_n"] == evaluation["holdout_eligible_n"]
+    assert evaluation["paired_start"] == evaluation["paired_dates"][0]
+    assert evaluation["paired_end"] == evaluation["paired_dates"][-1]
+    for product in model["products"].values():
+        metrics = product["evaluation"]
+        assert metrics["paired_n"] == len(metrics["paired_dates"])
+        assert (
+            metrics["coverage_denominator_n"]
+            == product["counts"]["holdout_eligible_rows"]
+        )
+    for gap in (1, 2, 5):
+        target = (date.fromisoformat(CUTOFF) + timedelta(days=gap)).isoformat()
+        response = forecast(client, dataset, target_date=target)
+        assert response.status_code == 200, response.text
+        result = response.json()
+        expected = {
+            "applicable": gap == 2,
+            "reason": None if gap == 2 else "forecast_horizon_mismatch",
+            "evaluated_horizon_days": 2,
+            "requested_horizon_days": gap,
+        }
+        assert result["evaluation_applicability"] == expected
+        assert all(
+            item["evaluation_applicability"] == expected for item in result["items"]
+        )
+        assert all(item["method"] == "ML" for item in result["items"])
+
+
+def test_b1_and_no_model_never_claim_ml_evaluation_applicability(client):
+    dataset = import_dataset(client)
+    result = forecast(client, dataset, target_date="2026-10-13").json()
+    assert result["evaluation_applicability"]["applicable"] is False
+    assert result["evaluation_applicability"]["reason"] == "no_model"
+    model = train(client, dataset).json()
+    result = forecast(
+        client, dataset, method="B1", model_id=model["id"], target_date="2026-10-13"
+    ).json()
+    assert result["evaluation_applicability"]["reason"] == "b1_requested"
+    assert all(
+        not item["evaluation_applicability"]["applicable"] for item in result["items"]
+    )
+
+
+def test_partial_products_and_plan_guards_cannot_inherit_applicable_metrics(client):
+    output = io.StringIO()
+    writer = csv.writer(output)
+    for row in csv.reader(io.StringIO(synthetic_csv(products=("p1", "p2")))):
+        if row[0] == "date" or row[1] == "p1" or row[0] <= "2026-09-11":
+            writer.writerow(row)
+    dataset = import_dataset(client, output.getvalue())
+    model = train(client, dataset).json()
+    assert model["products"]["p1"]["status"] == "ready"
+    assert model["products"]["p2"]["status"] == "not_ready"
+    result = forecast(client, dataset, target_date="2026-10-13").json()
+    assert result["evaluation_applicability"]["applicable"] is False
+    assert result["evaluation_applicability"]["reason"] == "partial_product_coverage"
+    items = {item["product_id"]: item for item in result["items"]}
+    assert items["p1"]["evaluation_applicability"]["applicable"] is True
+    assert items["p2"]["evaluation_applicability"]["applicable"] is False
+    plan = make_plan(client, dataset, target_date="2026-10-13").json()
+    assert plan["items"][0]["evaluation_applicability"]["applicable"] is True
+    assert all(
+        not item["evaluation_applicability"]["applicable"] for item in plan["items"][1:]
+    )
+    closed = make_plan(
+        client, dataset, target_date="2026-10-13", target_is_open=False
+    ).json()
+    assert all(
+        not item["evaluation_applicability"]["applicable"] for item in closed["items"]
+    )
+    assert (
+        closed["items"][0]["evaluation_applicability"]["reason"] == "closed_target_day"
+    )
+
+
+def test_saved_v1_artifact_stays_fallback_and_retraining_creates_v2(client):
+    from backend.ml_core import train_model
+    from backend.model_storage import save_training
+    from backend.storage import get_dataset
+
+    dataset = import_dataset(client)
+    legacy = train_model(get_dataset(dataset["id"]), date.fromisoformat(CUTOFF))
+    legacy.update(
+        id="legacy-v1-artifact", protocol_version="residual-ridge-100-v1-experimental"
+    )
+    legacy["evaluation"].pop("horizon_days")
+    save_training(legacy, "legacy-training", "legacy-request")
+    assert (
+        forecast(client, dataset, target_date="2026-10-13").json()["model_id"] is None
+    )
+    result = forecast(
+        client, dataset, model_id=legacy["id"], target_date="2026-10-13"
+    ).json()
+    assert result["model_id"] is None
+    assert result["evaluation_applicability"]["reason"] == "unsupported_protocol"
+    assert all(
+        item["method"] == "B1" and not item["evaluation_applicability"]["applicable"]
+        for item in result["items"]
+    )
+    fresh = train(client, dataset)
+    assert fresh.status_code == 201, fresh.text
+    assert fresh.json()["protocol_version"] != legacy["protocol_version"]
+    assert fresh.json()["id"] != legacy["id"]
+    assert table_counts()["models"] == 2
+    result = forecast(client, dataset, target_date="2026-10-13").json()
+    assert result["model_id"] == fresh.json()["id"]
+    assert result["evaluation_applicability"]["applicable"] is True

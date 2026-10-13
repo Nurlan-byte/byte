@@ -67,6 +67,8 @@ def test_active_catalog_keeps_canonical_b1_for_ml(monkeypatch, tmp_path, trained
         assert ml["forecast_mean"] == 10
         assert ml["recommended_qty"] == 12
         assert ml["fallback_reason"]
+        assert ml["evaluation_applicability"]["applicable"] is False
+        assert ml["evaluation_applicability"]["reason"] == "catalogue_history_filter"
 
 
 def test_earliest_calendar_dates_are_structured_not_server_error(monkeypatch, tmp_path):

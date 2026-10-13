@@ -24,8 +24,11 @@ def parse_csv(
     max_rows: int = 10_000,
 ) -> list[dict]:
     """Validate whole input before returning rows; extra note columns are ignored."""
-    reader = csv.DictReader(io.StringIO(text.lstrip("\ufeff")))
-    headers = reader.fieldnames
+    reader = csv.DictReader(io.StringIO(text.lstrip("\ufeff")), strict=True)
+    try:
+        headers = reader.fieldnames
+    except csv.Error as error:
+        raise CsvValidationError([f"Ошибка заголовка CSV: {error}"]) from error
     if (
         headers is None
         or len(headers) != len(set(headers))

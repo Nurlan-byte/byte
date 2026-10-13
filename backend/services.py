@@ -124,6 +124,11 @@ def create_plan(body: PlanRequest, today: date):
         for item in items:
             prediction = predictions.get(item["product_id"])
             if not prediction:
+                item["evaluation_applicability"] = {
+                    **result["evaluation_applicability"],
+                    "applicable": False,
+                    "reason": "no_product_forecast",
+                }
                 continue
             if item.get("active_from") or item.get("active_to"):
                 prediction = {
@@ -134,7 +139,16 @@ def create_plan(body: PlanRequest, today: date):
             item.update(
                 model_id=result["model_id"],
                 fallback_reason=prediction.get("fallback_reason"),
+                evaluation_applicability=dict(prediction["evaluation_applicability"]),
             )
+            if not body.target_is_open:
+                item["evaluation_applicability"].update(
+                    applicable=False, reason="closed_target_day"
+                )
+            elif item.get("active_from") or item.get("active_to"):
+                item["evaluation_applicability"].update(
+                    applicable=False, reason="catalogue_history_filter"
+                )
             if prediction.get("fallback_reason"):
                 item["warnings"].append("ML: " + prediction["fallback_reason"])
             # plan_item owns the canonical filtered B1 and every production

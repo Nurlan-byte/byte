@@ -23,12 +23,16 @@ def identity(dataset):
 
 
 def parse_sales_csv(text, today):
-    reader = csv.DictReader(io.StringIO(text.lstrip("\ufeff")))
+    reader = csv.DictReader(io.StringIO(text.lstrip("\ufeff")), strict=True)
+    try:
+        headers = reader.fieldnames
+    except csv.Error as error:
+        raise CsvValidationError([f"Ошибка заголовка CSV: {error}"]) from error
     expected = {"date", "product_id", "item_line_count"}
     if (
-        not reader.fieldnames
-        or len(reader.fieldnames) != 3
-        or set(reader.fieldnames) != expected
+        not headers
+        or len(headers) != 3
+        or set(headers) != expected
     ):
         raise CsvValidationError(
             [

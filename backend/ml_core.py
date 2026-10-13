@@ -13,7 +13,8 @@ from datetime import date
 
 import numpy as np
 
-PROTOCOL_VERSION = "residual-ridge-100-v1-experimental"
+PROTOCOL_VERSION = "residual-ridge-100-v2-horizon-2-experimental"
+FORECAST_HORIZON_DAYS = 2
 ALPHA = 100.0
 MAX_ROWS = 10_000
 MAX_PRODUCTS = 50
@@ -25,7 +26,7 @@ MIN_HOLDOUT_DATES = 7
 TARGET_UNITS = {"sold_units": "physical_unit", "item_line_count": "item_line"}
 FEATURE_NAMES = (
     "b1",
-    "lag_1",
+    "lag_2",
     "lag_7",
     "lag_14",
     "lag_28",
@@ -160,7 +161,7 @@ def _history(records):
 
 
 def _features(history, target, cutoff):
-    """Only calendar facts and observations strictly before the target are read."""
+    """Only facts through the inclusive cutoff, strictly before target, are read."""
     ordinal, end = target.toordinal(), min(cutoff.toordinal(), target.toordinal() - 1)
     selected = [
         ordinal - delta
@@ -193,7 +194,7 @@ def _features(history, target, cutoff):
     ]
     features = [
         b1,
-        *[lag(delta) for delta in (1, 7, 14, 28)],
+        *[lag(delta) for delta in (2, 7, 14, 28)],
         *[sum(window) / len(window) if window else math.nan for window in windows],
         *[len(window) for window in windows],
         math.sin(2 * math.pi * target.weekday() / 7),
@@ -331,23 +332,96 @@ def _score(pairs):
     }
 
 
+def _paired_evaluation(pairs, paired_dates, eligible_n):
+    """Both errors share exactly the same observed date/product cohort."""
+    dates = sorted(set(paired_dates))
+    return {
+        **_score(pairs),
+        "paired_dates": dates,
+        "paired_date_count": len(dates),
+        "paired_start": dates[0] if dates else None,
+        "paired_end": dates[-1] if dates else None,
+        "coverage": len(pairs) / eligible_n if eligible_n else 0.0,
+        "coverage_denominator": "eligible_observed_holdout_labels",
+        "coverage_denominator_n": eligible_n,
+    }
+
+
+def evaluation_applicability(model, target, cutoff, product_id=None):
+    """Describe horizon compatibility, never promise future forecast accuracy."""
+    target, cutoff = _day(target), _day(cutoff)
+    evaluation = model.get("evaluation", {}) if isinstance(model, dict) else {}
+    evaluated_horizon = (
+        evaluation.get("horizon_days") if isinstance(evaluation, dict) else None
+    )
+    if type(evaluated_horizon) is not int or evaluated_horizon < 1:
+        evaluated_horizon = None
+    requested_horizon = (target - cutoff).days
+    reason = None
+    if not isinstance(model, dict):
+        reason = "no_model"
+    elif model.get("protocol_version") != PROTOCOL_VERSION:
+        reason = "unsupported_protocol"
+    elif evaluated_horizon != FORECAST_HORIZON_DAYS:
+        reason = "unknown_evaluation_horizon"
+    elif requested_horizon != evaluated_horizon:
+        reason = "forecast_horizon_mismatch"
+    elif model.get("status") != "ready":
+        reason = "model_not_ready"
+    elif type(evaluation.get("paired_n")) is not int or evaluation["paired_n"] < 1:
+        reason = "no_paired_evaluation"
+    elif product_id is not None:
+        products = model.get("products")
+        product = products.get(product_id) if isinstance(products, dict) else None
+        if not isinstance(product, dict) or product.get("status") != "ready":
+            reason = "product_not_ready"
+        else:
+            product_evaluation = product.get("evaluation")
+            if (
+                not isinstance(product_evaluation, dict)
+                or type(product_evaluation.get("paired_n")) is not int
+                or product_evaluation["paired_n"] < 1
+            ):
+                reason = "no_paired_evaluation"
+    return {
+        "applicable": reason is None,
+        "reason": reason,
+        "evaluated_horizon_days": evaluated_horizon,
+        "requested_horizon_days": requested_horizon,
+    }
+
+
 def train_model(dataset: dict, cutoff: date) -> dict:
     """Fit an immutable, deterministic JSON object for an explicit as-of snapshot.
 
-    Last max(7, ceil(20%)) distinct dates are the common holdout. Frozen prefix
-    estimators use rolling observed history during holdout; deployment estimators
-    are then refitted through cutoff. No test-based parameter/model selection.
+    Last max(7, ceil(20%)) distinct dates are the common holdout. Training and
+    holdout features both use target minus two calendar days. Frozen estimators
+    see labels only through the first holdout issue cutoff. Observations roll
+    forward at that same two-day horizon; deployment refits through cutoff.
+    No test-based parameter/model selection.
     """
     cutoff = _day(cutoff)
     identity, records, snapshot_hash = _snapshot(dataset, cutoff)
     dates = sorted({row["date"] for row in records})
     holdout_n = max(MIN_HOLDOUT_DATES, math.ceil(len(dates) * 0.2))
-    split_ok = len(dates) - holdout_n >= MIN_TRAIN_DATES
+    candidate_holdout = dates[-holdout_n:]
+    first_issue_cutoff = (
+        date.fromordinal(
+            max(1, _day(candidate_holdout[0]).toordinal() - FORECAST_HORIZON_DAYS)
+        ).isoformat()
+        if candidate_holdout
+        else None
+    )
+    # Labels immediately before holdout may not exist at its first issue time.
+    # Embargo those dates rather than fitting on unavailable future labels.
+    candidate_train = [day for day in dates[:-holdout_n] if day <= first_issue_cutoff]
+    split_ok = len(candidate_train) >= MIN_TRAIN_DATES
     train_dates, holdout_dates = (
-        (dates[:-holdout_n], dates[-holdout_n:]) if split_ok else ([], [])
+        (candidate_train, candidate_holdout) if split_ok else ([], [])
     )
     train_end = train_dates[-1] if train_dates else None
     holdout_start = holdout_dates[0] if holdout_dates else None
+    first_issue_cutoff = first_issue_cutoff if split_ok else None
     histories = _history(records)
     grouped, samples = defaultdict(list), defaultdict(list)
     feature_exclusions = defaultdict(Counter)
@@ -359,7 +433,9 @@ def train_model(dataset: dict, cutoff: date) -> dict:
             continue
         day = _day(row["date"])
         features, baseline = _features(
-            histories[product], day, date.fromordinal(max(1, day.toordinal() - 1))
+            histories[product],
+            day,
+            date.fromordinal(max(1, day.toordinal() - FORECAST_HORIZON_DAYS)),
         )
         feature_reason = (
             "missing_b1_history"
@@ -381,7 +457,7 @@ def train_model(dataset: dict, cutoff: date) -> dict:
                     "b1": baseline["b1_mean"],
                 }
             )
-    products, all_pairs = {}, []
+    products, all_pairs, all_paired_dates = {}, [], []
     holdout_eligible_n = (
         sum(
             row["value"] is not None and row["date"] >= holdout_start for row in records
@@ -436,7 +512,7 @@ def train_model(dataset: dict, cutoff: date) -> dict:
                 "deployment_training_rows": 0,
             },
             "exclusions": exclusions,
-            "evaluation": {**_score([]), "coverage": 0.0},
+            "evaluation": _paired_evaluation([], [], product_holdout_n),
         }
         products[product] = result
         if not split_ok:
@@ -470,14 +546,14 @@ def train_model(dataset: dict, cutoff: date) -> dict:
                 "evaluation_fit_end": train_end,
                 "evaluation_parameters_hash": _digest(frozen),
                 "deployment_fit_end": samples[product][-1]["date"],
-                "evaluation": {
-                    **_score(pairs),
-                    "coverage": len(pairs) / product_holdout_n,
-                },
+                "evaluation": _paired_evaluation(
+                    pairs, [sample["date"] for sample in later], product_holdout_n
+                ),
             }
         )
         result["counts"]["deployment_training_rows"] = len(samples[product])
         all_pairs.extend(pairs)
+        all_paired_dates.extend(sample["date"] for sample in later)
     ready_n = sum(product["status"] == "ready" for product in products.values())
     holdout_rows = [
         row for row in records if holdout_start and row["date"] >= holdout_start
@@ -493,6 +569,14 @@ def train_model(dataset: dict, cutoff: date) -> dict:
             )
         ),
         "protocol": "chronological_holdout_frozen_estimator_rolling_observations",
+        "horizon_days": FORECAST_HORIZON_DAYS,
+        "feature_cutoff_policy": "target_minus_horizon_calendar_days",
+        "first_holdout_cutoff": first_issue_cutoff,
+        "embargoed_dates": (
+            [day for day in dates if first_issue_cutoff < day < holdout_start]
+            if split_ok
+            else []
+        ),
         "experimental": True,
         "selection_performed": False,
         "fit_end": train_end,
@@ -504,8 +588,7 @@ def train_model(dataset: dict, cutoff: date) -> dict:
         "holdout_b1_n": sum(
             product["counts"]["holdout_b1_rows"] for product in products.values()
         ),
-        **_score(all_pairs),
-        "coverage": len(all_pairs) / holdout_eligible_n if holdout_eligible_n else 0.0,
+        **_paired_evaluation(all_pairs, all_paired_dates, holdout_eligible_n),
         "exclusions": {
             "missing_b1_history": sum(
                 product["counts"]["holdout_eligible_rows"]
@@ -561,6 +644,7 @@ def train_model(dataset: dict, cutoff: date) -> dict:
             "min_holdout_dates": MIN_HOLDOUT_DATES,
             "raw_feature_count": len(FEATURE_NAMES),
             "ridge_alpha": ALPHA,
+            "forecast_horizon_days": FORECAST_HORIZON_DAYS,
         },
     }
 
@@ -591,12 +675,16 @@ def forecast_model(
         **baseline,
         "method": "B1" if baseline["b1_mean"] is not None else "manual",
         "fallback_reason": None,
+        "evaluation_applicability": evaluation_applicability(
+            model, target, cutoff, product_id
+        ),
     }
     if model.get("id") is not None:
         result["model_id"] = model["id"]
 
     def fallback(reason):
         result["fallback_reason"] = reason
+        result["evaluation_applicability"].update(applicable=False, reason=reason)
         return result
 
     if features is None:

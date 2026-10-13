@@ -91,11 +91,11 @@ def test_rows_after_cutoff_and_future_products_do_not_affect_fit_or_prediction()
 def test_features_ignore_target_truth_and_future_values():
     history = {START.toordinal() + offset: offset + 10 for offset in range(120)}
     target = START + timedelta(days=80)
-    cutoff = target - timedelta(days=1)
+    cutoff = target - timedelta(days=core.FORECAST_HORIZON_DAYS)
     original = core._features(history, target, cutoff)
     changed = dict(history)
     for key in changed:
-        if key >= target.toordinal():
+        if key > cutoff.toordinal():
             changed[key] = 1_000_000
     assert core._features(changed, target, cutoff) == original
     changed[cutoff.toordinal()] += 5
@@ -215,8 +215,11 @@ def test_insufficient_history_falls_back_to_unchanged_b1():
 
 
 def test_minimum_history_boundary_and_no_history_manual_fallback():
-    enough = fixture(35)
-    assert train(enough, 35)["status"] == "ready"
+    # The first holdout issue cannot train on the preceding day's label.
+    # At 36 dates, ceil(20%) is eight and the embargo leaves only 27 fit dates.
+    assert train(fixture(36), 36)["status"] == "not_ready"
+    enough = fixture(37)
+    assert train(enough, 37)["status"] == "ready"
     sparse = fixture(5)
     model = train(sparse, 5)
     result = forecast(model, sparse, offset=5, cutoff_offset=4)
@@ -425,9 +428,9 @@ def test_entirely_missing_lag_has_train_only_imputation_and_indicator():
     model = train(data, 150)
     assert model["status"] == "ready"
     params = model["products"]["p1"]["parameters"]
-    lag_one = core.FEATURE_NAMES.index("lag_1")
-    assert params["imputation_medians"][lag_one] > 0
-    assert params["means"][len(core.FEATURE_NAMES) + lag_one] == 1.0
+    lag_two = core.FEATURE_NAMES.index("lag_2")
+    assert params["imputation_medians"][lag_two] > 0
+    assert params["means"][len(core.FEATURE_NAMES) + lag_two] == 1.0
     assert model["counts"]["eligible_labels"] == 50
 
 
@@ -502,3 +505,181 @@ def test_finite_prediction_above_bound_is_explicit_b1_fallback():
     assert result["method"] == "B1"
     assert result["fallback_reason"] == "prediction_out_of_bounds"
     assert result["forecast_mean"] == result["b1_mean"]
+
+
+@pytest.mark.parametrize("target_name", list(core.TARGET_UNITS))
+def test_default_horizon_ignores_all_facts_after_completed_day_cutoff(target_name):
+    data = fixture(100, target=target_name)
+    model = train(data, 90)
+    original = forecast(model, data, offset=91, cutoff_offset=89)
+    assert original["method"] == "ML"
+    assert original["evaluation_applicability"]["applicable"] is True
+    changed = deepcopy(data)
+    label = "sold" if target_name == "sold_units" else "item_line_count"
+    for row in changed["rows"]:
+        if row["date"] > model["training_cutoff"]:
+            row[label] = 999_999
+            row.update(is_open=False, opening=99, stockout_status="occurred")
+    changed["rows"][-1]["product_id"] = "future-product"
+    assert train(changed, 90) == model
+    assert forecast(model, changed, offset=91, cutoff_offset=89) == original
+
+
+def test_training_holdout_and_default_forecast_features_have_identical_horizon(
+    monkeypatch,
+):
+    observed = []
+    original_features = core._features
+
+    def record_features(history, target, cutoff):
+        features, baseline = original_features(history, target, cutoff)
+        observed.append((target, cutoff, features))
+        return features, baseline
+
+    monkeypatch.setattr(core, "_features", record_features)
+    data = fixture()
+    model = train(data)
+    assert len(observed) == len(data["rows"])
+    assert all((target - cutoff).days == 2 for target, cutoff, _ in observed)
+    assert all(
+        features[core.FEATURE_NAMES.index("lag_2")] == data["rows"][index - 2]["sold"]
+        for index, (_, _, features) in enumerate(observed)
+        if features is not None
+    )
+    forecast(model, data, offset=91, cutoff_offset=89)
+    target, cutoff, _ = observed[-1]
+    assert (target - cutoff).days == model["evaluation"]["horizon_days"] == 2
+
+
+def test_frozen_fit_excludes_labels_unavailable_at_first_holdout_issue(monkeypatch):
+    fits = []
+    original_fit = core._fit
+
+    def record_fit(samples):
+        fits.append(deepcopy(samples))
+        return original_fit(samples)
+
+    monkeypatch.setattr(core, "_fit", record_fit)
+    data = fixture()
+    first = train(data)
+    evaluation = first["evaluation"]
+    first_cutoff = date.fromisoformat(evaluation["holdout_start"]) - timedelta(days=2)
+    assert evaluation["first_holdout_cutoff"] == first_cutoff.isoformat()
+    assert all(sample["date"] <= first_cutoff.isoformat() for sample in fits[0])
+    assert evaluation["fit_end"] == fits[0][-1]["date"]
+    embargo_day = (first_cutoff + timedelta(days=1)).isoformat()
+    assert evaluation["embargoed_dates"] == [embargo_day]
+    changed = deepcopy(data)
+    for row in changed["rows"]:
+        if row["date"] > first_cutoff.isoformat():
+            row["sold"] += 500
+    second = train(changed)
+    assert (
+        first["products"]["p1"]["evaluation_parameters_hash"]
+        == second["products"]["p1"]["evaluation_parameters_hash"]
+    )
+    assert (
+        first["products"]["p1"]["parameters_hash"]
+        != second["products"]["p1"]["parameters_hash"]
+    )
+
+
+def test_paired_scores_recompute_on_identical_explicit_date_product_cohort():
+    data = fixture(products=("p1", "p2"))
+    # Missing rows and excluded observed labels are different denominator cases.
+    data["rows"] = [
+        row
+        for row in data["rows"]
+        if not (
+            row["product_id"] == "p2" and row["date"] in {"2026-03-17", "2026-03-21"}
+        )
+    ]
+    for row in data["rows"]:
+        if row["product_id"] == "p2" and row["date"] == "2026-03-20":
+            row["stockout_status"] = "unknown"
+    model = train(data)
+    evaluation = model["evaluation"]
+    _, records, _ = core._snapshot(data, date.fromisoformat(model["training_cutoff"]))
+    histories = core._history(records)
+    all_pairs = []
+    for product_id, product in model["products"].items():
+        prefix, later = [], []
+        eligible_n = 0
+        for row in records:
+            if row["product_id"] != product_id or row["value"] is None:
+                continue
+            day = date.fromisoformat(row["date"])
+            features, baseline = core._features(
+                histories[product_id], day, day - timedelta(days=2)
+            )
+            if row["date"] >= evaluation["holdout_start"]:
+                eligible_n += 1
+            if features is None or not core._safe_features(features):
+                continue
+            sample = {
+                "date": row["date"],
+                "features": features,
+                "value": row["value"],
+                "b1": baseline["b1_mean"],
+            }
+            if row["date"] <= evaluation["first_holdout_cutoff"]:
+                prefix.append(sample)
+            elif row["date"] >= evaluation["holdout_start"]:
+                later.append(sample)
+        frozen = core._fit(prefix)
+        pairs = [
+            (
+                sample["value"],
+                sample["b1"],
+                core._predict(frozen, sample["features"], sample["b1"]),
+            )
+            for sample in later
+        ]
+        metrics = product["evaluation"]
+        assert metrics["paired_dates"] == [sample["date"] for sample in later]
+        assert metrics["paired_date_count"] == metrics["paired_n"] == len(pairs)
+        assert metrics["paired_start"] == metrics["paired_dates"][0]
+        assert metrics["paired_end"] == metrics["paired_dates"][-1]
+        assert metrics["coverage_denominator"] == "eligible_observed_holdout_labels"
+        assert metrics["coverage_denominator_n"] == eligible_n
+        assert metrics["coverage"] == len(pairs) / eligible_n
+        for key, value in core._score(pairs).items():
+            assert metrics[key] == pytest.approx(value)
+        all_pairs.extend(pairs)
+    assert evaluation["paired_n"] == len(all_pairs)
+    assert evaluation["coverage_denominator_n"] == evaluation["holdout_eligible_n"]
+    assert evaluation["paired_dates"] == sorted(
+        {
+            day
+            for product in model["products"].values()
+            for day in product["evaluation"]["paired_dates"]
+        }
+    )
+    assert evaluation["paired_date_count"] == len(evaluation["paired_dates"])
+    for key, value in core._score(all_pairs).items():
+        assert evaluation[key] == pytest.approx(value)
+
+
+@pytest.mark.parametrize("gap", [1, 2, 3, 7])
+def test_forecast_evaluation_applicability_is_explicit_for_arbitrary_horizons(gap):
+    data = fixture()
+    model = train(data)
+    result = forecast(model, data, offset=89 + gap, cutoff_offset=89)
+    assert result["method"] == "ML"
+    assert result["evaluation_applicability"] == {
+        "applicable": gap == 2,
+        "reason": None if gap == 2 else "forecast_horizon_mismatch",
+        "evaluated_horizon_days": 2,
+        "requested_horizon_days": gap,
+    }
+
+
+def test_old_one_day_protocol_cannot_silently_use_new_feature_schema():
+    data = fixture()
+    model = train(data)
+    model["protocol_version"] = "residual-ridge-100-v1-experimental"
+    result = forecast(model, data, offset=91, cutoff_offset=89)
+    assert result["method"] == "B1"
+    assert result["fallback_reason"] == "unsupported_protocol"
+    assert result["evaluation_applicability"]["applicable"] is False
+    assert result["evaluation_applicability"]["reason"] == "unsupported_protocol"
