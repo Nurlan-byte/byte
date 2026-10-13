@@ -2,7 +2,7 @@
 
 **Самый быстрый запасной вариант** — уже знакомый запуск Python 3.14 + Node 24 из [README](../README.md#быстрый-запуск). Ниже — отдельный Docker-вариант: одна локальная ссылка `http://127.0.0.1:8080`, собранный React, FastAPI и постоянная SQLite. Он не публикует приложение в интернет и не создаёт платных ресурсов.
 
-**Честный статус:** приложение и snapshot/restore проверены в cloud Linux; Docker Desktop/WSL2 на вашем Windows-компьютере ещё не проверены. В среде подготовки нет Docker runtime. Успешный [Linux container CI](https://github.com/Nurlan-byte/byte/actions/runs/38459541821/job/115510815667) проверил контейнеры на `f93d5b7d`, но не заменяет эту локальную проверку. Не удаляйте прежнюю рабочую папку и её SQLite, пока не пройдёте сценарий ниже.
+**Честный статус:** приложение и snapshot/restore проверены в cloud Linux; Docker Desktop/WSL2 на вашем Windows-компьютере ещё не проверены. В среде подготовки нет Docker runtime. На SHA `9948d911` [полный CI](https://github.com/Nurlan-byte/byte/actions/runs/38462149030) прошёл Windows unit/browser и Linux container build/ML/restart/backup/restore. Он не заменяет ручную проверку Docker Desktop на вашем ноутбуке. Финальную более позднюю версию сверяйте по SHA и CI в [CI ветки материалов защиты](https://github.com/Nurlan-byte/byte/actions?query=branch%3Afeature%2Fbakeplan-defense-evidence). Не удаляйте прежнюю рабочую папку и её SQLite, пока не пройдёте сценарий ниже.
 
 Краткий порядок действий утром: [MORNING_CHECKLIST](MORNING_CHECKLIST.md).
 
@@ -39,17 +39,17 @@ Docker должен отвечать серверной частью; Compose н
 
 Используйте **Linux filesystem**, например `~/projects/bakeplan-docker`, а не `/mnt/c/...`. Здесь нужны нормальные Linux permissions, hardlinks и fsync. [Docker рекомендует хранить рабочие файлы в Linux filesystem для WSL](https://docs.docker.com/desktop/features/wsl/best-practices/).
 
-После публикации проверенной ветки можно получить отдельный checkout:
+Опубликованную ветку можно получить в отдельный checkout:
 
 ```sh
 mkdir -p ~/projects
 cd ~/projects
-git clone --branch feature/bakeplan-mvp-stabilization https://github.com/Nurlan-byte/byte.git bakeplan-docker
+git clone --branch feature/bakeplan-defense-evidence https://github.com/Nurlan-byte/byte.git bakeplan-docker
 cd bakeplan-docker
 git rev-parse HEAD
 ```
 
-Сверьте SHA с переданным результатом проверки. До публикации ветки clone может завершиться ошибкой: не заменяйте её старой версией без Docker-файлов. Если `bakeplan-docker` уже существует, не удаляйте её и не сбрасывайте изменения; используйте прежний проверенный checkout либо новое имя каталога. Исходная Windows-папка с данными остаётся запасным вариантом.
+Сверьте SHA с переданным результатом проверки. При ошибке clone проверьте адрес и доступность GitHub; не заменяйте ветку старой версией без Docker-файлов. Если `bakeplan-docker` уже существует, не удаляйте её и не сбрасывайте изменения; используйте прежний проверенный checkout либо новое имя каталога. Исходная Windows-папка с данными остаётся запасным вариантом.
 
 ## 3. Локальный доступ задаёт владелец
 

@@ -1,7 +1,7 @@
 name: BakePlan checks
 on:
   push:
-    branches: ['feature/bakeplan-scaffold', 'feature/bakeplan-mvp-stabilization']
+    branches: ['feature/bakeplan-scaffold', 'feature/bakeplan-mvp-stabilization', 'feature/bakeplan-defense-evidence']
   pull_request:
   workflow_dispatch:
 permissions:
@@ -42,6 +42,23 @@ jobs:
           npm.cmd run build
       - name: Browser flow and restart
         run: npm.cmd run test:e2e
+      - name: Capture real synthetic UI evidence
+        run: npx.cmd playwright test --config=playwright.screenshots.config.ts
+      - name: Produce matching synthetic API replay evidence
+        run: |
+          $PSNativeCommandUseErrorActionPreference = $true
+          New-Item -ItemType Directory -Force -Path test-results | Out-Null
+          .\.venv\Scripts\python.exe -m scripts.replay_demo --output-dir test-results/defense-replay
+      - name: Upload screenshot evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: bakeplan-ui-evidence-${{ github.sha }}-${{ github.run_attempt }}
+          path: |
+            test-results/screenshots/
+            test-results/defense-replay/
+          retention-days: 14
+          if-no-files-found: warn
   controlled-demo:
     runs-on: ubuntu-latest
     timeout-minutes: 20

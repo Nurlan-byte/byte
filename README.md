@@ -4,7 +4,7 @@
 
 ## Стабилизация MVP
 
-Текущая работа: `feature/bakeplan-mvp-stabilization`, поверх прошедшего CI `8b8ad019`. [Аудит и ответственные](docs/MVP_AUDIT.md), [точные проверки](VERIFICATION.md), [подготовка контролируемого размещения](docs/DEPLOYMENT.md), [сценарий на 90 секунд](docs/DEMO.md). Публичный URL и целевая среда ещё не проверены. Новый проверяющий начинает с чистого запуска ниже; Docker-путь описан отдельно.
+Стабилизация из [PR #1](https://github.com/Nurlan-byte/byte/pull/1) объединена владельцем в `fc8898c3663456ebe38d906218d8afab3b14e6b5`; [CI merge-коммита](https://github.com/Nurlan-byte/byte/actions/runs/38466507842) прошёл. Материалы защиты добавляются отдельно в `feature/bakeplan-defense-evidence`. [Аудит и ответственные](docs/MVP_AUDIT.md), [точные проверки](VERIFICATION.md), [подготовка контролируемого размещения](docs/DEPLOYMENT.md), [сценарий на 90 секунд, шесть слайдов и ответы жюри](docs/DEMO.md). Публичный URL и целевая среда ещё не проверены. Новый проверяющий начинает с чистого запуска ниже; Docker-путь описан отдельно. [Реальные CI-снимки и их получение](docs/SCREENSHOTS.md); [три первых утренних действия](docs/MORNING_CHECKLIST.md).
 
 Рабочий контракт: план сегодня на завтра, полные факты только по вчера включительно, то есть t−2. Интегрированная модель и её holdout теперь используют одинаковый двухдневный горизонт, с обучающим срезом не позже первого cutoff оценки. Новый протокол `residual-ridge-100-v2-horizon-2-experimental` не наследует показатели v1. При другом разрыве между датой и срезом UI явно предупреждает, что эта оценка неприменима. MAE B1 и ML, парное N, покрытие и даты сравнения доступны по каждому товару. [Процедура независимой будущей оценки](docs/EVALUATION.md).
 
@@ -28,7 +28,7 @@
 Нужны Git, Python 3.14 и Node.js 24 с npm. Для чистой установки:
 
 ```sh
-git clone --branch feature/bakeplan-mvp-stabilization https://github.com/Nurlan-byte/byte.git bakeplan
+git clone --branch feature/bakeplan-defense-evidence https://github.com/Nurlan-byte/byte.git bakeplan
 cd bakeplan
 git rev-parse HEAD
 ```
