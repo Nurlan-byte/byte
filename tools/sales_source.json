@@ -1,0 +1,37 @@
+{
+  "corrected_file": "bakery_sales_revised.csv",
+  "dataset_version": 2,
+  "date_range": [
+    "2016-10-30",
+    "2017-04-09"
+  ],
+  "frozen_protocol": {
+    "alpha": 1.0,
+    "history_mode": "rolling-one-day-ahead",
+    "lags_days": [
+      7,
+      14
+    ],
+    "selection": "Top5 positive-date coverage on train only among frozen food allowlist; lexical ties; coverage>=0.5",
+    "test_end": "2017-04-09",
+    "test_start": "2017-03-01",
+    "train_end": "2017-01-31",
+    "validation_end": "2017-02-28",
+    "validation_start": "2017-02-01"
+  },
+  "input_item_lines": 20507,
+  "license_claim": "CC0: Public Domain (uploader metadata; not independently audited chain of ownership)",
+  "missing_global_dates": [
+    "2016-12-25",
+    "2016-12-26",
+    "2017-01-02"
+  ],
+  "observed_store_dates": 159,
+  "operational_separation": "Sales-only schema has no produced/opening/closing/waste/stockout fields and cannot be imported as operational DailyActual.",
+  "privacy": "Downloaded raw CSV and evaluation reports remain outside tracked repository. No customer identifiers, raw transaction records or real bakery history committed.",
+  "sha256": "5f7e0af51f4bf985f0d2ac2e35209c94d2426726993b98d1c2e9d8bc145860ee",
+  "source_owner": "akashdeepkuila",
+  "source_url": "https://www.kaggle.com/datasets/akashdeepkuila/bakery",
+  "target_unit": "transaction item-line occurrences per observed store date; physical quantity unverified",
+  "version_note": "date_time column revised to fix multiple formats error"
+}
