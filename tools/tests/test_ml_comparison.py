@@ -9,6 +9,7 @@ from tools.compare_sales_ml import (
     compare_sales,
     load_protocol,
     select_candidate,
+    selected_test_summary,
     summarize,
 )
 from tools.sales_adapter import SalesLine, SalesObservation
@@ -188,6 +189,42 @@ class ComparisonTests(unittest.TestCase):
         self.assertEqual(first["selection"], second["selection"])
         self.assertNotIn("candidate", first["test"]["observed-store-zero"]["pooled"])
         self.assertEqual(first["test"]["observed-store-zero"]["fit_end"], "2017-01-31")
+
+    def test_selected_test_preserves_population_and_common_key_coverage(self):
+        observation = SalesObservation(date(2017, 3, 1), "Bread", 10, False)
+        common = {
+            "date": "2017-03-01",
+            "item": "Bread",
+            "actual": 10,
+            "common": True,
+            "forecasts": {"B0": 9, "B1": 12, "priorPoisson": 11},
+        }
+        excluded = {
+            **common,
+            "date": "2017-03-02",
+            "common": False,
+            "forecasts": {"B0": None, "B1": 12, "priorPoisson": 11},
+        }
+        prediction = {
+            "value": 10.5,
+            "raw_finite": True,
+            "used_fallback": False,
+            "reason": None,
+            "b1": 12,
+        }
+        with patch("tools.compare_sales_ml.predict_candidate", return_value=prediction):
+            report = selected_test_summary(
+                None, None, [observation], [common, excluded], ["Bread"]
+            )
+        self.assertEqual(report["candidate_n"], 2)
+        self.assertEqual(report["common_key_excluded_n"], 1)
+        self.assertEqual(
+            report["finite_coverage"], {"B0": 0.5, "B1": 1, "priorPoisson": 1}
+        )
+        self.assertEqual(report["n"], 1)
+        self.assertEqual(report["raw_finite_coverage"], 1)
+        self.assertEqual(report["raw_finite_n"], 1)
+        self.assertEqual(len(report["predictions"]), 1)
 
     def test_insufficient_training_is_refused_before_any_fit(self):
         report = compare_sales(

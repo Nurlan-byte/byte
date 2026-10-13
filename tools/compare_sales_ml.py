@@ -243,6 +243,19 @@ def candidate_score(fitted, fit_error, observations, references, cohort):
     }
 
 
+def selected_test_summary(fitted, fit_error, observations, references, cohort):
+    """Keep full reference population coverage beside ML common-key coverage."""
+    population = reference_summary(references, cohort)
+    selected = candidate_score(fitted, fit_error, observations, references, cohort)
+    return {
+        **selected,
+        **{
+            key: population[key]
+            for key in ("candidate_n", "common_key_excluded_n", "finite_coverage")
+        },
+    }
+
+
 def relative_gain(candidate_mae, baseline_mae):
     if candidate_mae is None or baseline_mae is None:
         return None
@@ -524,7 +537,7 @@ def compare_sales(lines, *, source, dataset_sha, history_mode, protocol=None):
         chosen = selection["selected"]
         if chosen != "B1":
             fitted, error = fitted_validation[(chosen, policy)]
-            score = candidate_score(fitted, error, obs, references, cohort)
+            score = selected_test_summary(fitted, error, obs, references, cohort)
             methods = ("candidate", *REFERENCE_METHODS)
             records = score["predictions"]
         else:
