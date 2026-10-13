@@ -1502,3 +1502,21 @@ footer,
     box-shadow: none;
   }
 }
+.quantity-help {
+  margin: 12px 0 2px;
+}
+.quantity-help > .quantity-guide {
+  margin: 0 0 12px;
+}
+.quantity-help > summary {
+  padding: 7px 0;
+  min-height: 32px;
+}
+@media (max-width: 520px) {
+  .actual-method {
+    max-width: 220px;
+  }
+}
+.item-details {
+  overflow-wrap: anywhere;
+}

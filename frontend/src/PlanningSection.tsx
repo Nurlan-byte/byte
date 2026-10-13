@@ -106,7 +106,7 @@ export function PlanningSection({
           </button>
         </div>
       )}
-      {replay && (
+      {replay && !plan && (
         <aside className="replay-notice">
           <strong>Историческое воспроизведение</strong>
           <span>
@@ -250,34 +250,22 @@ export function PlanningSection({
               текущий набор из раздела импорта.
             </p>
           )}
-          <div className="quantity-guide">
-            <p>
-              <strong>Прогноз</strong> — оценка продаж, без округления к партии.
-            </p>
-            <p>
-              <strong>Рекомендация</strong> — допустимая партия. При ручном
-              режиме 0 — заготовка, не прогноз нулевого спроса.
-            </p>
-            <p>
-              <strong>Подтверждение</strong> — ваш выпуск. Изменение поля
-              сохраняется только после кнопки «Подтвердить и сохранить».
-            </p>
-          </div>
-          <details>
-            <summary>Технические данные плана</summary>
-            <p>
-              План: {plan.id} · набор плана: {plan.dataset_id}
-            </p>
-            <p>
-              Версия данных: {plan.dataset_version ?? "не указана"} ·{" "}
-              {plan.target ?? "sold_units"} / {plan.unit ?? "physical_unit"}
-            </p>
-            {plan.model_id && (
+          <details className="quantity-help">
+            <summary>Как читать план</summary>
+            <div className="quantity-guide">
               <p>
-                Снимок модели: {plan.model_id} · протокол:{" "}
-                {plan.protocol_version ?? "не указан"}
+                <strong>Прогноз</strong> — оценка продаж, без округления к
+                партии.
               </p>
-            )}
+              <p>
+                <strong>Рекомендация</strong> — допустимая партия. При ручном
+                режиме 0 — заготовка, не прогноз нулевого спроса.
+              </p>
+              <p>
+                <strong>Подтверждение</strong> — ваш выпуск. Изменение поля
+                сохраняется только после кнопки «Подтвердить и сохранить».
+              </p>
+            </div>
           </details>
           <p className="table-hint">
             На узком экране прокрутите таблицу вправо → выпуск, фактический
@@ -429,6 +417,22 @@ export function PlanningSection({
               </tbody>
             </table>
           </div>
+          <details>
+            <summary>Технические данные плана</summary>
+            <p>
+              План: {plan.id} · набор плана: {plan.dataset_id}
+            </p>
+            <p>
+              Версия данных: {plan.dataset_version ?? "не указана"} ·{" "}
+              {plan.target ?? "sold_units"} / {plan.unit ?? "physical_unit"}
+            </p>
+            {plan.model_id && (
+              <p>
+                Снимок модели: {plan.model_id} · протокол:{" "}
+                {plan.protocol_version ?? "не указан"}
+              </p>
+            )}
+          </details>
           <div className="confirm-bar">
             <div>
               <strong>
