@@ -29,9 +29,36 @@ test('saved SQLite snapshots survive real API process restart and another import
     const anotherImport = await request.post(`${base}/datasets`,{data:{csv_text,source:'external'}});
     expect(anotherImport.status()).toBe(201);
     expect((await anotherImport.json()).id).not.toBe(dataset.id);
+    const scoped = await (await request.post(`${base}/datasets`, {data:{
+      csv_text, source:'synthetic', bakery_id:'restart-ml', target:'sold_units',
+      unit:'physical_unit', provenance:'Synthetic real-process restart test',
+    }})).json();
+    const trained = await request.post(`${base}/datasets/${scoped.id}/train`, {data:{
+      cutoff:'2026-10-11', idempotency_key:'restart-model',
+    }});
+    expect(trained.status()).toBe(201);
+    const model = await trained.json();
+    expect(model.status).toBe('ready');
+    const forecastBody = {dataset_id:scoped.id, target_date:'2026-10-12', cutoff:'2026-10-11', method:'ML'};
+    const forecastBefore = await (await request.post(`${base}/forecasts`,{data:forecastBody})).json();
+    expect(forecastBefore.items[0].method).toBe('ML');
+    const mlPlan = await (await request.post(`${base}/plans`,{data:{...forecastBody, mode:'replay'}})).json();
+    expect(mlPlan.model_id).toBe(model.id);
+    const confirmBody = {revision:0, idempotency_key:'restart-ml-confirm',
+      quantities:Object.fromEntries(mlPlan.items.map((i:{product_id:string;recommended_qty:number})=>[i.product_id,i.recommended_qty]))};
+    const mlSavedResponse = await request.post(`${base}/plans/${mlPlan.id}/confirm`,{data:confirmBody});
+    expect(mlSavedResponse.status()).toBe(200);
+    const mlSaved = await mlSavedResponse.json();
     await stop(); await start();
     expect(await (await request.get(`${base}/plans/${plan.id}`)).json()).toEqual(saved);
     expect(await (await request.get(`${base}/plans/${plan.id}/export`)).text()).toBe(exported);
     expect((await (await request.get(`${base}/plans`)).json()).map((p:{id:string})=>p.id)).toContain(saved.id);
+    expect(await (await request.get(`${base}/datasets/${scoped.id}/models`)).json()).toEqual([model]);
+    expect(await (await request.post(`${base}/forecasts`,{data:forecastBody})).json()).toEqual(forecastBefore);
+    expect(await (await request.get(`${base}/plans/${mlPlan.id}`)).json()).toEqual(mlSaved);
+    expect(await (await request.post(`${base}/plans/${mlPlan.id}/confirm`,{data:confirmBody})).json()).toEqual(mlSaved);
+    const repeatedTraining = await request.post(`${base}/datasets/${scoped.id}/train`, {data:{cutoff:'2026-10-11', idempotency_key:'restart-model'}});
+    expect(repeatedTraining.status()).toBe(200);
+    expect(await repeatedTraining.json()).toEqual(model);
   } finally { await stop(); await fs.rm(directory,{recursive:true,force:true}); }
 });

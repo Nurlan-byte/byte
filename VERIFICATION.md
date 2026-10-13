@@ -9,7 +9,7 @@ Executed against the integrated code before publication:
 - `python -m unittest discover -s tools/tests -q`: **37 passed**. Existing offline research checks remain intact.
 - `python -m ruff check backend tools`: passed.
 - Frontend lint, TypeScript, production build: passed; **7 frontend tests passed**, including rendered target-isolation and legacy-data controls.
-- Non-browser Playwright API retry and real API-process restart scenarios: **2 passed**.
+- Non-browser Playwright API retry and real API-process restart scenarios: **2 passed**. The restart scenario now also trains a model, obtains an ML forecast, confirms an ML plan, kills/restarts the API, and verifies unchanged model/forecast/plan plus idempotent training and confirmation retries.
 - Independent code review rechecked the initial high-count fallback and active-catalog-history defects after correction; no remaining code-review blocker was found.
 - `git diff --check`: passed.
 
