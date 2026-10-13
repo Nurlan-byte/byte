@@ -88,38 +88,10 @@ def evaluate(rows: list[dict], source: str, dataset_sha: str, split_date: date) 
             "status": "refused",
             "reason": "Need >=28 training dates, >=7 later holdout dates and >=14 training rows per holdout product.",
         }
-    from sklearn.compose import ColumnTransformer
-    from sklearn.impute import SimpleImputer
-    from sklearn.linear_model import PoissonRegressor
-    from sklearn.pipeline import Pipeline
-    from sklearn.preprocessing import OneHotEncoder, StandardScaler
+    from tools.modeling import build_poisson_pipeline
 
     index = {(r["product_id"], r["date"]): r for r in rows}
-    numeric = Pipeline(
-        [
-            (
-                "impute",
-                SimpleImputer(strategy="constant", fill_value=0, add_indicator=True),
-            ),
-            ("scale", StandardScaler()),
-        ]
-    )
-    preprocess = ColumnTransformer(
-        [
-            (
-                "category",
-                OneHotEncoder(handle_unknown="ignore", sparse_output=False),
-                [0, 1],
-            ),
-            ("numeric", numeric, [2, 3]),
-        ]
-    )
-    model = Pipeline(
-        [
-            ("preprocess", preprocess),
-            ("model", PoissonRegressor(alpha=1.0, max_iter=500)),
-        ]
-    )
+    model = build_poisson_pipeline()
     if sum(r["sold"] for r in train) == 0:
         return {
             **report,

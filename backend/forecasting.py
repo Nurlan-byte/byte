@@ -21,6 +21,7 @@ def baseline(
     cutoff: date,
     method: str,
     eligible: Callable[[dict], bool] | None = None,
+    value_key: str = "sold",
 ) -> dict:
     if method not in {"B0", "B1"}:
         raise ValueError("Unknown baseline method")
@@ -41,7 +42,7 @@ def baseline(
         else candidates[:4]
     )
     return {
-        "forecast_mean": sum(row["sold"] for row in selected) / len(selected)
+        "forecast_mean": sum(row[value_key] for row in selected) / len(selected)
         if selected
         else None,
         "used_dates": [row_date(row).isoformat() for row in selected],
