@@ -54,28 +54,28 @@
     "Cookies",
     "Cake"
   ],
-  "cohort_rule": "Original five items fixed by positive-date coverage on original train only; CV is conditional on this fixed original-train cohort, not prospective item selection",
+  "cohort_rule": "Original five items selected by original-train coverage at2017-01-31 and then fixed; every rolling CV target is after this selection cutoff",
   "common_keys": "Fixed intersection of finite B0/B1/priorPoisson predictions per original period; candidates cannot remove inconvenient dates and keep all these keys using flagged B1 fallback",
   "cv_folds": [
     {
-      "end": "2016-12-14",
-      "start": "2016-12-01",
-      "train_end": "2016-11-30"
+      "end": "2017-02-07",
+      "start": "2017-02-01",
+      "train_end": "2017-01-31"
     },
     {
-      "end": "2016-12-28",
-      "start": "2016-12-15",
-      "train_end": "2016-12-14"
+      "end": "2017-02-14",
+      "start": "2017-02-08",
+      "train_end": "2017-02-07"
     },
     {
-      "end": "2017-01-11",
-      "start": "2016-12-29",
-      "train_end": "2016-12-28"
+      "end": "2017-02-21",
+      "start": "2017-02-15",
+      "train_end": "2017-02-14"
     },
     {
-      "end": "2017-01-31",
-      "start": "2017-01-12",
-      "train_end": "2017-01-11"
+      "end": "2017-02-28",
+      "start": "2017-02-22",
+      "train_end": "2017-02-21"
     }
   ],
   "dataset_sha256": "5f7e0af51f4bf985f0d2ac2e35209c94d2426726993b98d1c2e9d8bc145860ee",
@@ -105,6 +105,7 @@
     "cv_fold_count": 4,
     "maximum_missing_validation_relative_degradation": 0.05,
     "maximum_validation_per_item_relative_degradation": 0.1,
+    "metrics_note": "MAE and WAPE on identical labels rank identically; WAPE is descriptive, not a second independent win.",
     "minimum_cv_wins": 3,
     "minimum_paired_dates_per_item": 7,
     "minimum_pooled_cv_gain_vs_B1": 0.01,
@@ -119,11 +120,11 @@
   "sensitivity_zero_policy": "missing; validation guard only, no reranking based on test sensitivity",
   "target": "transaction item-line count per selected item per observed store date; not pieces/demand",
   "test_end": "2017-04-09",
-  "test_execution": "Select using only CV/original validation and missing-validation guard. Evaluate selected candidate and three unchanged references on original previously-seen test once. No unselected candidate test scores; no refit on validation/test",
+  "test_execution": "Choose using full validation model fitted on original train and rolling CV after selection cutoff, plus missing-validation guard. Final chosen model and references remain fitted on original train; original previously-seen test is scored once after selection. No unselected test scores.",
   "test_start": "2017-03-01",
   "test_status": "Previously inspected original test; any new score is exploratory, not fresh independent evidence",
   "train_end": "2017-01-31",
-  "training": "Fit residual target actual minus past-only B1; use only training rows with finite past B1, at least14 fit rows per item; references use original train rows",
+  "training": "Final validation model fits original train only. Internal rolling CV may fit earlier validation prefixes, strictly before each fold target. Residual target actual minus past-only B1; at least14 fit rows/item; no test fitting.",
   "transform": "Each fold train-only median imputer+missing indicators, scaler and onehot; missing labels remain absent or explicitly inferred zeros according to frozen policy",
   "validation_end": "2017-02-28",
   "validation_start": "2017-02-01",
