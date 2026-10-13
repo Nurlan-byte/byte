@@ -35,3 +35,36 @@ test("non-JSON 413 remains meaningful", async () => {
   );
   await expect(api("/datasets")).rejects.toThrow("Файл слишком большой");
 });
+
+test("mutating API calls carry the demo gateway CSRF header; reads remain headerless", async () => {
+  const fetch = vi
+    .fn()
+    .mockImplementation(async () => new Response("{}", { status: 200 }));
+  vi.stubGlobal("fetch", fetch);
+  await api("/plans", { dataset_id: "test" });
+  expect(fetch).toHaveBeenLastCalledWith(
+    "/api/plans",
+    expect.objectContaining({
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-BakePlan-Request": "1",
+      },
+    }),
+  );
+  await api("/plans");
+  expect(fetch).toHaveBeenLastCalledWith(
+    "/api/plans",
+    expect.objectContaining({ method: "GET", headers: undefined }),
+  );
+});
+
+test("network failure is actionable and does not claim an uncertain write was rejected", async () => {
+  vi.stubGlobal(
+    "fetch",
+    vi.fn().mockRejectedValue(new TypeError("Failed to fetch")),
+  );
+  await expect(api("/plans/test/confirm", { revision: 0 })).rejects.toThrow(
+    "проверьте его в истории",
+  );
+});

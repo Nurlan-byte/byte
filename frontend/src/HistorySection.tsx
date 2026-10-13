@@ -17,13 +17,21 @@ export function HistorySection({
   onLoad,
 }: Props) {
   return (
-    <section>
-      <h2>3. Сохранённая история</h2>
+    <section id="history" aria-labelledby="history-heading">
+      <h2 id="history-heading">3. Сохранённая история</h2>
+      <p>
+        Откройте план, чтобы проверить сохранённые количества и скачать CSV. В
+        истории есть и черновики, и подтверждённые редакции.
+      </p>
       <button className="secondary" disabled={busy} onClick={() => onPage(0)}>
         Обновить историю
       </button>
       {!history.length ? (
-        <p className="muted">История ещё не загружена или пуста.</p>
+        <p className="muted">
+          {loaded
+            ? "На этой странице планов нет. Рассчитайте первый план или вернитесь на предыдущую страницу."
+            : "Нажмите «Обновить историю», чтобы загрузить сохранённые планы."}
+        </p>
       ) : (
         <ul>
           {history.map((p) => (

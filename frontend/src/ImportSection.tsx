@@ -93,8 +93,8 @@ export function ImportSection({
   const [savedLoaded, setSavedLoaded] = useState(false);
   const salesOnly = dataTarget === "item_line_count";
   return (
-    <section>
-      <h2>1. Импорт истории</h2>
+    <section id="import" aria-labelledby="import-heading">
+      <h2 id="import-heading">1. Импорт истории</h2>
       <p>
         CSV проверяется целиком: целые неотрицательные количества и уникальность
         даты/товара. Для истории в штуках проверяется баланс. Пропуски остаются
@@ -209,9 +209,10 @@ export function ImportSection({
         </button>
       </div>
       <div className="controls">
-        <label>
-          Источник
+        <div className="control-field">
+          <label htmlFor="import-source">Источник</label>
           <select
+            id="import-source"
             disabled={busy}
             value={source}
             onChange={(e) => {
@@ -227,7 +228,7 @@ export function ImportSection({
             <option value="local">Локальные данные пекарни</option>
             <option value="external">Внешние данные</option>
           </select>
-        </label>
+        </div>
         <label>
           ID пекарни
           <input
@@ -237,9 +238,10 @@ export function ImportSection({
             placeholder="demo"
           />
         </label>
-        <label>
-          Измеряемая величина
+        <div className="control-field">
+          <label htmlFor="import-target">Измеряемая величина</label>
           <select
+            id="import-target"
             disabled={busy}
             value={dataTarget}
             onChange={(e) => setDataTarget(e.target.value as DatasetTarget)}
@@ -251,7 +253,7 @@ export function ImportSection({
               Строки продаж · item_line_count
             </option>
           </select>
-        </label>
+        </div>
         <label>
           Происхождение данных
           <input
@@ -328,14 +330,33 @@ export function ImportSection({
       {dataset && (
         <div className="success" data-testid="dataset-summary">
           <p>
-            Набор {dataset.id} · источник: {dataset.source}{" "}
+            <strong>Текущий сохранённый набор для расчёта</strong> · источник:{" "}
+            {dataset.source}{" "}
             {dataset.row_count !== undefined && `· строк: ${dataset.row_count}`}
           </p>
           <p>
-            Пекарня: {dataset.bakery_id} · цель: {dataset.target} · единица:{" "}
-            {dataset.unit} · схема: {dataset.schema_version}
+            Пекарня: {dataset.bakery_id} ·{" "}
+            {dataset.target === "item_line_count"
+              ? "строки продаж, только диагностика"
+              : "физические штуки, доступны планы"}
           </p>
           <p>Происхождение: {dataset.provenance}</p>
+          <p className="muted">
+            Изменения CSV и полей выше применяются только после повторного
+            импорта.
+          </p>
+          <details>
+            <summary>Технические данные набора</summary>
+            <p>Набор: {dataset.id}</p>
+            <p>
+              Цель: {dataset.target} · единица: {dataset.unit} · схема:{" "}
+              {dataset.schema_version}
+            </p>
+            <p>
+              Версия данных:{" "}
+              {dataset.dataset_version ?? dataset.version ?? "не указана"}
+            </p>
+          </details>
         </div>
       )}
       {dataset?.diagnostics?.map((d, n) => (

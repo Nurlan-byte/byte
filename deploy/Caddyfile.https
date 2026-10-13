@@ -1,0 +1,16 @@
+{
+	admin off
+	email {$BAKEPLAN_ACME_EMAIL}
+}
+
+{$BAKEPLAN_DOMAIN} {
+	import /etc/caddy/routes.caddy
+	header Strict-Transport-Security "max-age=31536000"
+}
+
+# Process-only health, loopback inside gateway. Not an API or asset bypass.
+http://127.0.0.1:8081 {
+	bind 127.0.0.1
+	respond /ready "ready" 200
+	respond 404
+}

@@ -12,7 +12,7 @@ from pathlib import Path
 from backend.dataset_identity import identity
 from backend.errors import ServiceError
 from backend.forecasting import baseline
-from backend.ml_core import PROTOCOL_VERSION, forecast_model
+from backend.ml_core import PROTOCOL_VERSION, evaluation_applicability, forecast_model
 from backend.model_storage import (
     InvalidArtifact,
     TrainingConflict,
@@ -184,7 +184,7 @@ def _b1(dataset, product, target, cutoff, reason):
 
 def forecast_items(dataset, target, cutoff, model_id=None, method="ML"):
     dataset = identity(dataset)
-    model, reason = None, None
+    model, evaluation_model, reason = None, None, None
     if method == "ML":
         try:
             model = (
@@ -197,6 +197,7 @@ def forecast_items(dataset, target, cutoff, model_id=None, method="ML"):
         if model is None and reason is None:
             reason = "Нет модели для этого набора и среза; используется B1"
         if model:
+            evaluation_model = model
             fields = ("dataset_id", "dataset_version", "bakery_id", "target", "unit")
             expected = (
                 dataset["id"],
@@ -236,7 +237,30 @@ def forecast_items(dataset, target, cutoff, model_id=None, method="ML"):
             items.append({**prediction, "product_id": product})
         else:
             items.append(_b1(dataset, product, target, cutoff, reason))
-    return {"items": items, "model_id": model["id"] if model else None, "model": model}
+    applicability = evaluation_applicability(evaluation_model, target, cutoff)
+    if method == "B1":
+        applicability.update(applicable=False, reason="b1_requested")
+    elif applicability["applicable"] and not any(
+        item["method"] == "ML" for item in items
+    ):
+        applicability.update(applicable=False, reason="no_ml_forecasts")
+    elif applicability["applicable"] and any(
+        not item.get("evaluation_applicability", {}).get("applicable") for item in items
+    ):
+        applicability.update(applicable=False, reason="partial_product_coverage")
+    for item in items:
+        if "evaluation_applicability" not in item:
+            item["evaluation_applicability"] = {
+                **applicability,
+                "applicable": False,
+                "reason": applicability["reason"] or "forecast_not_ml",
+            }
+    return {
+        "items": items,
+        "model_id": model["id"] if model else None,
+        "model": model,
+        "evaluation_applicability": applicability,
+    }
 
 
 def create_forecast(body, today):
@@ -256,5 +280,6 @@ def create_forecast(body, today):
         "cutoff": str(body.cutoff),
         "model_id": result["model_id"],
         "items": result["items"],
+        "evaluation_applicability": result["evaluation_applicability"],
         "warning": "Прогноз наблюдаемых продаж; скрытый спрос и экономия не оцениваются. Item-line не переводится в физические штуки.",
     }

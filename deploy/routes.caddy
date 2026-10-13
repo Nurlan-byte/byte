@@ -1,0 +1,35 @@
+# Basic Auth is ambient browser authority. A custom write header forces a
+# cross-origin preflight, which cannot pass the gateway's authentication.
+@missing_write_header {
+	not method GET HEAD OPTIONS
+	not header X-BakePlan-Request 1
+}
+@cross_site_write {
+	not method GET HEAD OPTIONS
+	header Sec-Fetch-Site cross-site
+}
+@api path /api /api/*
+
+# Literal ordering is intentional: ALL app/API/assets pass auth before routing.
+route {
+	basic_auth {
+		import /run/secrets/demo_users
+	}
+	respond @missing_write_header "Missing same-origin write header" 403
+	respond @cross_site_write "Cross-site writes are disabled" 403
+	header {
+		X-Content-Type-Options nosniff
+		Referrer-Policy no-referrer
+		X-Frame-Options DENY
+		Cache-Control "no-store"
+		-Server
+	}
+	handle @api {
+		reverse_proxy api:8000
+	}
+	handle {
+		root * /srv
+		try_files {path} /index.html
+		file_server
+	}
+}

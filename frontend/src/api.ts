@@ -26,8 +26,14 @@ export async function api<T>(path: string, body?: unknown): Promise<T> {
   const response = await fetch("/api" + path, {
     method: body === undefined ? "GET" : "POST",
     headers:
-      body === undefined ? undefined : { "Content-Type": "application/json" },
+      body === undefined
+        ? undefined
+        : { "Content-Type": "application/json", "X-BakePlan-Request": "1" },
     body: body === undefined ? undefined : JSON.stringify(body),
+  }).catch(() => {
+    throw new Error(
+      "Нет ответа API. Проверьте запуск сервера и соединение. Если подтверждали план, проверьте его в истории или повторите действие с теми же параметрами.",
+    );
   });
   const text = await response.text();
   let data: unknown;

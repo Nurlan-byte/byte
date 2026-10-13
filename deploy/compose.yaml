@@ -1,0 +1,98 @@
+name: bakeplan-demo
+services:
+  api:
+    image: bakeplan-api:${BAKEPLAN_RELEASE:-local}
+    build:
+      context: ..
+      target: api
+      args:
+        PYTHON_IMAGE: ${PYTHON_IMAGE:-python:3.14.8-slim-bookworm}
+    environment:
+      BAKEPLAN_DB: /data/${BAKEPLAN_DB_FILE:-bakeplan.sqlite3}
+    volumes:
+      - sqlite_data:/data
+      - backup_data:/backups
+    expose:
+      - "8000"
+    networks:
+      - app
+    restart: unless-stopped
+    init: true
+    read_only: true
+    tmpfs:
+      - /tmp:rw,nosuid,nodev,noexec,size=64m
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    pids_limit: 128
+    mem_limit: 1g
+    cpus: 1.0
+    stop_grace_period: 45s
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: "3"
+
+  gateway:
+    image: bakeplan-gateway:${BAKEPLAN_RELEASE:-local}
+    build:
+      context: ..
+      target: gateway
+      args:
+        NODE_IMAGE: ${NODE_IMAGE:-node:24.19.0-bookworm-slim}
+        CADDY_IMAGE: ${CADDY_IMAGE:-caddy:2.10.2-alpine}
+    depends_on:
+      api:
+        condition: service_healthy
+        restart: true
+    secrets:
+      - demo_users
+    ports:
+      - "127.0.0.1:8080:80"
+    volumes:
+      - caddy_data:/data
+      - caddy_config:/config
+    networks:
+      - app
+      - edge
+    restart: unless-stopped
+    read_only: true
+    tmpfs:
+      - /tmp:rw,nosuid,nodev,noexec,size=16m
+    cap_drop:
+      - ALL
+    cap_add:
+      - NET_BIND_SERVICE
+    security_opt:
+      - no-new-privileges:true
+    pids_limit: 64
+    mem_limit: 128m
+    healthcheck:
+      # A 401 here proves the public route is closed without credentials.
+      test: ["CMD-SHELL", "wget -S -O /dev/null http://127.0.0.1/ 2>&1 | grep -q '401 Unauthorized'"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: "3"
+
+secrets:
+  demo_users:
+    file: ${BAKEPLAN_AUTH_FILE:?Set an absolute path to an operator-provisioned Caddy user/hash file}
+
+networks:
+  app:
+    internal: true
+  edge: {}
+
+volumes:
+  sqlite_data:
+  backup_data:
+  caddy_data:
+  caddy_config:
