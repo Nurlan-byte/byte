@@ -2,6 +2,12 @@
 
 Новая ветка `feature/bakeplan-mvp-stabilization` начинается с неизменённого remote `8b8ad0195210c18b9756255db6a7136e0c026206`. В исходной версии [CI](https://github.com/Nurlan-byte/byte/actions/runs/38453855717) прошёл 152 backend, 37 offline, 8 frontend и 12 E2E проверок. Это исторический результат, не доказательство новой версии. Старый полный протокол сохранён отдельно: [HISTORICAL_VERIFICATION](docs/HISTORICAL_VERIFICATION.md).
 
+## Подтверждённый контейнерный CI
+
+Для `f93d5b7d749d9105c29110770743ab36ad98e3e6` [Linux job](https://github.com/Nurlan-byte/byte/actions/runs/38459541821/job/115510815667) реально прошёл: 30 deployment tests, сборка обоих образов, Caddy validate обоих режимов, auth/assets/CSRF, внутренний API, синтетический ready ML на t−2, ML-план/confirm/export, restart, backup/verify/restore в новый файл и точная сохранность данных/ключей. Это loopback Docker, не hosted HTTPS и не Docker Desktop пользователя.
+
+Первый Windows run обнаружил только portability-дефект новых тестовых ID: 140 000 символов фикстуры попадали в `PYTEST_CURRENT_TEST` и превышали лимит Windows environment. Исправлены короткие явные IDs; сами большие входы и проверки сохранены, шесть тестов повторно пройдены локально. Результат повторного полного Windows/browser CI для финального SHA смотрите в draft PR; предыдущий failed run не считается успешным.
+
 ## Текущий код
 
 Python 3.14.8, Node 24.19.0, cloud Linux. SQLite schema 3 сохранена. Новый протокол `residual-ridge-100-v2-horizon-2-experimental`: обучающие признаки и holdout используют t−2, доступность обучающих меток ограничена первым cutoff holdout. Синтетические данные, не реальная история.
@@ -17,7 +23,7 @@ Python 3.14.8, Node 24.19.0, cloud Linux. SQLite schema 3 сохранена. Н
 | Реальный API process restart и idempotency | 2 non-browser Playwright сценария прошли; snapshot/model/forecast/plan/retry/export пережили restart |
 | Browser E2E | 18 сценариев обнаружены; полный запуск передан Windows CI |
 | Backup/restore | Linux tests проверяют 7 таблиц, неизменность payload/retry keys, committed WAL, manifest/hash, повреждение, отказ перезаписи и новый файл восстановления |
-| Docker/Caddy/HTTPS | Docker, Podman и Caddy в этом cloud workspace отсутствуют. Dockerfile/Compose/Caddy написаны; shell syntax и локальные contract tests не являются фактическим контейнерным запуском. Linux CI собирает и проверяет disposable loopback demo |
+| Docker/Caddy/HTTPS | Docker, Podman и Caddy в этом cloud workspace отсутствуют. Dockerfile/Compose/Caddy прошли фактическую Linux CI сборку и disposable loopback smoke на SHA выше; локально в cloud workspace runtime по-прежнему отсутствует |
 | Independent review | Отдельный reviewer проверил CSV, подтверждения, guards, ML chronology/common cohorts, frontend, whole-site auth/CSRF и backup/restore; code-review блокеров не осталось |
 | Hosted/manual QA | Не выполнено: нет выбранного хоста/домена и операторских секретов. Второе устройство, trusted TLS, реальный restore drill и ручной просмотр остаются открыты |
 

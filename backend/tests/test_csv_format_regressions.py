@@ -9,7 +9,9 @@ from backend.app import app
 
 
 @pytest.mark.parametrize("sales_only", [False, True])
-@pytest.mark.parametrize("malformed", ['"unterminated', "x" * 140_000])
+@pytest.mark.parametrize(
+    "malformed", ['"unterminated', "x" * 140_000], ids=["unterminated", "oversized"]
+)
 def test_malformed_header_is_actionable_422(
     tmp_path, monkeypatch, sales_only, malformed
 ):
