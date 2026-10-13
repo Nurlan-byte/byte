@@ -6,7 +6,7 @@
 
 Для `f93d5b7d749d9105c29110770743ab36ad98e3e6` [Linux job](https://github.com/Nurlan-byte/byte/actions/runs/38459541821/job/115510815667) реально прошёл: 30 deployment tests, сборка обоих образов, Caddy validate обоих режимов, auth/assets/CSRF, внутренний API, синтетический ready ML на t−2, ML-план/confirm/export, restart, backup/verify/restore в новый файл и точная сохранность данных/ключей. Это loopback Docker, не hosted HTTPS и не Docker Desktop пользователя.
 
-Первый Windows run обнаружил только portability-дефект новых тестовых ID: 140 000 символов фикстуры попадали в `PYTEST_CURRENT_TEST` и превышали лимит Windows environment. Исправлены короткие явные IDs; сами большие входы и проверки сохранены, шесть тестов повторно пройдены локально. Результат повторного полного Windows/browser CI для финального SHA смотрите в draft PR; предыдущий failed run не считается успешным.
+Первый Windows run обнаружил только portability-дефект новых тестовых ID: 140 000 символов фикстуры попадали в `PYTEST_CURRENT_TEST` и превышали лимит Windows environment. Исправлены короткие явные IDs; сами большие входы и проверки сохранены, шесть тестов повторно пройдены локально. После исправления IDs Windows прошёл 186 backend tests (16 Linux-only пропущены и проверены отдельно), 42 offline и 18 frontend tests. Браузерный этап прошёл 15/18 и выявил три нестабильных exact-label lookup у method selects. Исправлена сама доступная разметка: label/htmlFor отдельно от select/options, также для двух import selects; все exact E2E assertions сохранены, добавлена общая регрессия (теперь 19 frontend tests). Результат повторного полного Windows/browser CI финального SHA смотрите в [draft PR](https://github.com/Nurlan-byte/byte/pull/1); предыдущие failed runs не считаются успешными.
 
 ## Текущий код
 
@@ -19,7 +19,7 @@ Python 3.14.8, Node 24.19.0, cloud Linux. SQLite schema 3 сохранена. Н
 | Backend и deployment unit/regression tests | **202 passed** (включая 30 deployment/backup/readiness проверок) |
 | Offline, включая frozen forward-window CLI | **42 passed**, включая 5 новых проверок forward-window |
 | Python Ruff | backend, tools, scripts — passed |
-| Frontend | lint, TypeScript, 18 unit/component tests, production build прошли |
+| Frontend | lint, TypeScript, 19 unit/component tests, production build прошли |
 | Реальный API process restart и idempotency | 2 non-browser Playwright сценария прошли; snapshot/model/forecast/plan/retry/export пережили restart |
 | Browser E2E | 18 сценариев обнаружены; полный запуск передан Windows CI |
 | Backup/restore | Linux tests проверяют 7 таблиц, неизменность payload/retry keys, committed WAL, manifest/hash, повреждение, отказ перезаписи и новый файл восстановления |

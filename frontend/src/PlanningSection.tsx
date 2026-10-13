@@ -104,9 +104,10 @@ export function PlanningSection({
             onChange={(e) => setCutoff(e.target.value)}
           />
         </label>
-        <label>
-          Базовый метод
+        <div className="control-field">
+          <label htmlFor="planning-method">Базовый метод</label>
           <select
+            id="planning-method"
             disabled={busy}
             value={method}
             onChange={(e) => setMethod(e.target.value)}
@@ -117,7 +118,7 @@ export function PlanningSection({
             </option>
             <option value="B0">B0 · тот же день неделю назад</option>
           </select>
-        </label>
+        </div>
       </div>
       <button
         disabled={busy || !dataset || !target || !cutoff}

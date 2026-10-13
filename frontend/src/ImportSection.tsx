@@ -209,9 +209,10 @@ export function ImportSection({
         </button>
       </div>
       <div className="controls">
-        <label>
-          Источник
+        <div className="control-field">
+          <label htmlFor="import-source">Источник</label>
           <select
+            id="import-source"
             disabled={busy}
             value={source}
             onChange={(e) => {
@@ -227,7 +228,7 @@ export function ImportSection({
             <option value="local">Локальные данные пекарни</option>
             <option value="external">Внешние данные</option>
           </select>
-        </label>
+        </div>
         <label>
           ID пекарни
           <input
@@ -237,9 +238,10 @@ export function ImportSection({
             placeholder="demo"
           />
         </label>
-        <label>
-          Измеряемая величина
+        <div className="control-field">
+          <label htmlFor="import-target">Измеряемая величина</label>
           <select
+            id="import-target"
             disabled={busy}
             value={dataTarget}
             onChange={(e) => setDataTarget(e.target.value as DatasetTarget)}
@@ -251,7 +253,7 @@ export function ImportSection({
               Строки продаж · item_line_count
             </option>
           </select>
-        </label>
+        </div>
         <label>
           Происхождение данных
           <input

@@ -80,9 +80,10 @@ export function ModelSection({
             onChange={(e) => setTarget(e.target.value)}
           />
         </label>
-        <label>
-          Метод диагностики
+        <div className="control-field">
+          <label htmlFor="diagnostic-method">Метод диагностики</label>
           <select
+            id="diagnostic-method"
             disabled={busy}
             value={forecastMethod}
             onChange={(e) => setForecastMethod(e.target.value)}
@@ -90,7 +91,7 @@ export function ModelSection({
             <option value="ML">ML · с явным переходом на B1</option>
             <option value="B1">B1 · базовый ориентир</option>
           </select>
-        </label>
+        </div>
       </div>
       <div className="actions">
         <button

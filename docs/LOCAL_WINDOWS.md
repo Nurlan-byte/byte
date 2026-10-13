@@ -4,6 +4,8 @@
 
 **Честный статус:** приложение и snapshot/restore проверены в cloud Linux; Docker Desktop/WSL2 на вашем Windows-компьютере ещё не проверены. В среде подготовки нет Docker runtime. Успешный [Linux container CI](https://github.com/Nurlan-byte/byte/actions/runs/38459541821/job/115510815667) проверил контейнеры на `f93d5b7d`, но не заменяет эту локальную проверку. Не удаляйте прежнюю рабочую папку и её SQLite, пока не пройдёте сценарий ниже.
 
+Краткий порядок действий утром: [MORNING_CHECKLIST](MORNING_CHECKLIST.md).
+
 ## 1. Один раз: Docker Desktop и WSL2
 
 В Windows PowerShell выполните только проверки:

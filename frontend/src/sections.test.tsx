@@ -2,7 +2,7 @@ import { expect, test, vi } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
 import { PlanningSection } from "./PlanningSection";
 import { ModelSection } from "./ModelSection";
-import { SavedDatasetSelect } from "./ImportSection";
+import { ImportSection, SavedDatasetSelect } from "./ImportSection";
 import { ForecastResult } from "./ForecastResult";
 import { EvaluationNotice } from "./EvaluationNotice";
 import type { Dataset, Plan } from "./types";
@@ -267,4 +267,67 @@ test("horizon compatibility is explained without claiming forecast accuracy", ()
   expect(mismatch).toContain("качество на этом горизонте здесь не измерено");
   const legacy = renderToStaticMarkup(<EvaluationNotice />);
   expect(legacy).toContain("Применимость оценки к этому прогнозу не указана");
+});
+
+test("method and import selects have exact option-independent labels and retain values and busy locks", () => {
+  for (const busy of [false, true]) {
+    const props = { ...planningProps(units), busy };
+    const planning = renderToStaticMarkup(<PlanningSection {...props} />);
+    const model = renderToStaticMarkup(
+      <ModelSection {...props} dataset={units} />,
+    );
+    const imported = renderToStaticMarkup(
+      <ImportSection
+        {...props}
+        csv=""
+        setCsv={vi.fn()}
+        source="external"
+        setSource={vi.fn()}
+        bakeryId="test"
+        setBakeryId={vi.fn()}
+        dataTarget="item_line_count"
+        setDataTarget={vi.fn()}
+        provenance="Synthetic test"
+        setProvenance={vi.fn()}
+        setDataset={vi.fn()}
+        setPlan={vi.fn()}
+        setError={vi.fn()}
+      />,
+    );
+    for (const [html, id, label, selected, options] of [
+      [planning, "planning-method", "Базовый метод", "ML", ["B1", "ML", "B0"]],
+      [model, "diagnostic-method", "Метод диагностики", "ML", ["ML", "B1"]],
+      [
+        imported,
+        "import-source",
+        "Источник",
+        "external",
+        ["synthetic", "local", "external"],
+      ],
+      [
+        imported,
+        "import-target",
+        "Измеряемая величина",
+        "item_line_count",
+        ["sold_units", "item_line_count"],
+      ],
+    ] as const) {
+      expect(html).toContain(`<label for="${id}">${label}</label>`);
+      expect(html).toContain(
+        `<select id="${id}"${busy ? ' disabled=""' : ""}>`,
+      );
+      const select = html.match(
+        new RegExp(`<select id="${id}"[^>]*>(.*?)</select>`),
+      )![1];
+      expect(select).toContain(`<option value="${selected}" selected="">`);
+      for (const option of options)
+        expect(select).toContain(`<option value="${option}"`);
+      // No label can contain select/option text, independent of its selection.
+      expect(
+        html
+          .match(/<label\b[^>]*>[\s\S]*?<\/label>/g)
+          ?.some((labelMarkup) => labelMarkup.includes("<select")),
+      ).toBe(false);
+    }
+  }
 });

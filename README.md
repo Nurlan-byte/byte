@@ -23,7 +23,7 @@
 
 ## Быстрый запуск
 
-Для резервного показа на Windows: [Docker Desktop + WSL2, постоянная SQLite, backup/restore](docs/LOCAL_WINDOWS.md). Ниже — проверяемый нативный путь без Docker. Это инструкции для запуска владельцем; состояние его ноутбука и Docker Desktop здесь не проверялось.
+Начать утром: [короткий checklist](docs/MORNING_CHECKLIST.md). Для резервного показа на Windows: [Docker Desktop + WSL2, постоянная SQLite, backup/restore](docs/LOCAL_WINDOWS.md). Ниже — проверяемый нативный путь без Docker. Это инструкции для запуска владельцем; состояние его ноутбука и Docker Desktop здесь не проверялось.
 
 Нужны Git, Python 3.14 и Node.js 24 с npm. Для чистой установки:
 
