@@ -8,7 +8,25 @@ const targetDate = '2026-10-13';
 const cutoff = '2026-10-11';
 const fixturePath = 'fixtures/synthetic_demo.csv';
 const apiBase = 'http://127.0.0.1:18002/api';
+const sourceRoot = path.resolve(process.env.BAKEPLAN_CAPTURE_SOURCE_DIR ?? '.');
+const baseline = process.env.BAKEPLAN_CAPTURE_BASELINE === '1';
+const captureVariant = baseline ? 'before' : 'after';
 const sha256 = (bytes: Buffer | string) => createHash('sha256').update(bytes).digest('hex');
+
+async function navigate(page: Page, section: 'План' | 'Данные' | 'Модель' | 'История') {
+  if (!baseline) {
+    await page.getByRole('navigation', { name: 'Разделы BakePlan', exact: true })
+      .getByRole('button', { name: section, exact: true }).click();
+  }
+}
+
+async function openImport(page: Page) {
+  await navigate(page, 'Данные');
+  if (!baseline) {
+    await page.getByText('Вставить или проверить CSV', { exact: true }).click();
+    await page.getByText('Параметры набора', { exact: true }).click();
+  }
+}
 
 type EvidenceFile = {
   file: string;
@@ -32,16 +50,22 @@ async function postFromUi(page: Page, buttonName: string, endpoint: string) {
 test('capture real synthetic desktop, laptop and mobile planning evidence', async ({ page, request, browser, browserName }, testInfo) => {
   const evidenceDir = testInfo.outputPath('evidence');
   await fs.mkdir(evidenceDir, { recursive: true });
-  const csv = await fs.readFile(fixturePath, 'utf8');
-  const sourceSha = execFileSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8' }).trim();
+  const csv = await fs.readFile(path.join(sourceRoot, fixturePath), 'utf8');
+  const sourceSha = execFileSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8', cwd: sourceRoot }).trim();
+  const harnessSha = execFileSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8' }).trim();
   expect(sourceSha).toMatch(/^[a-f0-9]{40}$/);
-  if (process.env.GITHUB_SHA) expect(sourceSha).toBe(process.env.GITHUB_SHA);
+  if (process.env.BAKEPLAN_CAPTURE_EXPECTED_SHA) expect(sourceSha).toBe(process.env.BAKEPLAN_CAPTURE_EXPECTED_SHA);
+  else if (process.env.GITHUB_SHA) expect(sourceSha).toBe(process.env.GITHUB_SHA);
+  if (process.env.GITHUB_SHA) expect(harnessSha).toBe(process.env.GITHUB_SHA);
   const files: EvidenceFile[] = [];
   const manifest: Record<string, unknown> = {
-    schema_version: 1,
+    schema_version: 2,
+    capture_variant: captureVariant,
+    harness_sha: harnessSha,
+    comparison_viewports: [{ width: 360, height: 844 }, { width: 768, height: 1000 }, { width: 1440, height: 1000 }],
     capture_status: 'incomplete',
     source_sha: sourceSha,
-    source_dirty: execFileSync('git', ['status', '--porcelain'], { encoding: 'utf8' }).trim().length > 0,
+    source_dirty: execFileSync('git', ['status', '--porcelain'], { encoding: 'utf8', cwd: sourceRoot }).trim().length > 0,
     generated_at_utc: new Date().toISOString(),
     provenance: 'Automated Playwright CI Chromium captures of the running Vite UI and FastAPI application. No mocked responses, edited DOM, compositing, or private data. Not manual Windows or physical-device QA.',
     runner_os: process.env.RUNNER_OS ?? process.platform,
@@ -81,6 +105,7 @@ test('capture real synthetic desktop, laptop and mobile planning evidence', asyn
     expect(initialDatasets.ok()).toBe(true);
     expect(await initialDatasets.json()).toEqual([]);
     await page.goto('/');
+    await openImport(page);
     await page.getByLabel('ID пекарни', { exact: true }).fill('synthetic-defense-capture');
     await page.getByLabel('Источник', { exact: true }).selectOption('synthetic');
     await page.getByLabel('Происхождение данных', { exact: true }).fill('Committed synthetic BakePlan fixture; automated CI screenshots, not real bakery results');
@@ -88,11 +113,14 @@ test('capture real synthetic desktop, laptop and mobile planning evidence', asyn
     const dataset = await postFromUi(page, 'Проверить и импортировать', '/datasets');
     expect(dataset).toMatchObject({ source: 'synthetic', target: 'sold_units', unit: 'physical_unit' });
     await expect(page.getByTestId('dataset-summary')).toContainText('Текущий сохранённый набор');
+    await navigate(page, 'План');
     await page.getByLabel('Дата плана', { exact: true }).fill(targetDate);
     await page.getByLabel('Данные доступны до', { exact: true }).fill(cutoff);
+    await navigate(page, 'Данные');
     await page.evaluate(() => window.scrollTo(0, 0));
     await capture('01-desktop-import.png', 'Desktop viewport: real imported synthetic history and the available workflow.');
 
+    await navigate(page, 'Модель');
     const fallback = await postFromUi(page, 'Получить прогноз', '/forecasts');
     expect(fallback.model_id).toBeNull();
     expect(fallback.items.every((item: { method: string; fallback_reason: string | null }) => item.method === 'B1' && !!item.fallback_reason)).toBe(true);
@@ -116,6 +144,7 @@ test('capture real synthetic desktop, laptop and mobile planning evidence', asyn
     await capture('04-desktop-ml-forecast.png', 'Actual ML forecast compared with B1 at the evaluated two-day horizon; diagnostic only.', page.getByTestId('forecast-result'));
 
     await page.setViewportSize({ width: 1366, height: 900 });
+    await navigate(page, 'План');
     await page.getByLabel('Базовый метод', { exact: true }).selectOption('ML');
     const plan = await postFromUi(page, 'Рассчитать план', '/plans');
     expect(plan.items[0]).toMatchObject({ product_id: 'p1', recommended_qty: 24, confirmed_qty: null, method: 'ML' });
@@ -130,6 +159,12 @@ test('capture real synthetic desktop, laptop and mobile planning evidence', asyn
     await expect(quantity).toHaveValue('84');
     await expect(firstRow).toContainText('Ещё не сохранено');
     await capture('05-laptop-adjusted-plan.png', 'Laptop layout: actual ML forecast, recommended batch 24, manual draft quantity 84 before confirmation.', page.locator('#planning'));
+    if (!baseline) {
+      await page.setViewportSize({ width: 1440, height: 1000 });
+      await page.evaluate(() => window.scrollTo(0, 0));
+      await capture('14-after-workspace-1440.png', 'Polished desktop workspace: real imported synthetic data, selected historical date and an unsaved 84-unit ML plan before confirmation.');
+      await page.setViewportSize({ width: 1366, height: 900 });
+    }
 
     const confirmed = await postFromUi(page, 'Подтвердить и сохранить', `/plans/${plan.id}/confirm`);
     expect(confirmed).toMatchObject({ status: 'confirmed', revision: 1 });
@@ -137,12 +172,18 @@ test('capture real synthetic desktop, laptop and mobile planning evidence', asyn
     await expect(page.getByRole('status')).toContainText('Подтверждённый план сохранён');
     // Reload and reopen through real history to prove this is persisted state.
     await page.reload();
+    await navigate(page, 'История');
     await page.getByRole('button', { name: 'Обновить историю', exact: true }).click();
-    await page.getByRole('button', { name: /2026-10-13.*synthetic.*confirmed/ }).click();
+    if (baseline) {
+      await page.getByRole('button', { name: /2026-10-13.*synthetic.*confirmed/ }).click();
+    } else {
+      await page.locator(`.history-card[data-plan-id="${plan.id}"]`).getByRole('button', { name: 'Открыть план', exact: true }).click();
+    }
     await expect(quantity).toHaveValue('84');
     await expect(firstRow).toContainText('Сохранено: 84 шт.');
     await expect(page.getByTestId('stale-plan')).toHaveCount(0);
     await capture('06-laptop-saved-plan.png', 'Laptop layout: persisted confirmed revision reopened from history after page reload.', page.locator('#planning'));
+    await navigate(page, 'История');
     await capture('07-laptop-history-export.png', 'Real saved history; the reopened plan provides the CSV export link.', page.locator('#history'));
 
     const stored = await request.get(`${apiBase}/plans/${plan.id}`);
@@ -155,6 +196,7 @@ test('capture real synthetic desktop, laptop and mobile planning evidence', asyn
     await fs.writeFile(path.join(evidenceDir, 'confirmed-plan.csv'), exportedCsv);
     files.push({ file: 'confirmed-plan.csv', description: 'Real API export of the confirmed synthetic plan shown in screenshots.', sha256: sha256(exportedCsv), bytes: Buffer.byteLength(exportedCsv) });
 
+    await navigate(page, 'План');
     await page.setViewportSize({ width: 390, height: 844 });
     await page.locator('#planning').evaluate(element => element.scrollIntoView({ block: 'start' }));
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
@@ -163,20 +205,40 @@ test('capture real synthetic desktop, laptop and mobile planning evidence', asyn
     await page.getByTestId('plan-table').evaluate(element => element.scrollIntoView({ block: 'start' }));
     await tableContainer.evaluate(element => {
       const input = element.querySelector('input')!;
-      element.scrollLeft += input.getBoundingClientRect().left - element.getBoundingClientRect().left - 110;
+      const firstCell = element.querySelector('tbody tr td')!;
+      const stickyWidth = getComputedStyle(firstCell).position === 'sticky' ? firstCell.getBoundingClientRect().width : 0;
+      element.scrollLeft += input.getBoundingClientRect().left - element.getBoundingClientRect().left - Math.max(110, stickyWidth + 12);
     });
     await expect(quantity).toBeInViewport({ ratio: 1 });
     await capture('09-mobile-saved-quantity.png', 'Mobile viewport: internally scrolled table showing the saved 84-unit quantity, separate from forecast and recommendation.');
     await firstRow.getByText('Источники и модель', { exact: true }).click();
     await tableContainer.evaluate(element => {
       const methodCell = element.querySelector('tbody tr td:last-child')!;
-      element.scrollLeft += methodCell.getBoundingClientRect().left - element.getBoundingClientRect().left;
+      const firstCell = element.querySelector('tbody tr td')!;
+      const stickyWidth = getComputedStyle(firstCell).position === 'sticky' ? firstCell.getBoundingClientRect().width : 0;
+      element.scrollLeft += methodCell.getBoundingClientRect().left - element.getBoundingClientRect().left - stickyWidth;
     });
     await page.getByTestId('plan-table').evaluate(element => element.scrollIntoView({ block: 'start' }));
     await expect(firstRow.getByText('Подходящих наблюдений: 4', { exact: true })).toBeVisible();
     await expect(firstRow.locator('td').last().locator('strong')).toBeInViewport({ ratio: 1 });
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
     await capture('10-mobile-method-details.png', 'Mobile viewport: horizontally scrolled actual-method and source-date details, with page width still contained.');
+
+    // Same real persisted state, collapsed details and plan-section scroll origin.
+    // These are raw browser captures, not image-diff snapshots or composed mockups.
+    await firstRow.getByText('Источники и модель', { exact: true }).click();
+    for (const [index, viewport] of [
+      { width: 360, height: 844 },
+      { width: 768, height: 1000 },
+      { width: 1440, height: 1000 },
+    ].entries()) {
+      await page.setViewportSize(viewport);
+      await tableContainer.evaluate(element => { element.scrollLeft = 0; });
+      await page.locator('#planning').evaluate(element => element.scrollIntoView({ block: 'start' }));
+      expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+      await expect(quantity).toHaveValue('84');
+      await capture(`${11 + index}-comparison-plan-${viewport.width}.png`, `${captureVariant}: confirmed synthetic ML plan at ${viewport.width}×${viewport.height}, same persisted 84-unit state, plan section aligned to the viewport start, table scroll reset and source details collapsed.`);
+    }
 
     manifest.dataset_id = dataset.id;
     manifest.model_id = model.id;
@@ -188,6 +250,6 @@ test('capture real synthetic desktop, laptop and mobile planning evidence', asyn
     manifest.capture_status = 'complete';
   } finally {
     await fs.writeFile(path.join(evidenceDir, 'manifest.json'), JSON.stringify(manifest, null, 2) + '\n');
-    await fs.copyFile('docs/SCREENSHOTS.md', path.join(evidenceDir, 'SCREENSHOTS.md'));
+    await fs.copyFile(path.join(sourceRoot, 'docs/SCREENSHOTS.md'), path.join(evidenceDir, 'SCREENSHOTS.md'));
   }
 });

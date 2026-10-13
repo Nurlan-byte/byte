@@ -1,3 +1,4 @@
+import { Icon } from "./Icon";
 import { api } from "./api";
 import type { Plan } from "./types";
 import type { SectionProps } from "./sectionProps";
@@ -7,6 +8,7 @@ import { planInputsChanged } from "./snapshots";
 import { methodText, reasonText } from "./explanations";
 import { EvaluationNotice } from "./EvaluationNotice";
 export function PlanningSection({
+  onImport,
   dataset,
   plan,
   busy,
@@ -47,7 +49,7 @@ export function PlanningSection({
   | "run"
   | "show"
   | "refreshHistory"
->) {
+> & { onImport?: () => void }) {
   if (dataset?.target === "item_line_count" || dataset?.unit === "item_line") {
     return (
       <aside className="sales-only" data-testid="sales-only-notice">
@@ -64,46 +66,76 @@ export function PlanningSection({
     plan?.items.length &&
     plan.items.every((item) => item.target_is_open === false);
   const calendarKnown = plan?.items.some((item) => item.target_is_open != null);
+  const dirty = plan?.items.some(
+    (item) =>
+      quantities[item.product_id] !==
+      String(item.confirmed_qty ?? item.recommended_qty),
+  );
+  const replay = target <= businessDate();
   return (
     <section id="planning" aria-labelledby="planning-heading">
-      <h2 id="planning-heading">2. Расчёт и ручная проверка</h2>
-      <p>
-        B1 работает без обучения. ML — необязательный эксперимент; фактический
-        метод и переход на B1 будут показаны для каждого товара.
-      </p>
-      <p>
-        Срез включает только завершённые дни строго раньше сегодня. При задержке
-        учёта сдвиньте его назад: время фактической готовности данных не
-        проверяется.
-      </p>
-      <div className="controls">
-        <label>
-          Целевой день открыт
+      <div className="section-heading">
+        <div>
+          <p className="eyebrow">ПЛАН НА ДЕНЬ</p>
+          <h2 id="planning-heading">Сколько выпекаем?</h2>
+          <p className="section-copy">
+            Рассчитайте ориентир, проверьте партии и подтвердите свой выпуск.
+          </p>
+        </div>
+        <span className="badge badge-neutral">
+          {plan
+            ? plan.status === "confirmed"
+              ? "Сохранён"
+              : "Черновик"
+            : "Новый план"}
+        </span>
+      </div>
+      {!dataset && !plan && (
+        <div className="empty-state compact">
+          <span className="empty-icon">
+            <Icon name="bread" />
+          </span>
+          <h3>Начнём с вашей истории</h3>
+          <p>
+            Загрузите CSV или попробуйте демо. После проверки данных здесь
+            появится план по каждому изделию.
+          </p>
+          <button onClick={onImport}>
+            Перейти к данным
+            <Icon name="arrow" />
+          </button>
+        </div>
+      )}
+      {replay && (
+        <aside className="replay-notice">
+          <strong>Историческое воспроизведение</strong>
+          <span>
+            Выбрана прошедшая или текущая дата. Расчёт и подтверждение будут
+            сохранены с меткой replay.
+          </span>
+        </aside>
+      )}
+      <div className="controls planning-controls">
+        <div className="control-field">
+          <label htmlFor="plan-date">Дата плана</label>
           <input
-            disabled={busy}
-            type="checkbox"
-            checked={targetOpen}
-            onChange={(e) => setTargetOpen(e.target.checked)}
-          />
-        </label>
-        <label>
-          Дата плана
-          <input
+            id="plan-date"
             disabled={busy}
             type="date"
             value={target}
             onChange={(e) => setTarget(e.target.value)}
           />
-        </label>
-        <label>
-          Данные доступны до
+        </div>
+        <div className="control-field">
+          <label htmlFor="plan-cutoff">Данные доступны до</label>
           <input
+            id="plan-cutoff"
             disabled={busy}
             type="date"
             value={cutoff}
             onChange={(e) => setCutoff(e.target.value)}
           />
-        </label>
+        </div>
         <div className="control-field">
           <label htmlFor="planning-method">Базовый метод</label>
           <select
@@ -112,14 +144,30 @@ export function PlanningSection({
             value={method}
             onChange={(e) => setMethod(e.target.value)}
           >
-            <option value="B1">B1 · до 4 прошлых таких дней недели</option>
-            <option value="ML">
-              ML · последняя подходящая модель, иначе B1
-            </option>
-            <option value="B0">B0 · тот же день неделю назад</option>
+            <option value="B1">B1 · по дням недели</option>
+            <option value="ML">ML · экспериментальный</option>
+            <option value="B0">B0 · неделю назад</option>
           </select>
         </div>
+        <div className="control-field calendar-field">
+          <label htmlFor="plan-open">Целевой день открыт</label>
+          <div className="checkbox-line">
+            <input
+              id="plan-open"
+              disabled={busy}
+              type="checkbox"
+              checked={targetOpen}
+              onChange={(e) => setTargetOpen(e.target.checked)}
+            />
+            <span>{targetOpen ? "Выпекаем" : "Выпуск 0"}</span>
+          </div>
+        </div>
       </div>
+      <p className="control-hint">
+        B1 работает без обучения. ML при недоступности переходит на B1 с явной
+        причиной. Срез — только завершённые дни; при задержке учёта сдвиньте его
+        назад.
+      </p>
       <button
         disabled={busy || !dataset || !target || !cutoff}
         onClick={() =>
@@ -139,17 +187,43 @@ export function PlanningSection({
       >
         Рассчитать план
       </button>
-      {!dataset && <p className="muted">Сначала импортируйте CSV.</p>}
+      {!dataset && plan && (
+        <p className="muted">
+          Открыт сохранённый план. Для нового расчёта сначала загрузите набор
+          данных.
+        </p>
+      )}
       {plan && (
         <>
           <div className="plan-heading">
-            <h3>Проверьте выпуск перед подтверждением</h3>
+            <div className="section-heading">
+              <div>
+                <p className="eyebrow">ПРОВЕРКА ВЫПУСКА</p>
+                <h3>Ваш план на {plan.target_date}</h3>
+              </div>
+              <span
+                className={`badge ${dirty ? "badge-warning" : plan.status === "confirmed" ? "badge-success" : "badge-neutral"}`}
+              >
+                {dirty
+                  ? "Есть несохранённые изменения"
+                  : plan.status === "confirmed"
+                    ? "Подтверждён"
+                    : "Ожидает проверки"}
+              </span>
+            </div>
             <p>
-              План на <strong>{plan.target_date}</strong> · {plan.source} ·{" "}
+              План на <strong>{plan.target_date}</strong> ·{" "}
+              {plan.source === "synthetic"
+                ? "Синтетические данные"
+                : plan.source === "local"
+                  ? "Данные пекарни"
+                  : "Внешние данные"}{" "}
+              ·{" "}
               {plan.mode === "replay"
                 ? "Историческое воспроизведение"
                 : "Операционный план"}{" "}
-              · {plan.status} · версия {plan.revision}
+              · {plan.status === "confirmed" ? "подтверждён" : "черновик"} ·
+              версия {plan.revision}
             </p>
             <p>
               Срез: {plan.cutoff} · выбранный метод:{" "}
@@ -171,7 +245,7 @@ export function PlanningSection({
             </aside>
           )}
           {dataset && dataset.id !== plan.dataset_id && (
-            <p className="muted">
+            <p className="status-note">
               Открыт план другого сохранённого набора. Новый расчёт использует
               текущий набор из раздела импорта.
             </p>
@@ -205,7 +279,16 @@ export function PlanningSection({
               </p>
             )}
           </details>
-          <div className="table">
+          <p className="table-hint">
+            На узком экране прокрутите таблицу вправо → выпуск, фактический
+            метод и ограничения.
+          </p>
+          <div
+            className="table plan-table-scroll"
+            tabIndex={0}
+            role="region"
+            aria-label="Таблица плана с горизонтальной прокруткой"
+          >
             <table data-testid="plan-table">
               <thead>
                 <tr>
@@ -227,12 +310,12 @@ export function PlanningSection({
                           i.batch_size}
                       </small>
                     </td>
-                    <td>
+                    <td className="numeric-cell forecast-cell">
                       {i.forecast_mean == null
                         ? "Нет оценки"
                         : i.forecast_mean.toFixed(1)}
                     </td>
-                    <td>
+                    <td className="numeric-cell recommendation-cell">
                       {i.recommended_qty}
                       {i.automatic_eligible === false && (
                         <small>
@@ -242,9 +325,15 @@ export function PlanningSection({
                         </small>
                       )}
                     </td>
-                    <td>
+                    <td className="confirmation-cell">
+                      <label
+                        className="sr-only"
+                        htmlFor={`quantity-${i.product_id}`}
+                      >
+                        Количество {i.name}
+                      </label>
                       <input
-                        aria-label={`Количество ${i.name}`}
+                        id={`quantity-${i.product_id}`}
                         type="number"
                         disabled={busy || stale || i.target_is_open === false}
                         min="0"
@@ -273,6 +362,13 @@ export function PlanningSection({
                             Есть несохранённое изменение
                           </small>
                         )}
+                      {i.confirmed_qty == null &&
+                        quantities[i.product_id] !==
+                          String(i.recommended_qty) && (
+                          <small className="unsaved">
+                            Изменено вручную · не сохранено
+                          </small>
+                        )}
                       {!validQuantity(
                         quantities[i.product_id] ?? "",
                         i.batch_size,
@@ -285,7 +381,9 @@ export function PlanningSection({
                       )}
                     </td>
                     <td>
-                      <strong>{methodText(i.method)}</strong>
+                      <strong className="actual-method">
+                        {methodText(i.method)}
+                      </strong>
                       {i.diagnostic_method &&
                         i.diagnostic_method !== i.method && (
                           <small>
@@ -331,50 +429,70 @@ export function PlanningSection({
               </tbody>
             </table>
           </div>
-          <button
-            disabled={busy || invalid || stale}
-            onClick={() =>
-              void run(async () => {
-                show(
-                  await api<Plan>(`/plans/${plan.id}/confirm`, {
-                    revision: plan.revision,
-                    idempotency_key: (() => {
-                      const signature = JSON.stringify({
-                        id: plan.id,
+          <div className="confirm-bar">
+            <div>
+              <strong>
+                {stale
+                  ? "Сначала обновите расчёт"
+                  : invalid
+                    ? "Проверьте введённые количества"
+                    : dirty
+                      ? "Сохраните проверенные изменения"
+                      : "Подтвердите выпуск"}
+              </strong>
+              <p>Проверьте партии, ограничения и общую загрузку печи.</p>
+            </div>
+            <div className="actions">
+              <button
+                disabled={busy || invalid || stale}
+                onClick={() =>
+                  void run(async () => {
+                    show(
+                      await api<Plan>(`/plans/${plan.id}/confirm`, {
                         revision: plan.revision,
-                        quantities,
-                      });
-                      if (confirmation.current?.signature !== signature)
-                        confirmation.current = {
-                          signature,
-                          key: crypto.randomUUID(),
-                        };
-                      return confirmation.current!.key;
-                    })(),
-                    quantities: Object.fromEntries(
-                      Object.entries(quantities).map(([k, v]) => [
-                        k,
-                        Number(v),
-                      ]),
-                    ),
-                  }),
-                );
-                setNotice("Подтверждённый план сохранён в базе.");
-                try {
-                  await refreshHistory();
-                } catch {
-                  setNotice(
-                    "Подтверждённый план сохранён в базе. Не удалось обновить список истории; нажмите «Обновить историю» позже.",
-                  );
+                        idempotency_key: (() => {
+                          const signature = JSON.stringify({
+                            id: plan.id,
+                            revision: plan.revision,
+                            quantities,
+                          });
+                          if (confirmation.current?.signature !== signature)
+                            confirmation.current = {
+                              signature,
+                              key: crypto.randomUUID(),
+                            };
+                          return confirmation.current!.key;
+                        })(),
+                        quantities: Object.fromEntries(
+                          Object.entries(quantities).map(([k, v]) => [
+                            k,
+                            Number(v),
+                          ]),
+                        ),
+                      }),
+                    );
+                    setNotice("Подтверждённый план сохранён в базе.");
+                    try {
+                      await refreshHistory();
+                    } catch {
+                      setNotice(
+                        "Подтверждённый план сохранён в базе. Не удалось обновить список истории; нажмите «Обновить историю» позже.",
+                      );
+                    }
+                  })
                 }
-              })
-            }
-          >
-            Подтвердить и сохранить
-          </button>{" "}
-          <a href={`/api/plans/${plan.id}/export`} download>
-            Экспорт CSV
-          </a>
+              >
+                Подтвердить и сохранить
+              </button>{" "}
+              <a
+                className="button-link secondary"
+                href={`/api/plans/${plan.id}/export`}
+                download
+              >
+                Экспорт CSV
+              </a>
+            </div>
+          </div>
           <p className="muted">
             CSV содержит сохранённую редакцию этого плана.{" "}
             {plan.status === "confirmed"

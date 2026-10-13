@@ -18,12 +18,22 @@ export function ForecastResult({
   stale: boolean;
   unitLabel: string;
 }) {
+  const items = snapshot.result.items;
+  const mlCount = items.filter((item) => item.method === "ML").length;
+  const b1Count = items.filter((item) => item.method === "B1").length;
+  const missingCount = items.filter(
+    (item) => item.forecast_mean == null,
+  ).length;
+
   return (
     <div
       data-testid="forecast-result"
-      className={stale ? "previous-result" : undefined}
+      className={`forecast-result${stale ? " previous-result" : ""}`}
     >
-      <h3>Диагностический прогноз на {snapshot.targetDate}</h3>
+      <div className="section-heading">
+        <h3>Диагностический прогноз на {snapshot.targetDate}</h3>
+        <span className="badge">Без назначения выпуска</span>
+      </div>
       {stale && (
         <aside data-testid="stale-forecast" className="stale-result">
           Параметры изменены. Это прежний прогноз на {snapshot.targetDate}, срез{" "}
@@ -34,6 +44,20 @@ export function ForecastResult({
       <p>
         Срез: {snapshot.cutoff} · выбранный метод: {snapshot.method} · единица:{" "}
         {unitLabel}.
+      </p>
+      <div className="history-meta" aria-label="Фактические методы прогноза">
+        <span className="badge">ML: {mlCount}</span>
+        <span className="badge">B1: {b1Count}</span>
+        {missingCount > 0 && (
+          <span className="badge badge-warning">
+            Нет оценки: {missingCount}
+          </span>
+        )}
+      </div>
+      <p className="muted">
+        Выбранный метод может отличаться от фактического. Проверьте метод и
+        ограничения для каждого товара; эти числа не являются заданием на
+        выпуск.
       </p>
       <EvaluationNotice value={snapshot.result.evaluation_applicability} />
       <details>
@@ -53,14 +77,20 @@ export function ForecastResult({
           </p>
         )}
       </details>
+      {!items.length && (
+        <p className="status-note">
+          В ответе нет товаров для прогноза. Проверьте набор данных и выбранные
+          даты; отсутствие оценки не означает нулевой спрос.
+        </p>
+      )}
       <div className="table">
         <table data-testid="forecast-table">
           <thead>
             <tr>
-              <th>Товар</th>
-              <th>Прогноз, {unitLabel}</th>
-              <th>B1, {unitLabel}</th>
-              <th>Фактический метод и ограничения</th>
+              <th scope="col">Товар</th>
+              <th scope="col">Прогноз, {unitLabel}</th>
+              <th scope="col">B1, {unitLabel}</th>
+              <th scope="col">Фактический метод и ограничения</th>
             </tr>
           </thead>
           <tbody>
@@ -80,7 +110,7 @@ export function ForecastResult({
                 <td>
                   <strong>{methodText(item.method)}</strong>
                   {item.fallback_reason && (
-                    <small>
+                    <small className="unsaved">
                       Причина перехода: {reasonText(item.fallback_reason)}
                     </small>
                   )}

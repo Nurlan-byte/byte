@@ -1,6 +1,7 @@
-import { useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { api } from "./api";
 import { businessDate } from "./dates";
+import { datasetSourceLabel, formatDatasetPeriod } from "./datasetSummary";
 import type { Dataset, DatasetTarget } from "./types";
 import type { SectionProps } from "./sectionProps";
 
@@ -18,7 +19,7 @@ export function SavedDatasetSelect({
   disabled: boolean;
 }) {
   return (
-    <div>
+    <div className="control-field">
       <label htmlFor="saved-dataset">Сохранённый набор</label>
       <select
         id="saved-dataset"
@@ -50,25 +51,7 @@ function syntheticSalesCsv() {
   return rows.join("\n");
 }
 
-export function ImportSection({
-  csv,
-  setCsv,
-  source,
-  setSource,
-  bakeryId,
-  setBakeryId,
-  dataTarget,
-  setDataTarget,
-  provenance,
-  setProvenance,
-  dataset,
-  setDataset,
-  setPlan,
-  busy,
-  setError,
-  setNotice,
-  run,
-}: Pick<
+type ImportProps = Pick<
   SectionProps,
   | "csv"
   | "setCsv"
@@ -87,19 +70,443 @@ export function ImportSection({
   | "setError"
   | "setNotice"
   | "run"
->) {
+> & { onContinue?: () => void };
+
+export function ImportSection({
+  csv,
+  setCsv,
+  source,
+  setSource,
+  bakeryId,
+  setBakeryId,
+  dataTarget,
+  setDataTarget,
+  provenance,
+  setProvenance,
+  dataset,
+  setDataset,
+  setPlan,
+  busy,
+  setError,
+  setNotice,
+  run,
+  onContinue = () => {},
+}: ImportProps) {
   const [saved, setSaved] = useState<SavedDataset[]>([]);
   const [savedId, setSavedId] = useState("");
   const [savedLoaded, setSavedLoaded] = useState(false);
+  const [fileName, setFileName] = useState("");
+  const fileInput = useRef<HTMLInputElement>(null);
+  const [importedDraft, setImportedDraft] = useState<{
+    datasetId: string;
+    signature: string;
+  } | null>(null);
   const salesOnly = dataTarget === "item_line_count";
+  const savedSalesOnly =
+    dataset?.target === "item_line_count" || dataset?.unit === "item_line";
+  const period = useMemo(() => formatDatasetPeriod(dataset), [dataset]);
+  const draftSignature = JSON.stringify([
+    csv,
+    source,
+    bakeryId.trim(),
+    dataTarget,
+    provenance.trim(),
+  ]);
+  const draftMatchesSaved =
+    dataset?.id === importedDraft?.datasetId &&
+    draftSignature === importedDraft?.signature;
+  const hasDraftChanges =
+    !!dataset &&
+    ((!!csv.trim() && !draftMatchesSaved) ||
+      source !== dataset.source ||
+      bakeryId.trim() !== dataset.bakery_id ||
+      dataTarget !== dataset.target ||
+      provenance.trim() !== dataset.provenance);
+  const csvTooLong = [...csv].length > 1_000_000;
+  const missingImportFields = csvTooLong
+    ? "CSV превышает 1 000 000 символов. Сократите историю и повторите импорт."
+    : !csv.trim()
+      ? "Выберите CSV-файл, загрузите демо или вставьте CSV ниже."
+      : !bakeryId.trim()
+        ? "Укажите ID пекарни в разделе «Параметры набора»."
+        : !provenance.trim()
+          ? "Укажите происхождение данных: название источника и описание набора."
+          : "";
+
   return (
     <section id="import" aria-labelledby="import-heading">
-      <h2 id="import-heading">1. Импорт истории</h2>
-      <p>
-        CSV проверяется целиком: целые неотрицательные количества и уникальность
-        даты/товара. Для истории в штуках проверяется баланс. Пропуски остаются
-        неизвестными и не становятся нулями.
+      <div className="section-heading">
+        <div>
+          <p className="eyebrow">История продаж</p>
+          <h2 id="import-heading">Данные пекарни</h2>
+          <p className="section-copy">
+            Загрузите историю из CSV или попробуйте демо. Сначала проверим
+            данные, затем можно перейти к плану выпечки.
+          </p>
+        </div>
+        <span className={`badge ${dataset ? "badge-success" : ""}`}>
+          {dataset ? "Набор загружен" : "Начните с импорта"}
+        </span>
+      </div>
+
+      {dataset && (
+        <div className="success" data-testid="dataset-summary">
+          <div className="section-heading">
+            <h3>Текущий сохранённый набор для расчёта</h3>
+            <span
+              className={`badge ${dataset.source === "synthetic" || savedSalesOnly ? "badge-warning" : "badge-success"}`}
+            >
+              {savedSalesOnly ? "Только диагностика" : "Физические штуки"}
+            </span>
+          </div>
+          <div className="metric-grid">
+            <div className="metric-card">
+              <span>Строк в наборе</span>
+              <strong>
+                {dataset.row_count ?? dataset.rows?.length ?? "Не указано"}
+              </strong>
+            </div>
+            <div className="metric-card">
+              <span>Период истории</span>
+              <strong data-testid="dataset-period">{period}</strong>
+            </div>
+            <div className="metric-card">
+              <span>Источник</span>
+              <strong>{datasetSourceLabel(dataset.source)}</strong>
+            </div>
+          </div>
+          <p>Происхождение: {dataset.provenance}</p>
+          {dataset.source === "synthetic" && (
+            <p className="status-note">
+              Это синтетическая демонстрация, а не реальные продажи пекарни.
+            </p>
+          )}
+          {savedSalesOnly && (
+            <p className="status-note">
+              Строки продаж не равны физическим штукам. Для этого набора
+              доступна диагностика; план выпуска не рассчитывается.
+            </p>
+          )}
+          {dataset.metadata_declared === false && (
+            <p className="status-note">
+              Старый набор доступен для B0/B1. Для обучения модели повторно
+              импортируйте исходный CSV с явным происхождением и единицей.
+            </p>
+          )}
+          {!!dataset.missing_calendar_days && (
+            <p className="status-note">
+              Пропуски дат по товарам: {dataset.missing_calendar_days}. Это
+              сумма отсутствующих дат внутри истории каждого товара; пропуски не
+              считаются нулевыми продажами.
+            </p>
+          )}
+          {!!dataset.stockout_count && (
+            <p className="status-note">
+              Строк с отмеченным дефицитом: {dataset.stockout_count}. Продажи в
+              эти дни могут не отражать весь спрос.
+            </p>
+          )}
+          {!!dataset.unknown_stockout_count && (
+            <p className="status-note">
+              Строк с неизвестным статусом дефицита:{" "}
+              {dataset.unknown_stockout_count}. Эти наблюдения ограничивают
+              автоматический расчёт.
+            </p>
+          )}
+          {dataset.diagnostics?.map((diagnostic, index) => (
+            <p className="muted" key={index}>
+              {diagnostic}
+            </p>
+          ))}
+          {hasDraftChanges && (
+            <p className="status-note" data-testid="unsaved-import">
+              Ниже есть изменения для нового импорта. Расчёт пока использует
+              сохранённый набор с периодом {period}.
+            </p>
+          )}
+          <div className="actions">
+            <button disabled={busy} onClick={onContinue}>
+              {savedSalesOnly ? "Перейти к диагностике" : "Перейти к плану"}
+            </button>
+            <span className="muted">
+              {savedSalesOnly
+                ? "Прогноз наблюдаемых строк продаж"
+                : "B1 доступен без обучения модели"}
+            </span>
+          </div>
+          <details>
+            <summary>Технические данные набора</summary>
+            <p>Набор: {dataset.id}</p>
+            <p>
+              Пекарня: {dataset.bakery_id} · источник: {dataset.source}
+            </p>
+            <p>
+              Цель: {dataset.target} · единица: {dataset.unit} · схема:{" "}
+              {dataset.schema_version}
+            </p>
+            <p>
+              Версия данных:{" "}
+              {dataset.dataset_version ?? dataset.version ?? "не указана"}
+            </p>
+            {dataset.created_at && <p>Сохранён: {dataset.created_at}</p>}
+          </details>
+        </div>
+      )}
+
+      <h3>{dataset ? "Загрузить другой набор" : "Загрузить историю"}</h3>
+      <div className="file-drop">
+        <label htmlFor="import-file">CSV-файл</label>
+        <p className="muted" id="import-file-help">
+          UTF-8, разделитель — запятая. До 1 000 000 символов CSV и 10 000
+          строк; весь запрос — до 2 МБ. Для своего файла проверьте источник и
+          происхождение данных ниже.
+        </p>
+        <input
+          id="import-file"
+          ref={fileInput}
+          type="file"
+          accept=".csv,text/csv"
+          aria-describedby="import-file-help"
+          disabled={busy}
+          onChange={(event) => {
+            const file = event.target.files?.[0];
+            if (!file) return;
+            if (file.size > 2_000_000) {
+              setError(
+                "Файл превышает 2 МБ. Уменьшите CSV и выберите файл снова. Текущее содержимое не изменено.",
+              );
+              event.target.value = "";
+              return;
+            }
+            void run(async () => {
+              let text: string;
+              try {
+                text = await file.text();
+              } catch {
+                if (fileInput.current) fileInput.current.value = "";
+                throw new Error(
+                  "Не удалось прочитать CSV-файл. Выберите его снова или вставьте содержимое в разделе «Вставить или проверить CSV». Текущее содержимое не изменено.",
+                );
+              }
+              if ([...text].length > 1_000_000) {
+                if (fileInput.current) fileInput.current.value = "";
+                throw new Error(
+                  "CSV превышает 1 000 000 символов. Сократите файл и выберите его снова. Текущее содержимое не изменено.",
+                );
+              }
+              setCsv(text);
+              setFileName(file.name);
+              setNotice(
+                "Файл прочитан. Проверьте источник, измеряемую величину и происхождение, затем нажмите «Проверить и импортировать».",
+              );
+            });
+          }}
+        />
+        {fileName && <p className="muted">Выбран файл: {fileName}</p>}
+      </div>
+      <div className="actions">
+        <button
+          className="secondary"
+          disabled={busy}
+          onClick={() =>
+            void run(async () => {
+              const response = await fetch("/demo.csv");
+              if (!response.ok)
+                throw new Error(
+                  "Демо-файл недоступен. Повторите загрузку или выберите свой CSV-файл.",
+                );
+              setCsv(await response.text());
+              setFileName("");
+              if (fileInput.current) fileInput.current.value = "";
+              setSource("synthetic");
+              setBakeryId("demo");
+              setDataTarget("sold_units");
+              setProvenance(
+                "Синтетическая демонстрация BakePlan: физические штуки",
+              );
+              setNotice(
+                "Подготовлены синтетические данные в штуках. Нажмите «Проверить и импортировать», затем перейдите к плану.",
+              );
+            })
+          }
+        >
+          Загрузить демо CSV
+        </button>
+        <button
+          className="button-link"
+          disabled={busy}
+          onClick={() => {
+            setCsv(syntheticSalesCsv());
+            setFileName("");
+            if (fileInput.current) fileInput.current.value = "";
+            setSource("synthetic");
+            setBakeryId("demo");
+            setDataTarget("item_line_count");
+            setProvenance(
+              "Синтетические строки продаж для тестирования BakePlan",
+            );
+            setNotice(
+              "Загружено синтетическое sales-only демо. Импортируйте CSV для диагностики; выпуск из этих данных не рассчитывается.",
+            );
+          }}
+        >
+          Демо строк продаж
+        </button>
+        <span className="muted">Оба демо содержат синтетические данные</span>
+      </div>
+      <div className="controls">
+        <div className="control-field">
+          <label htmlFor="import-source">Источник</label>
+          <select
+            id="import-source"
+            disabled={busy}
+            value={source}
+            onChange={(event) => {
+              setSource(event.target.value);
+              setProvenance(
+                event.target.value === "synthetic"
+                  ? "Синтетическая демонстрация BakePlan"
+                  : "",
+              );
+            }}
+          >
+            <option value="synthetic">Синтетические / демонстрационные</option>
+            <option value="local">Локальные данные пекарни</option>
+            <option value="external">Внешние данные</option>
+          </select>
+        </div>
+        <div className="control-field">
+          <label htmlFor="import-target">Измеряемая величина</label>
+          <select
+            id="import-target"
+            disabled={busy}
+            value={dataTarget}
+            onChange={(event) =>
+              setDataTarget(event.target.value as DatasetTarget)
+            }
+          >
+            <option value="sold_units">
+              Проданные физические штуки · sold_units
+            </option>
+            <option value="item_line_count">
+              Строки продаж · item_line_count
+            </option>
+          </select>
+        </div>
+      </div>
+      <div className="control-field">
+        <label htmlFor="import-provenance">Происхождение данных</label>
+        <input
+          id="import-provenance"
+          disabled={busy}
+          value={provenance}
+          onChange={(event) => setProvenance(event.target.value)}
+          placeholder="Название источника и описание набора"
+        />
+      </div>
+      <p className="muted">
+        {salesOnly
+          ? "Строка продажи не равна физической штуке. Агрегированные открытые данные, включая BreadBasket, подходят только для sales-only диагностики."
+          : "Для плана нужны физические количества и корректный баланс. Пропуски остаются неизвестными и не становятся нулевыми продажами."}
       </p>
+      <details>
+        <summary>Параметры набора</summary>
+        <div className="controls">
+          <div className="control-field">
+            <label htmlFor="import-bakery">ID пекарни</label>
+            <input
+              id="import-bakery"
+              disabled={busy}
+              value={bakeryId}
+              onChange={(event) => setBakeryId(event.target.value)}
+              placeholder="demo"
+            />
+          </div>
+        </div>
+        <p className="muted">
+          {salesOnly
+            ? "Схема sales-1 · единица item_line."
+            : "Схема history-1 · единица physical_unit."}{" "}
+          Наборы и модели разделяются по ID пекарни и единице измерения.
+        </p>
+      </details>
+      <details>
+        <summary>Вставить или проверить CSV</summary>
+        <p className="muted">
+          CSV проверяется целиком: целые неотрицательные количества, уникальная
+          пара даты и товара, для физических штук — баланс остатков.
+        </p>
+        <label htmlFor="import-csv">Содержимое CSV</label>
+        <textarea
+          id="import-csv"
+          rows={6}
+          value={csv}
+          disabled={busy}
+          onChange={(event) => {
+            setCsv(event.target.value);
+            setFileName("");
+            if (fileInput.current) fileInput.current.value = "";
+          }}
+          placeholder={
+            salesOnly
+              ? "date,product_id,item_line_count"
+              : "date,product_id,is_open,opening,produced,sold,waste,closing,other_out,stockout_status"
+          }
+        />
+      </details>
+      <div className="actions">
+        <button
+          disabled={busy || !!missingImportFields}
+          aria-describedby="import-readiness"
+          onClick={() =>
+            void run(async () => {
+              let imported: Dataset;
+              try {
+                imported = await api<Dataset>("/datasets", {
+                  csv_text: csv,
+                  source,
+                  bakery_id: bakeryId.trim(),
+                  target: dataTarget,
+                  unit: salesOnly ? "item_line" : "physical_unit",
+                  provenance: provenance.trim(),
+                  schema_version: salesOnly ? "sales-1" : "history-1",
+                });
+              } catch (error) {
+                const message =
+                  error instanceof Error ? error.message : String(error);
+                throw new Error(
+                  `${message}\nПроверьте строку и поле из сообщения, содержимое CSV и параметры источника. После исправления повторите импорт.`,
+                );
+              }
+              setDataset(imported);
+              setImportedDraft({
+                datasetId: imported.id,
+                signature: draftSignature,
+              });
+              setPlan(null);
+              setNotice(
+                imported.target === "item_line_count"
+                  ? "Данные строк продаж сохранены. Доступны обучение и диагностический прогноз, без производственного плана."
+                  : "Данные проверены и сохранены. Можно перейти к плану; обучение модели не обязательно.",
+              );
+            })
+          }
+        >
+          Проверить и импортировать
+        </button>
+        <span id="import-readiness" className="muted">
+          {missingImportFields ||
+            (draftMatchesSaved
+              ? "Этот CSV уже проверен и сохранён."
+              : "CSV подготовлен. Проверка и сохранение — после нажатия кнопки.")}
+        </span>
+      </div>
+      {dataset && (
+        <p className="muted">
+          Изменения CSV и полей выше применяются только после повторного
+          импорта.
+        </p>
+      )}
       <details>
         <summary>Продолжить работу с сохранённым набором</summary>
         <button
@@ -107,9 +514,7 @@ export function ImportSection({
           disabled={busy}
           onClick={() =>
             void run(async () => {
-              const datasets = await api<Pick<Dataset, "id" | "source">[]>(
-                "/datasets?limit=100",
-              );
+              const datasets = await api<SavedDataset[]>("/datasets?limit=100");
               setSaved(datasets);
               setSavedId(datasets[0]?.id ?? "");
               setSavedLoaded(true);
@@ -145,6 +550,9 @@ export function ImportSection({
                   setDataset(stored);
                   setPlan(null);
                   setCsv("");
+                  setFileName("");
+                  if (fileInput.current) fileInput.current.value = "";
+                  setImportedDraft(null);
                   setSource(stored.source);
                   setBakeryId(stored.bakery_id);
                   setDataTarget(stored.target);
@@ -166,204 +574,6 @@ export function ImportSection({
           <p className="muted">Показаны последние 100 наборов.</p>
         )}
       </details>
-      <div className="actions">
-        <button
-          className="secondary"
-          disabled={busy}
-          onClick={() =>
-            void run(async () => {
-              const r = await fetch("/demo.csv");
-              if (!r.ok) throw new Error("Демо-файл недоступен");
-              setCsv(await r.text());
-              setSource("synthetic");
-              setBakeryId("demo");
-              setDataTarget("sold_units");
-              setProvenance(
-                "Синтетическая демонстрация BakePlan: физические штуки",
-              );
-              setNotice(
-                "Загружены синтетические данные в штуках. Выберите дату плана и импортируйте CSV.",
-              );
-            })
-          }
-        >
-          Загрузить демо CSV
-        </button>
-        <button
-          className="secondary"
-          disabled={busy}
-          onClick={() => {
-            setCsv(syntheticSalesCsv());
-            setSource("synthetic");
-            setBakeryId("demo");
-            setDataTarget("item_line_count");
-            setProvenance(
-              "Синтетические строки продаж для тестирования BakePlan",
-            );
-            setNotice(
-              "Загружено синтетическое sales-only демо. Импортируйте CSV для диагностики; выпуск из этих данных не рассчитывается.",
-            );
-          }}
-        >
-          Демо строк продаж
-        </button>
-      </div>
-      <div className="controls">
-        <div className="control-field">
-          <label htmlFor="import-source">Источник</label>
-          <select
-            id="import-source"
-            disabled={busy}
-            value={source}
-            onChange={(e) => {
-              setSource(e.target.value);
-              setProvenance(
-                e.target.value === "synthetic"
-                  ? "Синтетическая демонстрация BakePlan"
-                  : "",
-              );
-            }}
-          >
-            <option value="synthetic">Синтетические / демонстрационные</option>
-            <option value="local">Локальные данные пекарни</option>
-            <option value="external">Внешние данные</option>
-          </select>
-        </div>
-        <label>
-          ID пекарни
-          <input
-            disabled={busy}
-            value={bakeryId}
-            onChange={(e) => setBakeryId(e.target.value)}
-            placeholder="demo"
-          />
-        </label>
-        <div className="control-field">
-          <label htmlFor="import-target">Измеряемая величина</label>
-          <select
-            id="import-target"
-            disabled={busy}
-            value={dataTarget}
-            onChange={(e) => setDataTarget(e.target.value as DatasetTarget)}
-          >
-            <option value="sold_units">
-              Проданные физические штуки · sold_units
-            </option>
-            <option value="item_line_count">
-              Строки продаж · item_line_count
-            </option>
-          </select>
-        </div>
-        <label>
-          Происхождение данных
-          <input
-            disabled={busy}
-            value={provenance}
-            onChange={(e) => setProvenance(e.target.value)}
-            placeholder="Название источника и описание набора"
-          />
-        </label>
-        <label>
-          CSV-файл
-          <input
-            type="file"
-            accept=".csv,text/csv"
-            disabled={busy}
-            onChange={(e) => {
-              const f = e.target.files?.[0];
-              if (f) {
-                if (f.size > 2_000_000) {
-                  setError("Файл превышает 2 МБ");
-                  return;
-                }
-                void run(async () => setCsv(await f.text()));
-              }
-            }}
-          />
-        </label>
-      </div>
-      <p className="muted">
-        {salesOnly
-          ? "Схема sales-1 · единица item_line. Строка продажи не равна физической штуке. Агрегированные открытые данные, включая BreadBasket, подходят только для sales-only диагностики."
-          : "Схема history-1 · единица physical_unit. Только подтверждённые физические количества и баланс допускаются к планированию."}
-      </p>
-      <label>
-        Содержимое CSV
-        <textarea
-          aria-label="Содержимое CSV"
-          rows={5}
-          value={csv}
-          disabled={busy}
-          onChange={(e) => setCsv(e.target.value)}
-          placeholder={
-            salesOnly
-              ? "date,product_id,item_line_count"
-              : "date,product_id,is_open,opening,produced,sold,waste,closing,other_out,stockout_status"
-          }
-        />
-      </label>
-      <button
-        disabled={busy || !csv.trim() || !bakeryId.trim() || !provenance.trim()}
-        onClick={() =>
-          void run(async () => {
-            const imported = await api<Dataset>("/datasets", {
-              csv_text: csv,
-              source,
-              bakery_id: bakeryId.trim(),
-              target: dataTarget,
-              unit: salesOnly ? "item_line" : "physical_unit",
-              provenance: provenance.trim(),
-              schema_version: salesOnly ? "sales-1" : "history-1",
-            });
-            setDataset(imported);
-            setPlan(null);
-            setNotice(
-              imported.target === "item_line_count"
-                ? "Данные строк продаж сохранены. Доступны обучение и диагностический прогноз, без производственного плана."
-                : "Данные проверены и сохранены. Можно рассчитать план или обучить модель.",
-            );
-          })
-        }
-      >
-        Проверить и импортировать
-      </button>
-      {dataset && (
-        <div className="success" data-testid="dataset-summary">
-          <p>
-            <strong>Текущий сохранённый набор для расчёта</strong> · источник:{" "}
-            {dataset.source}{" "}
-            {dataset.row_count !== undefined && `· строк: ${dataset.row_count}`}
-          </p>
-          <p>
-            Пекарня: {dataset.bakery_id} ·{" "}
-            {dataset.target === "item_line_count"
-              ? "строки продаж, только диагностика"
-              : "физические штуки, доступны планы"}
-          </p>
-          <p>Происхождение: {dataset.provenance}</p>
-          <p className="muted">
-            Изменения CSV и полей выше применяются только после повторного
-            импорта.
-          </p>
-          <details>
-            <summary>Технические данные набора</summary>
-            <p>Набор: {dataset.id}</p>
-            <p>
-              Цель: {dataset.target} · единица: {dataset.unit} · схема:{" "}
-              {dataset.schema_version}
-            </p>
-            <p>
-              Версия данных:{" "}
-              {dataset.dataset_version ?? dataset.version ?? "не указана"}
-            </p>
-          </details>
-        </div>
-      )}
-      {dataset?.diagnostics?.map((d, n) => (
-        <p className="muted" key={n}>
-          {d}
-        </p>
-      ))}
     </section>
   );
 }

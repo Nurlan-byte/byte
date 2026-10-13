@@ -25,7 +25,8 @@ export function ModelSection({
   const [forecast, setForecast] = useState<ForecastSnapshot | null>(null);
   const [forecastMethod, setForecastMethod] = useState("ML");
   const training = useRef<{ signature: string; key: string } | null>(null);
-  const salesOnly = dataset.target === "item_line_count";
+  const salesOnly =
+    dataset.target === "item_line_count" || dataset.unit === "item_line";
   const unitLabel = salesOnly ? "строк продаж" : "шт.";
 
   return (
@@ -34,26 +35,39 @@ export function ModelSection({
       aria-labelledby="model-heading"
       data-testid="model-panel"
     >
-      <h2 id="model-heading">Модель и диагностический прогноз</h2>
+      <div className="section-heading">
+        <div>
+          <p className="eyebrow">Дополнительная проверка</p>
+          <h2 id="model-heading">Модель и диагностический прогноз</h2>
+        </div>
+        <span className="badge">Необязательный шаг</span>
+      </div>
+      <p className="section-copy">
+        Сравните ошибку ML и базового метода B1 на прошлых данных, прежде чем
+        выбирать метод. Готовая модель ещё не означает более точный прогноз.
+      </p>
       {!salesOnly && (
-        <p className="optional-step">
-          Необязательный шаг. Для первого плана можно сразу перейти к расчёту с
-          B1 ниже.
+        <p className="status-note">
+          Для первого плана обучение не нужно. По умолчанию план использует B1;
+          после расчёта проверьте количества и подтвердите выпуск вручную.
         </p>
       )}
-      <p>
-        ML использует последний подходящий снимок модели для этого набора и
-        среза. Если модель или признаки недоступны, применяется B1 с явной
-        причиной. Обучение выполняется локально, один запрос может занять до 60
-        секунд.
-      </p>
       <p className="muted">
         {salesOnly
-          ? "Sales-only: оцениваем строки продаж, а не количество изделий. Производственные партии, рекомендации выпуска и подтверждение недоступны."
-          : "Диагностический прогноз не назначает выпуск. Производственный план ниже требует отдельной ручной проверки."}{" "}
+          ? "Только строки продаж: оцениваем их число, а не количество изделий. Производственные партии, рекомендации выпуска и подтверждение недоступны."
+          : "Диагностический прогноз не назначает выпуск. Производственный план требует отдельной ручной проверки."}{" "}
         Синтетические примеры проверяют работу программы. Превосходство ML,
         точность на реальной пекарне и экономия не доказаны.
       </p>
+      <details>
+        <summary>Как работает прогноз</summary>
+        <p>
+          ML использует последний подходящий снимок модели для этого набора и
+          среза. Если модель или признаки недоступны, применяется B1 с явной
+          причиной. Без подходящей истории оценка не подменяется нулём. Обучение
+          выполняется локально, один запрос может занять до 60 секунд.
+        </p>
+      </details>
       {dataset.metadata_declared === false && (
         <p className="error">
           Этот старый набор не содержит явно объявленных метаданных. Для
@@ -62,24 +76,26 @@ export function ModelSection({
         </p>
       )}
       <div className="controls">
-        <label>
-          Срез обучения и прогноза
+        <div className="control-field">
+          <label htmlFor="model-cutoff">Срез обучения и прогноза</label>
           <input
+            id="model-cutoff"
             type="date"
             disabled={busy}
             value={cutoff}
             onChange={(e) => setCutoff(e.target.value)}
           />
-        </label>
-        <label>
-          Дата прогноза
+        </div>
+        <div className="control-field">
+          <label htmlFor="forecast-date">Дата прогноза</label>
           <input
+            id="forecast-date"
             type="date"
             disabled={busy}
             value={target}
             onChange={(e) => setTarget(e.target.value)}
           />
-        </label>
+        </div>
         <div className="control-field">
           <label htmlFor="diagnostic-method">Метод диагностики</label>
           <select
@@ -118,7 +134,7 @@ export function ModelSection({
               setNotice(
                 model.status === "ready"
                   ? "Модель сохранена. Это не подтверждение качества; проверьте оценку и фактический метод прогноза."
-                  : "Обучение завершено: модель не готова. Причины показаны ниже; доступен B1.",
+                  : "Обучение завершено: модель не готова. Причины показаны ниже; при подходящей истории доступен B1.",
               );
             })
           }
@@ -166,11 +182,17 @@ export function ModelSection({
         </button>
       </div>
       {!models.length && (
-        <p className="muted">
-          {loaded
-            ? "Сохранённых моделей пока нет."
-            : "Обучите модель или обновите список сохранённых моделей."}
-        </p>
+        <div className="status-note">
+          <strong>
+            {loaded
+              ? "Сохранённых моделей пока нет"
+              : "Модели ещё не загружены"}
+          </strong>
+          <p>
+            Обновите список или обучите модель для этого набора. Прогноз B1
+            можно получить без обучения, если достаточно подходящей истории.
+          </p>
+        </div>
       )}
       {models.map((model) => (
         <article
@@ -178,9 +200,18 @@ export function ModelSection({
           className="model-card"
           data-testid="model-summary"
         >
-          <h3>
-            {model.status === "ready" ? "Модель готова" : "Модель не готова"}
-          </h3>
+          <div className="section-heading">
+            <h3>
+              {model.status === "ready" ? "Модель готова" : "Модель не готова"}
+            </h3>
+            <span
+              className={`badge ${model.status === "ready" ? "badge-success" : "badge-warning"}`}
+            >
+              {model.status === "ready"
+                ? "Доступна для расчёта"
+                : "Нужна проверка"}
+            </span>
+          </div>
           {model.reason && <p>Причина: {reasonText(model.reason)}</p>}
           <p>
             Срез обучения: {model.training_cutoff} ·{" "}
@@ -189,6 +220,25 @@ export function ModelSection({
           <p className="muted">
             Готовность означает возможность расчёта, а не преимущество перед B1.
           </p>
+          {model.training_cutoff !== cutoff && (
+            <p className="muted">
+              Срез этой модели отличается от выбранного. Сервер проверит
+              совместимость перед использованием.
+            </p>
+          )}
+          <h4>Готовность по товарам</h4>
+          <ul>
+            {Object.entries(model.products ?? {}).map(([product, status]) => (
+              <li key={product}>
+                {product}: {status.status === "ready" ? "готова" : "не готова"}
+                {status.reason ? ` · ${reasonText(status.reason)}` : ""}
+              </li>
+            ))}
+          </ul>
+          <ModelEvaluation
+            evaluation={model.evaluation}
+            unitLabel={unitLabel}
+          />
           <details>
             <summary>Технические данные модели</summary>
             <p>
@@ -200,81 +250,12 @@ export function ModelSection({
             <p>
               Пекарня: {model.bakery_id} · {model.target} / {model.unit}
             </p>
+            {"snapshot_hash" in model &&
+              typeof model.snapshot_hash === "string" && (
+                <p>Хеш снимка данных: {model.snapshot_hash}</p>
+              )}
             {model.reason && <p>Код причины: {model.reason}</p>}
           </details>
-          {model.training_cutoff !== cutoff && (
-            <p className="muted">
-              Срез этой модели отличается от выбранного. Сервер проверит
-              совместимость перед использованием.
-            </p>
-          )}
-          <ul>
-            {Object.entries(model.products ?? {}).map(([product, status]) => (
-              <li key={product}>
-                {product}: {status.status === "ready" ? "готова" : "не готова"}
-                {status.reason ? ` · ${reasonText(status.reason)}` : ""}
-              </li>
-            ))}
-          </ul>
-          {model.evaluation != null ? (
-            <details>
-              <summary>Диагностика оценки модели</summary>
-              <p className="muted">
-                Результаты относятся только к указанным данным и временному
-                протоколу. Они не доказывают превосходство ML на будущих
-                реальных продажах.
-              </p>
-              <p>
-                Обучение для оценки до:{" "}
-                {model.evaluation.fit_end ?? "нет данных"}. Отложенный период:{" "}
-                {model.evaluation.holdout_start ?? "нет данных"} —{" "}
-                {model.evaluation.holdout_end ?? "нет данных"}.
-              </p>
-              <p>
-                Горизонт оценки:{" "}
-                {model.evaluation.horizon_days == null
-                  ? "не указан"
-                  : `${model.evaluation.horizon_days} дн. от среза до целевой даты`}
-                .
-                {model.evaluation.horizon_days === 2 &&
-                  " Используется история не позже t−2; это соответствует паре «завтра / вчера»."}
-              </p>
-              <p>
-                Сопоставимые даты:{" "}
-                {model.evaluation.paired_start ?? "нет данных"} —{" "}
-                {model.evaluation.paired_end ?? "нет данных"} · дат:{" "}
-                {model.evaluation.paired_date_count ?? "не указано"}.
-              </p>
-              <p>
-                Сопоставимых прогнозов: {model.evaluation.paired_n ?? 0} ·
-                покрытие:{" "}
-                {model.evaluation.coverage == null
-                  ? "нет данных"
-                  : `${(model.evaluation.coverage * 100).toFixed(1)}%`}
-                . Доля рассчитана от{" "}
-                {model.evaluation.coverage_denominator_n ??
-                  "неуказанного числа"}{" "}
-                пригодных наблюдаемых меток отложенного периода.
-              </p>
-              <p>
-                Средняя абсолютная ошибка B1:{" "}
-                {model.evaluation.b1_mae == null
-                  ? "нет оценки"
-                  : model.evaluation.b1_mae.toFixed(2)}{" "}
-                · ML:{" "}
-                {model.evaluation.ml_mae == null
-                  ? "нет оценки"
-                  : model.evaluation.ml_mae.toFixed(2)}{" "}
-                {unitLabel}.
-              </p>
-              <details>
-                <summary>Полный протокол оценки</summary>
-                <pre>{JSON.stringify(model.evaluation, null, 2)}</pre>
-              </details>
-            </details>
-          ) : (
-            <p className="muted">Оценка качества не предоставлена.</p>
-          )}
         </article>
       ))}
       {forecast && (
@@ -289,5 +270,128 @@ export function ModelSection({
         />
       )}
     </section>
+  );
+}
+
+export function ModelEvaluation({
+  evaluation,
+  unitLabel,
+}: {
+  evaluation: ModelSummary["evaluation"];
+  unitLabel: string;
+}) {
+  if (evaluation == null)
+    return (
+      <p className="status-note">
+        Оценка качества не предоставлена. Пока нельзя сравнить точность ML и B1
+        для этой модели.
+      </p>
+    );
+
+  const b1 = evaluation.b1_mae;
+  const ml = evaluation.ml_mae;
+  const comparable =
+    (evaluation.paired_n ?? 0) > 0 &&
+    b1 != null &&
+    ml != null &&
+    Number.isFinite(b1) &&
+    Number.isFinite(ml);
+  const mlWorse = comparable && ml > b1;
+  const comparison = !comparable
+    ? "Недостаточно сопоставимых данных для вывода о точности ML и B1."
+    : mlWorse
+      ? "На этой проверке ML хуже B1: его средняя ошибка выше."
+      : ml < b1
+        ? "На этой проверке средняя ошибка ML ниже, чем у B1."
+        : "На этой проверке средняя ошибка ML и B1 одинакова.";
+  const formatError = (value: number | null | undefined) =>
+    value == null || !Number.isFinite(value)
+      ? "Нет оценки"
+      : value.toLocaleString("ru-RU", {
+          minimumFractionDigits: 2,
+          maximumFractionDigits: 6,
+        });
+
+  return (
+    <div data-testid="model-evaluation">
+      <h4>Проверка на отложенных данных</h4>
+      <p className="muted">
+        MAE — средняя абсолютная ошибка прогноза. Чем ниже, тем лучше. Оба
+        метода сравниваются на одних и тех же наблюдениях.
+      </p>
+      <div className="metric-grid">
+        <div className="metric-card">
+          <span>MAE B1</span>
+          <strong>{formatError(b1)}</strong>
+          <small>Базовый метод · {unitLabel}</small>
+        </div>
+        <div className="metric-card">
+          <span>MAE ML</span>
+          <strong>{formatError(ml)}</strong>
+          <small>Модель · {unitLabel}</small>
+        </div>
+        <div className="metric-card">
+          <span>Парное N</span>
+          <strong>{evaluation.paired_n ?? "Нет данных"}</strong>
+          <small>Сопоставимых прогнозов</small>
+        </div>
+        <div className="metric-card">
+          <span>Покрытие</span>
+          <strong>
+            {evaluation.paired_n != null &&
+            evaluation.coverage_denominator_n != null
+              ? `${evaluation.paired_n}/${evaluation.coverage_denominator_n}`
+              : "Нет данных"}
+          </strong>
+          <small>
+            {evaluation.coverage == null
+              ? "Доля не указана"
+              : `${(evaluation.coverage * 100).toFixed(1)}% пригодных меток`}
+          </small>
+        </div>
+      </div>
+      <p
+        className={
+          mlWorse || !comparable ? "evaluation-warning" : "status-note"
+        }
+      >
+        <strong>{comparison}</strong>{" "}
+        {mlWorse && "Оснований предпочесть ML по этой оценке нет. "}
+        Это результат только для указанных данных и периода, а не доказательство
+        точности будущих реальных продаж или экономии.
+      </p>
+      <details>
+        <summary>Диагностика оценки модели</summary>
+        <p>
+          Обучение для оценки до: {evaluation.fit_end ?? "нет данных"}.
+          Отложенный период: {evaluation.holdout_start ?? "нет данных"} —{" "}
+          {evaluation.holdout_end ?? "нет данных"}.
+        </p>
+        <p>
+          Горизонт оценки:{" "}
+          {evaluation.horizon_days == null
+            ? "не указан"
+            : `${evaluation.horizon_days} дн. от среза до целевой даты`}
+          .
+          {evaluation.horizon_days === 2 &&
+            " Используется история не позже t−2; это соответствует паре «завтра / вчера»."}
+        </p>
+        <p>
+          Сопоставимые даты: {evaluation.paired_start ?? "нет данных"} —{" "}
+          {evaluation.paired_end ?? "нет данных"} · дат:{" "}
+          {evaluation.paired_date_count ?? "не указано"}.
+        </p>
+        <p>
+          Покрытие показывает долю сопоставимых прогнозов от{" "}
+          {evaluation.coverage_denominator_n ?? "неуказанного числа"} пригодных
+          наблюдаемых меток отложенного периода. Пропуски не считаются нулевыми
+          продажами.
+        </p>
+        <details>
+          <summary>Полный протокол оценки</summary>
+          <pre>{JSON.stringify(evaluation, null, 2)}</pre>
+        </details>
+      </details>
+    </div>
   );
 }

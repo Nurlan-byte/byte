@@ -1,19 +1,23 @@
 import { test, expect, type Page } from '@playwright/test';
 import fs from 'node:fs/promises';
+import { navigate, openHistoryPlan, prepareImport } from './helpers';
 
 const base = 'http://127.0.0.1:18000/api';
 
 async function prepare(page: Page) {
   await page.goto('/');
+  await prepareImport(page);
   await page.getByLabel('Содержимое CSV').fill(await fs.readFile('fixtures/synthetic_demo.csv', 'utf8'));
   await page.getByRole('button', { name: 'Проверить и импортировать' }).click();
   await expect(page.getByTestId('dataset-summary')).toBeVisible();
+  await navigate(page, 'План');
   await page.getByLabel('Дата плана', { exact: true }).fill('2026-10-12');
   await page.getByLabel('Данные доступны до', { exact: true }).fill('2026-10-11');
 }
 
 test('diagnostic result retains original parameters and marks each changed input as stale', async ({ page }) => {
   await prepare(page);
+  await navigate(page, 'Модель');
   await page.getByRole('button', { name: 'Получить прогноз', exact: true }).click();
   await expect(page.getByTestId('forecast-result')).toBeVisible();
   await expect(page.getByTestId('stale-forecast')).toHaveCount(0);
@@ -114,7 +118,9 @@ test('uncertain confirmation retries with the same snapshot and key', async ({ p
 test('mobile page keeps controls in the viewport and scrolls the plan table internally', async ({ page }) => {
   await page.setViewportSize({ width: 375, height: 812 });
   await prepare(page);
+  await navigate(page, 'Данные');
   await page.getByTestId('dataset-summary').getByText('Технические данные набора', { exact: true }).click();
+  await navigate(page, 'План');
   await page.getByRole('button', { name: 'Рассчитать план', exact: true }).click();
   await expect(page.getByTestId('plan-table')).toBeVisible();
   await page.getByText('Технические данные плана', { exact: true }).click();
@@ -131,12 +137,14 @@ test('history restores its own planning parameters while the current imported da
   const created = page.waitForResponse(response => response.url().endsWith('/api/plans') && response.request().method() === 'POST');
   await page.getByRole('button', { name: 'Рассчитать план', exact: true }).click();
   const original = await (await created).json();
+  await prepareImport(page, true);
   await page.getByLabel('ID пекарни', { exact: true }).fill('e2e-history-current');
   const imported = page.waitForResponse(response => response.url().endsWith('/api/datasets') && response.request().method() === 'POST');
   await page.getByRole('button', { name: 'Проверить и импортировать', exact: true }).click();
   const current = await (await imported).json();
   expect(current.id).not.toBe(original.dataset_id);
   await expect(page.getByTestId('plan-table')).toHaveCount(0);
+  await navigate(page, 'План');
   await page.getByLabel('Дата плана', { exact: true }).fill('2026-10-13');
   await page.getByLabel('Данные доступны до', { exact: true }).fill('2026-10-10');
   await page.getByLabel('Базовый метод', { exact: true }).selectOption('B0');
@@ -145,15 +153,18 @@ test('history restores its own planning parameters while the current imported da
     id: original.id, dataset_id: original.dataset_id, target_date: original.target_date,
     source: original.source, status: original.status, revision: original.revision,
   }] }), { times: 1 });
+  await navigate(page, 'История');
   await page.getByRole('button', { name: 'Обновить историю', exact: true }).click();
-  await page.getByRole('button', { name: /2026-10-12.*synthetic.*draft/ }).click();
+  await openHistoryPlan(page, '2026-10-12', original.id);
   await expect(page.getByLabel('Дата плана', { exact: true })).toHaveValue('2026-10-12');
   await expect(page.getByLabel('Данные доступны до', { exact: true })).toHaveValue('2026-10-11');
   await expect(page.getByLabel('Базовый метод', { exact: true })).toHaveValue('B1');
   await expect(page.getByLabel('Целевой день открыт', { exact: true })).toBeChecked();
   await expect(page.getByTestId('stale-plan')).toHaveCount(0);
   await expect(page.getByText('Открыт план другого сохранённого набора.', { exact: false })).toBeVisible();
+  await navigate(page, 'Данные');
   await expect(page.getByTestId('dataset-summary')).toContainText('e2e-history-current');
+  await navigate(page, 'План');
   const quantity = page.getByTestId('plan-table').locator('tbody tr').first().getByRole('spinbutton');
   await quantity.fill('84');
   await page.getByRole('button', { name: 'Подтвердить и сохранить', exact: true }).click();
@@ -161,5 +172,7 @@ test('history restores its own planning parameters while the current imported da
   const stored = await (await request.get(`${base}/plans/${original.id}`)).json();
   expect(stored.dataset_id).toBe(original.dataset_id);
   expect(stored.items[0].confirmed_qty).toBe(84);
+  await navigate(page, 'Данные');
   await expect(page.getByTestId('dataset-summary')).toContainText('e2e-history-current');
+  await navigate(page, 'План');
 });

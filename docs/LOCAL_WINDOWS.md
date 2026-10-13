@@ -2,7 +2,7 @@
 
 **Самый быстрый запасной вариант** — уже знакомый запуск Python 3.14 + Node 24 из [README](../README.md#быстрый-запуск). Ниже — отдельный Docker-вариант: одна локальная ссылка `http://127.0.0.1:8080`, собранный React, FastAPI и постоянная SQLite. Он не публикует приложение в интернет и не создаёт платных ресурсов.
 
-**Честный статус:** приложение и snapshot/restore проверены в cloud Linux; Docker Desktop/WSL2 на вашем Windows-компьютере ещё не проверены. В среде подготовки нет Docker runtime. На SHA `9948d911` [полный CI](https://github.com/Nurlan-byte/byte/actions/runs/38462149030) прошёл Windows unit/browser и Linux container build/ML/restart/backup/restore. Он не заменяет ручную проверку Docker Desktop на вашем ноутбуке. Финальную более позднюю версию сверяйте по SHA и CI в [CI ветки материалов защиты](https://github.com/Nurlan-byte/byte/actions?query=branch%3Afeature%2Fbakeplan-defense-evidence). Не удаляйте прежнюю рабочую папку и её SQLite, пока не пройдёте сценарий ниже.
+**Честный статус:** приложение и snapshot/restore проверены в cloud Linux; Docker Desktop/WSL2 на вашем Windows-компьютере ещё не проверены. В среде подготовки нет Docker runtime. На SHA `9948d911` [полный CI](https://github.com/Nurlan-byte/byte/actions/runs/38462149030) прошёл Windows unit/browser и Linux container build/ML/restart/backup/restore. Он не заменяет ручную проверку Docker Desktop на вашем ноутбуке. Финальную более позднюю версию сверяйте по SHA и CI в [CI ветки UI-polish](https://github.com/Nurlan-byte/byte/actions?query=branch%3Afeature%2Fbakeplan-ui-polish). Не удаляйте прежнюю рабочую папку и её SQLite, пока не пройдёте сценарий ниже.
 
 Краткий порядок действий утром: [MORNING_CHECKLIST](MORNING_CHECKLIST.md).
 
@@ -44,7 +44,7 @@ Docker должен отвечать серверной частью; Compose н
 ```sh
 mkdir -p ~/projects
 cd ~/projects
-git clone --branch feature/bakeplan-defense-evidence https://github.com/Nurlan-byte/byte.git bakeplan-docker
+git clone --branch feature/bakeplan-ui-polish https://github.com/Nurlan-byte/byte.git bakeplan-docker
 cd bakeplan-docker
 git rev-parse HEAD
 ```

@@ -1,5 +1,16 @@
 # Проверка стабилизации MVP, 14.10.2026 (UTC+5)
 
+## UI-polish: проверка текущего кандидата
+
+Изолированная ветка `feature/bakeplan-ui-polish` начинается с точного defense-head `756829475615d37d024b12e720d7cfc9338e4b68`. Материалы защиты, backend, расчёты, ML, API и SQLite сохранены. Меняется интерфейс, его регрессионные проверки и воспроизводимый UI-capture.
+
+- Локально: 207 backend, 42 offline, 28 frontend; lint/typecheck/build и Ruff. Эти результаты не заменяют браузерный CI.
+- Исходные 18 E2E-сценариев сохранены с переходами через новую навигацию, добавлены 5 сценариев: клавиатура, сохранение состояния разделов и ширины 360/768/1440. Утверждать browser-pass можно только после завершения Windows job точного SHA.
+- Capture отдельно запускает нетронутый baseline и новый интерфейс на реальном API/Chromium; SHA и чистота обоих исходников, SHA harness, размеры и hashes PNG входят в manifest. Инструкции: [SCREENSHOTS](docs/SCREENSHOTS.md).
+- Итоговые статусы и точный SHA проверять в [CI ветки UI-polish](https://github.com/Nurlan-byte/byte/actions?query=branch%3Afeature%2Fbakeplan-ui-polish), после интеграции также в [CI scaffold](https://github.com/Nurlan-byte/byte/actions?query=branch%3Afeature%2Fbakeplan-scaffold). Более ранний зелёный commit не является проверкой текущего.
+- Ручной Windows/WSL2 и физический телефон, touch/Safari, публичный HTTPS и точность реальной пекарни остаются непроверенными. Реальные данные не использовались.
+
+
 Новая ветка `feature/bakeplan-mvp-stabilization` начинается с неизменённого remote `8b8ad0195210c18b9756255db6a7136e0c026206`. В исходной версии [CI](https://github.com/Nurlan-byte/byte/actions/runs/38453855717) прошёл 152 backend, 37 offline, 8 frontend и 12 E2E проверок. Это исторический результат, не доказательство новой версии. Старый полный протокол сохранён отдельно: [HISTORICAL_VERIFICATION](docs/HISTORICAL_VERIFICATION.md).
 
 ## Полностью зелёная контрольная точка стабилизации

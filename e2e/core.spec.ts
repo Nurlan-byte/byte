@@ -1,14 +1,17 @@
 import { test, expect } from '@playwright/test';
 import fs from 'node:fs/promises';
+import { navigate, openHistoryPlan, prepareImport } from './helpers';
 
 test('synthetic CSV → B1 → valid manual confirmation → reload → history → export', async ({ page, request }) => {
   await page.goto('/');
+  await prepareImport(page);
   await page.getByLabel('Содержимое CSV').fill(await fs.readFile('fixtures/synthetic_demo.csv', 'utf8'));
   await page.getByRole('button', { name: 'Проверить и импортировать' }).click();
+  await navigate(page, 'План');
   await page.getByLabel('Дата плана').fill('2026-10-12');
   await page.getByLabel('Данные доступны до').fill('2026-10-11');
   await page.getByRole('button', { name: 'Рассчитать план' }).click();
-  const first = page.locator('tbody tr').first();
+  const first = page.getByTestId('plan-table').locator('tbody tr').first();
   await expect(first).toContainText('65.0');
   const quantity = first.getByRole('spinbutton');
   await quantity.fill('90');
@@ -21,9 +24,10 @@ test('synthetic CSV → B1 → valid manual confirmation → reload → history 
   expect(plan.items[0].confirmed_qty).toBe(84);
   expect(plan.items[0].forecast_mean).toBe(65);
   await page.reload();
+  await navigate(page, 'История');
   await page.getByRole('button', { name: 'Обновить историю' }).click();
-  await page.getByRole('button', { name: /2026-10-12.*synthetic.*confirmed/ }).click();
-  await expect(page.locator('tbody tr').first().getByRole('spinbutton')).toHaveValue('84');
+  await openHistoryPlan(page, '2026-10-12', plan.id);
+  await expect(page.getByTestId('plan-table').locator('tbody tr').first().getByRole('spinbutton')).toHaveValue('84');
   const csv = await (await request.get(`http://127.0.0.1:18000/api/plans/${plan.id}/export`)).text();
   expect(csv).toContain('synthetic');
   expect(csv).toContain(',65.0,60,84,');
@@ -31,12 +35,14 @@ test('synthetic CSV → B1 → valid manual confirmation → reload → history 
 
 test('quantity edits are locked while confirmation response is delayed', async ({ page }) => {
   await page.goto('/');
+  await prepareImport(page);
   await page.getByLabel('Содержимое CSV').fill(await fs.readFile('fixtures/synthetic_demo.csv', 'utf8'));
   await page.getByRole('button', { name: 'Проверить и импортировать' }).click();
+  await navigate(page, 'План');
   await page.getByLabel('Дата плана').fill('2026-10-12');
   await page.getByLabel('Данные доступны до').fill('2026-10-11');
   await page.getByRole('button', { name: 'Рассчитать план' }).click();
-  const quantity = page.locator('tbody tr').first().getByRole('spinbutton');
+  const quantity = page.getByTestId('plan-table').locator('tbody tr').first().getByRole('spinbutton');
   await quantity.fill('84');
   let release!: () => void;
   const pending = new Promise<void>(resolve => { release = resolve; });
@@ -57,9 +63,11 @@ test('quantity edits are locked while confirmation response is delayed', async (
 test('invalid balance is rejected visibly and creates no plan', async ({ page, request }) => {
   const before = await (await request.get('http://127.0.0.1:18000/api/plans')).json();
   await page.goto('/');
+  await prepareImport(page);
   await page.getByLabel('Содержимое CSV').fill(await fs.readFile('fixtures/invalid_balance.csv', 'utf8'));
   await page.getByRole('button', { name: 'Проверить и импортировать' }).click();
   await expect(page.getByRole('alert')).toBeVisible();
+  await navigate(page, 'План');
   await expect(page.getByRole('button', { name: 'Рассчитать план' })).toBeDisabled();
   expect(await (await request.get('http://127.0.0.1:18000/api/plans')).json()).toEqual(before);
 });

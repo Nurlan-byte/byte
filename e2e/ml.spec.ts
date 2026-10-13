@@ -1,4 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
+import { navigate, openHistoryPlan, prepareImport } from './helpers';
 
 const cutoff = '2026-10-11';
 const target = '2026-10-12';
@@ -24,6 +25,7 @@ function historyCsv(salesOnly = false, days = 84) {
 }
 
 async function importHistory(page: Page, options: { salesOnly?: boolean; days?: number; bakery?: string } = {}) {
+  await prepareImport(page, true);
   await page.getByLabel('ID пекарни').fill(options.bakery ?? 'e2e-ml');
   await page.getByLabel('Измеряемая величина').selectOption(options.salesOnly ? 'item_line_count' : 'sold_units');
   await page.getByLabel('Происхождение данных').fill('Synthetic automated integration test, not real bakery data');
@@ -38,6 +40,7 @@ async function importHistory(page: Page, options: { salesOnly?: boolean; days?: 
     await datasetDetails.getByText('Технические данные набора', { exact: true }).click();
   }
   await expect(page.getByTestId('dataset-summary').getByText(`Набор: ${dataset.id}`, { exact: true })).toBeVisible();
+  await navigate(page, 'Модель');
   await page.getByLabel('Срез обучения и прогноза').fill(cutoff);
   await page.getByLabel('Дата прогноза', { exact: true }).fill(target);
   return dataset;
@@ -69,6 +72,7 @@ test('explicit units → train/status → ML forecast → safeguarded plan → c
   await page.getByRole('button', { name: 'Получить прогноз', exact: true }).click();
   await expect(page.getByTestId('forecast-result').getByTestId('evaluation-applicability').first()).toContainText('Горизонт совпадает с оценкой: 2 дн.');
   await page.getByLabel('Дата прогноза', { exact: true }).fill(target);
+  await navigate(page, 'План');
   await page.getByLabel('Базовый метод').selectOption('ML');
   const planned = page.waitForResponse(response => response.url().endsWith('/api/plans') && response.request().method() === 'POST');
   await page.getByRole('button', { name: 'Рассчитать план', exact: true }).click();
@@ -87,6 +91,7 @@ test('explicit units → train/status → ML forecast → safeguarded plan → c
   expect(confirmed.items[0].method).toBe('ML');
 
   await page.reload();
+  await navigate(page, 'Данные');
   await page.getByText('Продолжить работу с сохранённым набором', { exact: true }).click();
   const datasetsLoaded = page.waitForResponse(response =>
     new URL(response.url()).pathname === '/api/datasets' && response.request().method() === 'GET');
@@ -101,11 +106,13 @@ test('explicit units → train/status → ML forecast → safeguarded plan → c
   await savedDataset.selectOption(dataset.id);
   await expect(savedDataset).toHaveValue(dataset.id);
   await page.getByRole('button', { name: 'Открыть набор', exact: true }).click();
+  await navigate(page, 'Модель');
   await page.getByRole('button', { name: 'Обновить модели' }).click();
   await page.getByTestId('model-summary').getByText('Технические данные модели', { exact: true }).click();
   await expect(page.getByTestId('model-summary').getByText(new RegExp(models[0].id))).toBeVisible();
+  await navigate(page, 'История');
   await page.getByRole('button', { name: 'Обновить историю' }).click();
-  await page.getByRole('button', { name: /2026-10-12.*synthetic.*confirmed/ }).first().click();
+  await openHistoryPlan(page, '2026-10-12', plan.id);
   await expect(page.getByTestId('plan-table').locator('tbody tr').first().getByRole('spinbutton')).toHaveValue('84');
   const savedRow = page.getByTestId('plan-table').locator('tbody tr').first();
   await savedRow.getByText('Источники и модель', { exact: true }).click();
@@ -124,10 +131,12 @@ test('sales-only forecast cannot expose production controls or inherit a units m
   expect(sales).toMatchObject({ target: 'item_line_count', unit: 'item_line', schema_version: 'sales-1' });
   await expect(page.getByTestId('model-summary')).toHaveCount(0);
   await expect(page.getByTestId('forecast-result')).toHaveCount(0);
-  await expect(page.getByRole('button', { name: 'Рассчитать план', exact: true })).toHaveCount(0);
-  await expect(page.getByRole('button', { name: 'Подтвердить и сохранить' })).toHaveCount(0);
-  await expect(page.getByRole('button', { name: 'Обновить историю' })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Рассчитать план', exact: true, includeHidden: true })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Подтвердить и сохранить', includeHidden: true })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Обновить историю', includeHidden: true })).toHaveCount(0);
+  await navigate(page, 'План');
   await expect(page.getByTestId('sales-only-notice')).toContainText('не преобразуются');
+  await navigate(page, 'Модель');
   await page.getByRole('button', { name: 'Получить прогноз' }).click();
   await page.getByTestId('forecast-result').getByText('Технические данные прогноза', { exact: true }).click();
   await expect(page.getByTestId('forecast-result').getByText(/Цель: item_line_count · единица: item_line/)).toBeVisible();
@@ -154,6 +163,7 @@ test('short histories report not-ready and explicit B1 fallback', async ({ page 
   const row = page.getByTestId('forecast-table').locator('tbody tr').first();
   await expect(row).toContainText('B1');
   await expect(row).toContainText('Причина перехода');
+  await navigate(page, 'План');
   await page.getByLabel('Базовый метод').selectOption('ML');
   await page.getByRole('button', { name: 'Рассчитать план', exact: true }).click();
   await expect(page.getByTestId('plan-table').locator('tbody tr').first()).toContainText('B1');
@@ -181,7 +191,7 @@ test('training locks edits, retries the same key, and changes key with the cutof
   await expect(page.getByLabel('Измеряемая величина')).toBeDisabled();
   await expect(page.getByLabel('Содержимое CSV')).toBeDisabled();
   await expect(page.getByLabel('Срез обучения и прогноза')).toBeDisabled();
-  await expect(page.getByRole('button', { name: 'Демо строк продаж' })).toBeDisabled();
+  await expect(page.getByRole('button', { name: 'Демо строк продаж', includeHidden: true })).toBeDisabled();
   release();
   await expect(page.getByRole('alert')).toContainText('временно недоступно');
   await page.getByRole('button', { name: 'Обучить модель', exact: true }).click();

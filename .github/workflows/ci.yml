@@ -1,7 +1,7 @@
 name: BakePlan checks
 on:
   push:
-    branches: ['feature/bakeplan-scaffold', 'feature/bakeplan-mvp-stabilization', 'feature/bakeplan-defense-evidence']
+    branches: ['feature/bakeplan-scaffold', 'feature/bakeplan-mvp-stabilization', 'feature/bakeplan-defense-evidence', 'feature/bakeplan-ui-polish']
   pull_request:
   workflow_dispatch:
 permissions:
@@ -9,9 +9,11 @@ permissions:
 jobs:
   verify:
     runs-on: windows-latest
-    timeout-minutes: 15
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - uses: actions/setup-python@v5
         with:
           python-version: '3.14'
@@ -42,6 +44,16 @@ jobs:
           npm.cmd run build
       - name: Browser flow and restart
         run: npm.cmd run test:e2e
+      - name: Capture matching pre-polish UI baseline
+        run: |
+          $PSNativeCommandUseErrorActionPreference = $true
+          $baseline = Join-Path $env:RUNNER_TEMP 'bakeplan-ui-before'
+          git worktree add --detach $baseline 756829475615d37d024b12e720d7cfc9338e4b68
+          npm.cmd --prefix (Join-Path $baseline 'frontend') ci
+          $env:BAKEPLAN_CAPTURE_SOURCE_DIR = $baseline
+          $env:BAKEPLAN_CAPTURE_BASELINE = '1'
+          $env:BAKEPLAN_CAPTURE_EXPECTED_SHA = '756829475615d37d024b12e720d7cfc9338e4b68'
+          npx.cmd playwright test --config=playwright.screenshots.config.ts
       - name: Capture real synthetic UI evidence
         run: npx.cmd playwright test --config=playwright.screenshots.config.ts
       - name: Produce matching synthetic API replay evidence

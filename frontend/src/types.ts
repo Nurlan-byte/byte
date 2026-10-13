@@ -51,6 +51,11 @@ export type Dataset = {
   id: string;
   source: string;
   row_count?: number;
+  rows?: { date: string }[];
+  created_at?: string;
+  missing_calendar_days?: number | null;
+  stockout_count?: number | null;
+  unknown_stockout_count?: number | null;
   diagnostics?: string[];
   bakery_id: string;
   target: DatasetTarget;
