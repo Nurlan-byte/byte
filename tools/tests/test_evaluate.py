@@ -4,23 +4,90 @@ import unittest
 from datetime import date, timedelta
 from pathlib import Path
 
+from backend.forecasting import baseline as shared_baseline
+from backend.imports import CsvValidationError, parse_csv
 from tools.evaluate import baseline, evaluate, features, read_rows
 
 
 def row(day, sold=10, product="001", **changes):
-    return {"date": day, "product_id": product, "sold": sold, "is_open": True,
-            "stockout_status": "none", "opening": 0, **changes}
+    return {
+        "date": day,
+        "product_id": product,
+        "sold": sold,
+        "is_open": True,
+        "stockout_status": "none",
+        "opening": 0,
+        **changes,
+    }
 
 
 class EvaluationTests(unittest.TestCase):
+    def test_shared_parser_rejects_divergent_inputs(self):
+        header = "date,product_id,is_open,opening,produced,sold,waste,closing,other_out,stockout_status\n"
+        valid = "2026-10-01,001,true,0,100,80,20,0,0,none\n"
+        invalid_inputs = (
+            header + valid.replace("true", "TRUE"),
+            header + valid.replace("true", "false"),
+            header + valid.replace("2026-10-01", "20261001"),
+            header + valid.rstrip() + ",extra\n",
+            header + valid.replace(",none", ""),
+            header.replace("date,", "date,date,", 1) + valid,
+        )
+        with tempfile.TemporaryDirectory(dir=Path(__file__).parents[2]) as directory:
+            path = Path(directory) / "history.csv"
+            for text in invalid_inputs:
+                with self.subTest(text=text):
+                    with self.assertRaises(CsvValidationError):
+                        parse_csv(text, allowed_product_ids={"001"})
+                    path.write_text(text, encoding="utf-8")
+                    with self.assertRaises(CsvValidationError):
+                        read_rows(path)
+        rows = parse_csv(header + valid, allowed_product_ids={"001"})
+        self.assertEqual(rows[0]["product_id"], "001")
+        with self.assertRaises(CsvValidationError):
+            parse_csv(header + valid, allowed_product_ids={"p1"})
+        with self.assertRaises(CsvValidationError):
+            parse_csv(header + valid, latest_date=date(2026, 9, 30))
+        with self.assertRaises(CsvValidationError):
+            parse_csv(header + valid + valid.replace("10-01", "10-02"), max_rows=1)
+
+    def test_shared_numerical_baseline_preserves_carryover_and_cutoff(self):
+        target = date(2026, 10, 12)
+        rows = [row(date(2026, 10, 5), 80, opening=10), row(date(2026, 9, 28), 60)]
+        diagnostic = shared_baseline(
+            rows,
+            product_id="001",
+            target_date=target,
+            cutoff=target - timedelta(days=1),
+            method="B0",
+        )
+        self.assertEqual(diagnostic["forecast_mean"], 80)
+        self.assertEqual(diagnostic["used_dates"], ["2026-10-05"])
+        index = {(r["product_id"], r["date"]): r for r in rows}
+        self.assertIsNone(baseline(row(target), index, "B0"))
+        consistent = shared_baseline(
+            rows,
+            product_id="001",
+            target_date=target,
+            cutoff=date(2026, 9, 28),
+            method="B1",
+        )
+        self.assertEqual(
+            consistent["forecast_mean"], baseline(row(target), index, "B1")
+        )
+        self.assertEqual(consistent["forecast_mean"], 60)
+
     def test_pipeline_on_later_synthetic_dates(self):
         try:
             import sklearn  # noqa: F401
         except ImportError:
             self.skipTest("Optional scikit-learn dependencies not installed")
         start = date(2026, 7, 1)
-        rows = [row(start + timedelta(days=i), 10 + i % 7, product)
-                for i in range(70) for product in ("001", "002")]
+        rows = [
+            row(start + timedelta(days=i), 10 + i % 7, product)
+            for i in range(70)
+            for product in ("001", "002")
+        ]
         report = evaluate(rows, "synthetic", "fixture-sha", start + timedelta(days=56))
         self.assertEqual(report["status"], "evaluated")
         self.assertEqual(report["train_n"], 112)
@@ -35,7 +102,10 @@ class EvaluationTests(unittest.TestCase):
 
     def test_baseline_exact_week_and_four_week_mean(self):
         target = row(date(2026, 10, 12))
-        history = [row(date(2026, 8, 17) + timedelta(days=7*i), (i+1)*10) for i in range(8)]
+        history = [
+            row(date(2026, 8, 17) + timedelta(days=7 * i), (i + 1) * 10)
+            for i in range(8)
+        ]
         index = {(r["product_id"], r["date"]): r for r in history}
         self.assertEqual(baseline(target, index, "B0"), 80)
         self.assertEqual(baseline(target, index, "B1"), 65)
@@ -56,7 +126,9 @@ class EvaluationTests(unittest.TestCase):
         self.assertEqual(baseline(target, index, "B0"), 0)
 
     def test_insufficient_history_refuses_before_model_import(self):
-        result = evaluate([row(date(2026, 10, 1))], "synthetic", "test-sha", date(2026, 10, 2))
+        result = evaluate(
+            [row(date(2026, 10, 1))], "synthetic", "test-sha", date(2026, 10, 2)
+        )
         self.assertEqual(result["status"], "refused")
         self.assertEqual(result["source"], "synthetic")
 
@@ -67,23 +139,45 @@ class EvaluationTests(unittest.TestCase):
             path = Path(directory) / "history.csv"
             path.write_text(header + valid, encoding="utf-8")
             self.assertEqual(read_rows(path)[0]["product_id"], "001")
-            for invalid in (valid + valid, valid.replace(",100,", ",100.0,"), valid.replace(",80,", ",81,"), valid.replace(",80,", ",NaN,")):
+            for invalid in (
+                valid + valid,
+                valid.replace(",100,", ",100.0,"),
+                valid.replace(",80,", ",81,"),
+                valid.replace(",80,", ",NaN,"),
+            ):
                 path.write_text(header + invalid, encoding="utf-8")
                 with self.assertRaises(ValueError):
                     read_rows(path)
-
 
     def test_documented_cli_creates_nested_output_directory(self):
         import json
         import subprocess
         import sys
+
         root = Path(__file__).parents[2]
         with tempfile.TemporaryDirectory(dir=root) as directory:
             output = Path(directory) / "absent" / "private" / "local-report.json"
             self.assertFalse(output.parent.exists())
-            result = subprocess.run([sys.executable, str(root / "tools/evaluate.py"), str(root / "fixtures/synthetic_demo.csv"), "--source", "synthetic", "--split-date", "2026-09-28", "--output", str(output)], capture_output=True, text=True, timeout=120)
+            result = subprocess.run(
+                [
+                    sys.executable,
+                    str(root / "tools/evaluate.py"),
+                    str(root / "fixtures/synthetic_demo.csv"),
+                    "--source",
+                    "synthetic",
+                    "--split-date",
+                    "2026-09-28",
+                    "--output",
+                    str(output),
+                ],
+                capture_output=True,
+                text=True,
+                timeout=120,
+            )
             self.assertEqual(result.returncode, 0, result.stderr)
-            self.assertEqual(json.loads(output.read_text(encoding="utf-8"))["status"], "evaluated")
+            self.assertEqual(
+                json.loads(output.read_text(encoding="utf-8"))["status"], "evaluated"
+            )
 
 
 if __name__ == "__main__":
