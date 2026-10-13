@@ -6,10 +6,10 @@ import path from 'node:path';
 
 test('saved SQLite snapshots survive real API process restart and another import', async ({ request }) => {
   const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'bakeplan-restart-'));
-  const base = 'http://127.0.0.1:8001/api';
+  const base = 'http://127.0.0.1:18001/api';
   let child: ChildProcess | undefined;
   async function start() {
-    child = spawn(path.resolve(process.platform === 'win32' ? '.venv/Scripts/python.exe' : '.venv/bin/python'), ['-m','uvicorn','backend.app:app','--host','127.0.0.1','--port','8001'], {env:{...process.env,BAKEPLAN_DB:path.join(directory,'test.sqlite3')}, windowsHide:true,stdio:'ignore'});
+    child = spawn(path.resolve(process.platform === 'win32' ? '.venv/Scripts/python.exe' : '.venv/bin/python'), ['-m','uvicorn','backend.app:app','--host','127.0.0.1','--port','18001'], {env:{...process.env,BAKEPLAN_DB:path.join(directory,'test.sqlite3')}, windowsHide:true,stdio:'ignore'});
     await expect.poll(async () => {try {return (await request.get(`${base}/plans`)).status()} catch {return 0}}).toBe(200);
   }
   async function stop() {
@@ -32,6 +32,6 @@ test('saved SQLite snapshots survive real API process restart and another import
     await stop(); await start();
     expect(await (await request.get(`${base}/plans/${plan.id}`)).json()).toEqual(saved);
     expect(await (await request.get(`${base}/plans/${plan.id}/export`)).text()).toBe(exported);
-    expect(await (await request.get(`${base}/plans`)).json()).toContainEqual(saved);
+    expect((await (await request.get(`${base}/plans`)).json()).map((p:{id:string})=>p.id)).toContain(saved.id);
   } finally { await stop(); await fs.rm(directory,{recursive:true,force:true}); }
 });

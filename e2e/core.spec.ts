@@ -16,15 +16,15 @@ test('synthetic CSV → B1 → valid manual confirmation → reload → history 
   await quantity.fill('84');
   await page.getByRole('button', { name: 'Подтвердить и сохранить' }).click();
   await expect(page.getByRole('status')).toContainText('сохран');
-  const plans = await (await request.get('http://127.0.0.1:8000/api/plans')).json();
-  const plan = plans[0];
+  const plans = await (await request.get('http://127.0.0.1:18000/api/plans')).json();
+  const plan = await (await request.get(`http://127.0.0.1:18000/api/plans/${plans[0].id}`)).json();
   expect(plan.items[0].confirmed_qty).toBe(84);
   expect(plan.items[0].forecast_mean).toBe(65);
   await page.reload();
   await page.getByRole('button', { name: 'Обновить историю' }).click();
   await page.getByRole('button', { name: /2026-10-12.*synthetic.*confirmed/ }).click();
   await expect(page.locator('tbody tr').first().getByRole('spinbutton')).toHaveValue('84');
-  const csv = await (await request.get(`http://127.0.0.1:8000/api/plans/${plan.id}/export`)).text();
+  const csv = await (await request.get(`http://127.0.0.1:18000/api/plans/${plan.id}/export`)).text();
   expect(csv).toContain('synthetic');
   expect(csv).toContain(',65.0,60,84,');
 });
@@ -55,20 +55,20 @@ test('quantity edits are locked while confirmation response is delayed', async (
 });
 
 test('invalid balance is rejected visibly and creates no plan', async ({ page, request }) => {
-  const before = await (await request.get('http://127.0.0.1:8000/api/plans')).json();
+  const before = await (await request.get('http://127.0.0.1:18000/api/plans')).json();
   await page.goto('/');
   await page.getByLabel('Содержимое CSV').fill(await fs.readFile('fixtures/invalid_balance.csv', 'utf8'));
   await page.getByRole('button', { name: 'Проверить и импортировать' }).click();
   await expect(page.getByRole('alert')).toBeVisible();
   await expect(page.getByRole('button', { name: 'Рассчитать план' })).toBeDisabled();
-  expect(await (await request.get('http://127.0.0.1:8000/api/plans')).json()).toEqual(before);
+  expect(await (await request.get('http://127.0.0.1:18000/api/plans')).json()).toEqual(before);
 });
 
 test('confirmation retry is idempotent, altered retry and stale revision conflict', async ({ request }) => {
-  const dataset = await (await request.post('http://127.0.0.1:8000/api/datasets', { data: { csv_text: await fs.readFile('fixtures/synthetic_demo.csv','utf8'), source:'synthetic' } })).json();
-  const plan = await (await request.post('http://127.0.0.1:8000/api/plans', { data: {dataset_id:dataset.id,target_date:'2026-10-12',cutoff:'2026-10-11',method:'B1',mode:'replay'} })).json();
+  const dataset = await (await request.post('http://127.0.0.1:18000/api/datasets', { data: { csv_text: await fs.readFile('fixtures/synthetic_demo.csv','utf8'), source:'synthetic' } })).json();
+  const plan = await (await request.post('http://127.0.0.1:18000/api/plans', { data: {dataset_id:dataset.id,target_date:'2026-10-12',cutoff:'2026-10-11',method:'B1',mode:'replay'} })).json();
   const data = { revision:0,idempotency_key:'browser-retry',quantities:Object.fromEntries(plan.items.map((i:{product_id:string;recommended_qty:number})=>[i.product_id,i.recommended_qty])) };
-  const url=`http://127.0.0.1:8000/api/plans/${plan.id}/confirm`;
+  const url=`http://127.0.0.1:18000/api/plans/${plan.id}/confirm`;
   const first=await request.post(url,{data}); expect(first.status()).toBe(200);
   expect(await (await request.post(url,{data})).json()).toEqual(await first.json());
   expect((await request.post(url,{data:{...data,quantities:{...data.quantities,p1:84}}})).status()).toBe(409);
