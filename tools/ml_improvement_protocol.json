@@ -1,0 +1,131 @@
+{
+  "candidate_budget": {
+    "maximum_fits": 36,
+    "new_configurations": 4,
+    "new_families": 2,
+    "no_grid_search_or_followup_retuning": true
+  },
+  "candidates": [
+    {
+      "alpha": 100.0,
+      "complexity_order": 0,
+      "family": "Ridge residual around unchanged B1",
+      "id": "ridge_residual_a100"
+    },
+    {
+      "alpha": 10.0,
+      "complexity_order": 1,
+      "family": "Ridge residual around unchanged B1",
+      "id": "ridge_residual_a10"
+    },
+    {
+      "complexity_order": 2,
+      "early_stopping": false,
+      "family": "HistGradientBoosting residual around unchanged B1",
+      "id": "hgb_residual_d2",
+      "l2_regularization": 10.0,
+      "learning_rate": 0.05,
+      "loss": "absolute_error",
+      "max_depth": 2,
+      "max_iter": 60,
+      "max_leaf_nodes": 7,
+      "min_samples_leaf": 20,
+      "random_state": 0
+    },
+    {
+      "complexity_order": 3,
+      "early_stopping": false,
+      "family": "HistGradientBoosting residual around unchanged B1",
+      "id": "hgb_residual_d3",
+      "l2_regularization": 10.0,
+      "learning_rate": 0.05,
+      "loss": "absolute_error",
+      "max_depth": 3,
+      "max_iter": 60,
+      "max_leaf_nodes": 7,
+      "min_samples_leaf": 20,
+      "random_state": 0
+    }
+  ],
+  "cohort": [
+    "Bread",
+    "Pastry",
+    "Medialuna",
+    "Cookies",
+    "Cake"
+  ],
+  "cohort_rule": "Original five items fixed by positive-date coverage on original train only; CV is conditional on this fixed original-train cohort, not prospective item selection",
+  "common_keys": "Fixed intersection of finite B0/B1/priorPoisson predictions per original period; candidates cannot remove inconvenient dates and keep all these keys using flagged B1 fallback",
+  "cv_folds": [
+    {
+      "end": "2016-12-14",
+      "start": "2016-12-01",
+      "train_end": "2016-11-30"
+    },
+    {
+      "end": "2016-12-28",
+      "start": "2016-12-15",
+      "train_end": "2016-12-14"
+    },
+    {
+      "end": "2017-01-11",
+      "start": "2016-12-29",
+      "train_end": "2016-12-28"
+    },
+    {
+      "end": "2017-01-31",
+      "start": "2017-01-12",
+      "train_end": "2017-01-11"
+    }
+  ],
+  "dataset_sha256": "5f7e0af51f4bf985f0d2ac2e35209c94d2426726993b98d1c2e9d8bc145860ee",
+  "deployment": "No operational API integration, SQLite writes, physical unit conversion, economic/savings claims or public raw data.",
+  "features": [
+    "item categorical",
+    "weekday categorical",
+    "calendar lag1/7/14/21/28",
+    "unchanged B1 prior weekday mean",
+    "prior7 observed-date mean min3 observations",
+    "prior14 observed-date mean min3 observations",
+    "prior7 mean minus previous7 mean min3 each",
+    "lag7 minus B1",
+    "prior7 observation fraction"
+  ],
+  "history_mode": "Explicit rolling-one-day-ahead; only previous day-complete observations may update lags; no intra-day or fixed-horizon claims",
+  "output": "Named ML residual correction plus B1, clipped to nonnegative count. Nonfinite/failed model falls back to unchanged B1, with explicit flags; never operational quantities",
+  "parent_code_sha": "e00baa6af2917bb0b2fee34ab814a5e90d318d78",
+  "primary_zero_policy": "observed-store-zero",
+  "references": [
+    "B0 unchanged",
+    "B1 unchanged",
+    "prior Poisson unchanged alpha1 lag7/14"
+  ],
+  "report": "All fixed candidates CV/validation/peritem/fallback results, selection reasons, predictions and coverage; chosen-candidate test exploratory label; missing-SKU sensitivity and first/second temporal test halves; source/protocol/version hashes; reproducible JSON without timestamps",
+  "selection": {
+    "cv_fold_count": 4,
+    "maximum_missing_validation_relative_degradation": 0.05,
+    "maximum_validation_per_item_relative_degradation": 0.1,
+    "minimum_cv_wins": 3,
+    "minimum_paired_dates_per_item": 7,
+    "minimum_pooled_cv_gain_vs_B1": 0.01,
+    "minimum_raw_finite_coverage": 0.95,
+    "minimum_validation_gain_vs_B1": 0.02,
+    "no_eligible_candidate": "retain B1; no claimed ML win",
+    "primary_metric": "original validation pooled MAE, observed-store-zero, identical reference keys",
+    "tie_rule": "lower complexity_order",
+    "tie_within_best_relative_mae": 0.01,
+    "zero_B1_per_item_absolute_tolerance": 0.25
+  },
+  "sensitivity_zero_policy": "missing; validation guard only, no reranking based on test sensitivity",
+  "target": "transaction item-line count per selected item per observed store date; not pieces/demand",
+  "test_end": "2017-04-09",
+  "test_execution": "Select using only CV/original validation and missing-validation guard. Evaluate selected candidate and three unchanged references on original previously-seen test once. No unselected candidate test scores; no refit on validation/test",
+  "test_start": "2017-03-01",
+  "test_status": "Previously inspected original test; any new score is exploratory, not fresh independent evidence",
+  "train_end": "2017-01-31",
+  "training": "Fit residual target actual minus past-only B1; use only training rows with finite past B1, at least14 fit rows per item; references use original train rows",
+  "transform": "Each fold train-only median imputer+missing indicators, scaler and onehot; missing labels remain absent or explicitly inferred zeros according to frozen policy",
+  "validation_end": "2017-02-28",
+  "validation_start": "2017-02-01",
+  "version": "sales-ml-improvement-v1"
+}
