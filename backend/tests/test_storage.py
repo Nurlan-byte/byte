@@ -51,7 +51,7 @@ def test_migrate_preserves_all_payloads_and_backup(db):
             original[table] = con.execute(f"SELECT * FROM {table}").fetchall()
     storage.initialize_database()
     with storage.connection() as con:
-        assert con.execute("PRAGMA user_version").fetchone()[0] == 2
+        assert con.execute("PRAGMA user_version").fetchone()[0] == 3
         for table, rows in original.items():
             columns = "id,payload" if table in {"datasets", "plans"} else "*"
             assert con.execute(f"SELECT {columns} FROM {table}").fetchall() == rows

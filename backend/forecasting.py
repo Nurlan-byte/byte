@@ -26,11 +26,12 @@ def baseline(
     if method not in {"B0", "B1"}:
         raise ValueError("Unknown baseline method")
     eligibility = eligible or suitable
+    history_start = date.fromordinal(max(1, target_date.toordinal() - 56))
     candidates = [
         row
         for row in rows
         if row["product_id"] == product_id
-        and target_date - timedelta(days=56) <= row_date(row) < target_date
+        and history_start <= row_date(row) < target_date
         and row_date(row) <= cutoff
         and row_date(row).weekday() == target_date.weekday()
         and eligibility(row)

@@ -1,6 +1,6 @@
 """Pure production constraints; numerical baseline and automatic eligibility differ."""
 
-from datetime import date, timedelta
+from datetime import date
 from backend.forecasting import baseline
 
 DEFICIT_MANUAL_THRESHOLD = 0.5
@@ -21,11 +21,12 @@ def plan_item(
     method: str,
     target_is_open: bool,
 ) -> dict:
+    history_start = date.fromordinal(max(1, target.toordinal() - 56))
     history = [
         r
         for r in rows
         if r["product_id"] == product["product_id"]
-        and target - timedelta(days=56) <= date.fromisoformat(r["date"]) <= cutoff
+        and history_start <= date.fromisoformat(r["date"]) <= cutoff
         and (not product.get("active_from") or r["date"] >= product["active_from"])
         and (not product.get("active_to") or r["date"] <= product["active_to"])
     ]

@@ -47,90 +47,127 @@ def dataset_metadata(dataset):
     )
 
 
+def _backup_database(con, path, version):
+    backup_path = path.with_name(path.name + f".pre-v{version}.bak")
+    if backup_path.exists():
+        raise RuntimeError(
+            f"Migration backup already exists: {backup_path}; inspect it before retrying"
+        )
+    with sqlite3.connect(backup_path) as backup:
+        con.backup(backup)
+
+
 def initialize_database(path=None):
-    """Backup existing v0/v1 databases before an atomic, non-destructive v2 migration."""
+    """Apply additive migrations, preserving historical payload bytes and IDs.
+
+    Existing databases receive a SQLite snapshot before each schema migration.
+    Fresh databases need no backup. A failed migration is rolled back, and an
+    existing backup is never silently overwritten on retry.
+    """
     path = database_path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
     with connection(path) as con:
         version = con.execute("PRAGMA user_version").fetchone()[0]
-        if version > 2:
+        if version > 3:
             raise RuntimeError("Database schema is newer than this application")
-        if version == 2:
+        if version == 3:
             return
-        tables = {
-            r[0]
-            for r in con.execute("SELECT name FROM sqlite_master WHERE type='table'")
-        }
-        if tables:
-            backup_path = path.with_name(path.name + ".pre-v2.bak")
-            if backup_path.exists():
-                raise RuntimeError(
-                    f"Migration backup already exists: {backup_path}; inspect it before retrying"
-                )
-            with sqlite3.connect(backup_path) as backup:
-                con.backup(backup)
+        existing_database = bool(
+            con.execute(
+                "SELECT 1 FROM sqlite_master WHERE type='table' LIMIT 1"
+            ).fetchone()
+        )
+        if version < 2:
+            if existing_database:
+                _backup_database(con, path, 2)
+            con.execute("BEGIN IMMEDIATE")
+            _migrate_v2(con)
+            # Snapshotting a live write transaction would block SQLite backup.
+            con.commit()
+        if existing_database:
+            _backup_database(con, path, 3)
         con.execute("BEGIN IMMEDIATE")
         con.execute(
-            "CREATE TABLE IF NOT EXISTS datasets(id TEXT PRIMARY KEY, payload TEXT NOT NULL)"
+            "CREATE TABLE models("
+            "id TEXT PRIMARY KEY,dataset_id TEXT NOT NULL,"
+            "training_cutoff TEXT NOT NULL,protocol_version TEXT NOT NULL,"
+            "payload TEXT NOT NULL,artifact_hash TEXT NOT NULL,"
+            "UNIQUE(dataset_id,training_cutoff,protocol_version))"
         )
         con.execute(
-            "CREATE TABLE IF NOT EXISTS plans(id TEXT PRIMARY KEY, payload TEXT NOT NULL)"
+            "CREATE TABLE training_requests("
+            "dataset_id TEXT NOT NULL,key TEXT NOT NULL,body TEXT NOT NULL,"
+            "model_id TEXT NOT NULL,PRIMARY KEY(dataset_id,key),"
+            "FOREIGN KEY(model_id) REFERENCES models(id))"
         )
         con.execute(
-            "CREATE TABLE IF NOT EXISTS confirmations(plan_id TEXT,key TEXT,body TEXT,response TEXT,PRIMARY KEY(plan_id,key))"
+            "CREATE INDEX model_dataset_cutoff ON models(dataset_id,training_cutoff)"
         )
+        con.execute("PRAGMA user_version=3")
+
+
+def _migrate_v2(con):
+    con.execute(
+        "CREATE TABLE IF NOT EXISTS datasets(id TEXT PRIMARY KEY, payload TEXT NOT NULL)"
+    )
+    con.execute(
+        "CREATE TABLE IF NOT EXISTS plans(id TEXT PRIMARY KEY, payload TEXT NOT NULL)"
+    )
+    con.execute(
+        "CREATE TABLE IF NOT EXISTS confirmations(plan_id TEXT,key TEXT,body TEXT,response TEXT,PRIMARY KEY(plan_id,key))"
+    )
+    con.execute(
+        "CREATE TABLE IF NOT EXISTS revisions(plan_id TEXT,revision INTEGER,payload TEXT,PRIMARY KEY(plan_id,revision))"
+    )
+    columns = {
+        "datasets": {
+            "schema_version": "TEXT",
+            "source": "TEXT",
+            "content_hash": "TEXT",
+            "created_at": "TEXT",
+            "row_count": "INTEGER",
+            "canonical_dataset_id": "TEXT",
+        },
+        "plans": {
+            "schema_version": "TEXT",
+            "source": "TEXT",
+            "created_at": "TEXT",
+            "target_date": "TEXT",
+            "revision": "INTEGER",
+            "status": "TEXT",
+            "dataset_id": "TEXT",
+        },
+    }
+    for table, additions in columns.items():
+        existing = {r[1] for r in con.execute(f"PRAGMA table_info({table})")}
+        for name, kind in additions.items():
+            if name not in existing:
+                con.execute(f"ALTER TABLE {table} ADD COLUMN {name} {kind}")
+    con.execute(
+        "CREATE TABLE dataset_import_keys(source TEXT NOT NULL,schema_version TEXT NOT NULL,content_hash TEXT NOT NULL,dataset_id TEXT NOT NULL,PRIMARY KEY(source,schema_version,content_hash))"
+    )
+    for ident, payload in con.execute(
+        "SELECT id,payload FROM datasets ORDER BY rowid"
+    ).fetchall():
+        meta = dataset_metadata(json.loads(payload))
+        schema, source, content_hash, _, _ = meta
         con.execute(
-            "CREATE TABLE IF NOT EXISTS revisions(plan_id TEXT,revision INTEGER,payload TEXT,PRIMARY KEY(plan_id,revision))"
+            "INSERT OR IGNORE INTO dataset_import_keys VALUES (?,?,?,?)",
+            (source, schema, content_hash, ident),
         )
-        columns = {
-            "datasets": {
-                "schema_version": "TEXT",
-                "source": "TEXT",
-                "content_hash": "TEXT",
-                "created_at": "TEXT",
-                "row_count": "INTEGER",
-                "canonical_dataset_id": "TEXT",
-            },
-            "plans": {
-                "schema_version": "TEXT",
-                "source": "TEXT",
-                "created_at": "TEXT",
-                "target_date": "TEXT",
-                "revision": "INTEGER",
-                "status": "TEXT",
-                "dataset_id": "TEXT",
-            },
-        }
-        for table, additions in columns.items():
-            existing = {r[1] for r in con.execute(f"PRAGMA table_info({table})")}
-            for name, kind in additions.items():
-                if name not in existing:
-                    con.execute(f"ALTER TABLE {table} ADD COLUMN {name} {kind}")
+        canonical = con.execute(
+            "SELECT dataset_id FROM dataset_import_keys WHERE source=? AND schema_version=? AND content_hash=?",
+            (source, schema, content_hash),
+        ).fetchone()[0]
         con.execute(
-            "CREATE TABLE dataset_import_keys(source TEXT NOT NULL,schema_version TEXT NOT NULL,content_hash TEXT NOT NULL,dataset_id TEXT NOT NULL,PRIMARY KEY(source,schema_version,content_hash))"
+            "UPDATE datasets SET schema_version=?,source=?,content_hash=?,created_at=?,row_count=?,canonical_dataset_id=? WHERE id=?",
+            (*meta, canonical, ident),
         )
-        for ident, payload in con.execute(
-            "SELECT id,payload FROM datasets ORDER BY rowid"
-        ).fetchall():
-            meta = dataset_metadata(json.loads(payload))
-            schema, source, content_hash, _, _ = meta
-            con.execute(
-                "INSERT OR IGNORE INTO dataset_import_keys VALUES (?,?,?,?)",
-                (source, schema, content_hash, ident),
-            )
-            canonical = con.execute(
-                "SELECT dataset_id FROM dataset_import_keys WHERE source=? AND schema_version=? AND content_hash=?",
-                (source, schema, content_hash),
-            ).fetchone()[0]
-            con.execute(
-                "UPDATE datasets SET schema_version=?,source=?,content_hash=?,created_at=?,row_count=?,canonical_dataset_id=? WHERE id=?",
-                (*meta, canonical, ident),
-            )
-        for ident, payload in con.execute("SELECT id,payload FROM plans").fetchall():
-            _update_plan_metadata(con, json.loads(payload), ident)
-        con.execute("CREATE INDEX dataset_created ON datasets(created_at)")
-        con.execute("CREATE INDEX plan_created ON plans(created_at)")
-        con.execute("PRAGMA user_version=2")
+    for ident, payload in con.execute("SELECT id,payload FROM plans").fetchall():
+        _update_plan_metadata(con, json.loads(payload), ident)
+    con.execute("CREATE INDEX dataset_created ON datasets(created_at)")
+    con.execute("CREATE INDEX plan_created ON plans(created_at)")
+    con.execute("PRAGMA user_version=2")
 
 
 def fetch(con, table, ident):

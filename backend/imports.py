@@ -63,6 +63,8 @@ def parse_csv(
                     if not value.isascii() or not value.isdigit():
                         raise ValueError(f"{field}: требуется неотрицательное целое")
                     nums[field] = int(value)
+                    if nums[field] > 1_000_000_000:
+                        raise ValueError(f"{field}: максимум 1000000000")
                 if nums["opening"] + nums["produced"] != sum(
                     nums[k] for k in ("sold", "waste", "closing", "other_out")
                 ):

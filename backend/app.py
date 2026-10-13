@@ -11,7 +11,15 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 from backend.config import CATALOG, business_today
 from backend.imports import CsvValidationError, parse_csv as parse_history
 from backend.imports import REQUIRED as REQUIRED
-from backend.schemas import ImportRequest, PlanRequest, ConfirmRequest
+from backend.schemas import (
+    ImportRequest,
+    PlanRequest,
+    ConfirmRequest,
+    TrainRequest,
+    ForecastRequest,
+)
+from backend.dataset_identity import identity
+from backend.ml_service import train_dataset, models_for_dataset, create_forecast
 from backend.services import (
     ServiceError,
     import_history,
@@ -37,7 +45,7 @@ async def lifespan(app):
     yield
 
 
-app = FastAPI(title="BakePlan", version="0.2.0", lifespan=lifespan)
+app = FastAPI(title="BakePlan", version="0.3.0", lifespan=lifespan)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"],
@@ -115,7 +123,7 @@ def health():
             con.execute("SELECT 1")
     except OSError, sqlite3.Error:
         raise HTTPException(503, "Хранилище недоступно") from None
-    return {"status": "ok", "app_version": "0.2.0", "db_status": "ok"}
+    return {"status": "ok", "app_version": "0.3.0", "db_status": "ok"}
 
 
 @app.get("/api/catalog")
@@ -137,7 +145,24 @@ def datasets(limit: int = Query(20, ge=1, le=100), offset: int = Query(0, ge=0))
 
 @app.get("/api/datasets/{ident}")
 def dataset_detail(ident: str):
-    return get_dataset(ident)
+    return identity(get_dataset(ident))
+
+
+@app.post("/api/datasets/{ident}/train")
+def train(ident: str, body: TrainRequest, response: Response):
+    model, created = train_dataset(ident, body, business_today())
+    response.status_code = 201 if created else 200
+    return model
+
+
+@app.get("/api/datasets/{ident}/models")
+def model_status(ident: str):
+    return models_for_dataset(ident)
+
+
+@app.post("/api/forecasts")
+def forecast(body: ForecastRequest):
+    return create_forecast(body, business_today())
 
 
 @app.post("/api/plans", status_code=201)
