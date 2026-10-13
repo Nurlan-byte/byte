@@ -214,3 +214,124 @@ textarea:disabled {
   background: #f4f5f1;
   color: #68766b;
 }
+
+.workflow {
+  display: flex;
+  gap: 8px 20px;
+  flex-wrap: wrap;
+  list-style: none;
+  padding: 0;
+  margin: 0 0 20px;
+}
+.workflow a {
+  margin: 0;
+  display: inline-block;
+  padding: 8px 0;
+  font-weight: 600;
+}
+section {
+  scroll-margin-top: 16px;
+}
+input,
+select,
+textarea {
+  max-width: 100%;
+  min-width: 0;
+}
+.controls > * {
+  min-width: min(100%, 190px);
+  max-width: 100%;
+}
+input[type="checkbox"] {
+  align-self: flex-start;
+  width: 22px;
+  height: 22px;
+}
+:focus-visible {
+  outline: 3px solid #d49e3d;
+  outline-offset: 3px;
+}
+summary {
+  padding: 9px 0;
+  font-weight: 600;
+}
+details p,
+.success p {
+  overflow-wrap: anywhere;
+}
+.item-details summary {
+  font-size: 13px;
+  font-weight: 500;
+}
+.item-details p {
+  font-size: 12px;
+}
+.quantity-guide {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 14px;
+  padding: 12px 16px;
+  background: #f5f7f2;
+  border-radius: 8px;
+  margin: 16px 0;
+}
+.quantity-guide p {
+  margin: 0;
+  font-size: 13px;
+}
+.plan-heading {
+  border-top: 1px solid #dedfd6;
+  margin-top: 24px;
+  padding-top: 8px;
+}
+.optional-step,
+.pending {
+  color: #24583e;
+  background: #edf7ef;
+  padding: 12px;
+  border-radius: 8px;
+}
+.stale-result,
+.evaluation-warning {
+  margin: 16px 0;
+  background: #fff4d9;
+  color: #6b4814;
+  padding: 12px 16px;
+  border-radius: 8px;
+}
+.unsaved {
+  color: #8a5c11;
+}
+.table table {
+  min-width: 700px;
+}
+.table td:last-child {
+  min-width: 230px;
+}
+@media (max-width: 650px) {
+  .controls {
+    gap: 14px;
+  }
+  .controls > label,
+  .controls > div {
+    flex-basis: 100%;
+    width: 100%;
+  }
+  .actions > button {
+    flex: 1 1 100%;
+  }
+  .quantity-guide {
+    grid-template-columns: 1fr;
+  }
+  .workflow {
+    gap: 0 16px;
+  }
+  .table {
+    border: 1px solid #dedfd6;
+    border-radius: 8px;
+  }
+  th,
+  td {
+    padding: 12px 9px;
+  }
+}

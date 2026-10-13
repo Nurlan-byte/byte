@@ -3,6 +3,9 @@ import type { Plan } from "./types";
 import type { SectionProps } from "./sectionProps";
 import { validQuantity } from "./quantities";
 import { businessDate } from "./dates";
+import { planInputsChanged } from "./snapshots";
+import { methodText, reasonText } from "./explanations";
+import { EvaluationNotice } from "./EvaluationNotice";
 export function PlanningSection({
   dataset,
   plan,
@@ -54,9 +57,20 @@ export function PlanningSection({
       </aside>
     );
   }
+  const stale =
+    plan != null &&
+    planInputsChanged(plan, { target, cutoff, method, targetOpen });
+  const closed =
+    plan?.items.length &&
+    plan.items.every((item) => item.target_is_open === false);
+  const calendarKnown = plan?.items.some((item) => item.target_is_open != null);
   return (
-    <section>
-      <h2>2. Расчёт и ручная проверка</h2>
+    <section id="planning" aria-labelledby="planning-heading">
+      <h2 id="planning-heading">2. Расчёт и ручная проверка</h2>
+      <p>
+        B1 работает без обучения. ML — необязательный эксперимент; фактический
+        метод и переход на B1 будут показаны для каждого товара.
+      </p>
       <p>
         Срез включает только завершённые дни строго раньше сегодня. При задержке
         учёта сдвиньте его назад: время фактической готовности данных не
@@ -106,7 +120,7 @@ export function PlanningSection({
         </label>
       </div>
       <button
-        disabled={busy || !dataset}
+        disabled={busy || !dataset || !target || !cutoff}
         onClick={() =>
           void run(async () =>
             show(
@@ -127,23 +141,69 @@ export function PlanningSection({
       {!dataset && <p className="muted">Сначала импортируйте CSV.</p>}
       {plan && (
         <>
-          <p>
-            План на <strong>{plan.target_date}</strong> · {plan.source} ·{" "}
-            {plan.mode === "replay"
-              ? "Историческое воспроизведение"
-              : "Операционный план"}{" "}
-            · {plan.status} · версия {plan.revision}
-          </p>
-          <p className="muted">
-            Набор плана: {plan.dataset_id} · срез: {plan.cutoff} ·{" "}
-            {plan.target ?? "sold_units"} / {plan.unit ?? "physical_unit"}
-          </p>
-          {plan.model_id && (
+          <div className="plan-heading">
+            <h3>Проверьте выпуск перед подтверждением</h3>
             <p>
-              Снимок модели: {plan.model_id} · протокол:{" "}
-              {plan.protocol_version ?? "не указан"}
+              План на <strong>{plan.target_date}</strong> · {plan.source} ·{" "}
+              {plan.mode === "replay"
+                ? "Историческое воспроизведение"
+                : "Операционный план"}{" "}
+              · {plan.status} · версия {plan.revision}
+            </p>
+            <p>
+              Срез: {plan.cutoff} · выбранный метод:{" "}
+              {plan.requested_method ?? "не сохранён в старом плане"} · день{" "}
+              {calendarKnown
+                ? closed
+                  ? "закрыт"
+                  : "открыт"
+                : "не указан в старом плане"}
+              .
+            </p>
+          </div>
+          {stale && (
+            <aside data-testid="stale-plan" className="stale-result">
+              Параметры изменены. Ниже показан прежний план на{" "}
+              {plan.target_date}, срез {plan.cutoff}. Нажмите «Рассчитать план»
+              заново или верните прежние параметры. Подтверждение пока
+              недоступно.
+            </aside>
+          )}
+          {dataset && dataset.id !== plan.dataset_id && (
+            <p className="muted">
+              Открыт план другого сохранённого набора. Новый расчёт использует
+              текущий набор из раздела импорта.
             </p>
           )}
+          <div className="quantity-guide">
+            <p>
+              <strong>Прогноз</strong> — оценка продаж, без округления к партии.
+            </p>
+            <p>
+              <strong>Рекомендация</strong> — допустимая партия. При ручном
+              режиме 0 — заготовка, не прогноз нулевого спроса.
+            </p>
+            <p>
+              <strong>Подтверждение</strong> — ваш выпуск. Изменение поля
+              сохраняется только после кнопки «Подтвердить и сохранить».
+            </p>
+          </div>
+          <details>
+            <summary>Технические данные плана</summary>
+            <p>
+              План: {plan.id} · набор плана: {plan.dataset_id}
+            </p>
+            <p>
+              Версия данных: {plan.dataset_version ?? "не указана"} ·{" "}
+              {plan.target ?? "sold_units"} / {plan.unit ?? "physical_unit"}
+            </p>
+            {plan.model_id && (
+              <p>
+                Снимок модели: {plan.model_id} · протокол:{" "}
+                {plan.protocol_version ?? "не указан"}
+              </p>
+            )}
+          </details>
           <div className="table">
             <table data-testid="plan-table">
               <thead>
@@ -171,12 +231,21 @@ export function PlanningSection({
                         ? "Нет оценки"
                         : i.forecast_mean.toFixed(1)}
                     </td>
-                    <td>{i.recommended_qty}</td>
+                    <td>
+                      {i.recommended_qty}
+                      {i.automatic_eligible === false && (
+                        <small>
+                          {i.target_is_open === false
+                            ? "Закрытый день"
+                            : "Ручная заготовка"}
+                        </small>
+                      )}
+                    </td>
                     <td>
                       <input
                         aria-label={`Количество ${i.name}`}
                         type="number"
-                        disabled={busy}
+                        disabled={busy || stale || i.target_is_open === false}
                         min="0"
                         max={
                           Math.floor(i.max_daily_qty / i.batch_size) *
@@ -191,6 +260,18 @@ export function PlanningSection({
                           })
                         }
                       />
+                      <small>
+                        {i.confirmed_qty == null
+                          ? "Ещё не сохранено"
+                          : `Сохранено: ${i.confirmed_qty} шт.`}
+                      </small>
+                      {i.confirmed_qty != null &&
+                        quantities[i.product_id] !==
+                          String(i.confirmed_qty) && (
+                          <small className="unsaved">
+                            Есть несохранённое изменение
+                          </small>
+                        )}
                       {!validQuantity(
                         quantities[i.product_id] ?? "",
                         i.batch_size,
@@ -203,7 +284,7 @@ export function PlanningSection({
                       )}
                     </td>
                     <td>
-                      {i.method}
+                      <strong>{methodText(i.method)}</strong>
                       {i.diagnostic_method &&
                         i.diagnostic_method !== i.method && (
                           <small>
@@ -212,20 +293,37 @@ export function PlanningSection({
                             отключён.
                           </small>
                         )}
-                      {i.model_id && <small>Снимок модели: {i.model_id}</small>}
                       {i.fallback_reason && (
-                        <small>Причина перехода: {i.fallback_reason}</small>
+                        <small>
+                          Причина перехода: {reasonText(i.fallback_reason)}
+                        </small>
                       )}
-                      <small>
-                        Подходящих наблюдений:{" "}
-                        {i.n ?? i.used_dates?.length ?? 0}
-                      </small>
-                      {i.used_dates?.length ? (
-                        <small>Даты: {i.used_dates.join(", ")}</small>
-                      ) : null}
                       {i.warnings?.map((w, n) => (
                         <small key={n}>{w}</small>
                       ))}
+                      <details className="item-details">
+                        <summary>Источники и модель</summary>
+                        {i.model_id && (
+                          <small>Снимок модели: {i.model_id}</small>
+                        )}
+                        <small>
+                          Подходящих наблюдений:{" "}
+                          {i.n ?? i.used_dates?.length ?? 0}
+                        </small>
+                        {!!i.used_dates?.length && (
+                          <small>Даты: {i.used_dates.join(", ")}</small>
+                        )}
+                        {i.fallback_reason && (
+                          <small>
+                            Код или исходная причина: {i.fallback_reason}
+                          </small>
+                        )}
+                        {i.evaluation_applicability && (
+                          <EvaluationNotice
+                            value={i.evaluation_applicability}
+                          />
+                        )}
+                      </details>
                     </td>
                   </tr>
                 ))}
@@ -233,7 +331,7 @@ export function PlanningSection({
             </table>
           </div>
           <button
-            disabled={busy || invalid}
+            disabled={busy || invalid || stale}
             onClick={() =>
               void run(async () => {
                 show(
@@ -261,7 +359,13 @@ export function PlanningSection({
                   }),
                 );
                 setNotice("Подтверждённый план сохранён в базе.");
-                await refreshHistory();
+                try {
+                  await refreshHistory();
+                } catch {
+                  setNotice(
+                    "Подтверждённый план сохранён в базе. Не удалось обновить список истории; нажмите «Обновить историю» позже.",
+                  );
+                }
               })
             }
           >
@@ -270,6 +374,12 @@ export function PlanningSection({
           <a href={`/api/plans/${plan.id}/export`} download>
             Экспорт CSV
           </a>
+          <p className="muted">
+            CSV содержит сохранённую редакцию этого плана.{" "}
+            {plan.status === "confirmed"
+              ? "Несохранённые правки в файл не попадут."
+              : "Пока это черновик: подтверждённые количества ещё не записаны."}
+          </p>
         </>
       )}
     </section>

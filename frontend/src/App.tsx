@@ -54,6 +54,11 @@ export function App() {
   }
   function show(p: Plan) {
     setPlan(p);
+    setTarget(p.target_date);
+    setCutoff(p.cutoff);
+    if (p.requested_method) setMethod(p.requested_method);
+    const calendar = p.items.find((item) => item.target_is_open != null);
+    if (calendar) setTargetOpen(calendar.target_is_open!);
     setQuantities(
       Object.fromEntries(
         p.items.map((i) => [
@@ -66,6 +71,7 @@ export function App() {
   const confirmation = useRef<{ signature: string; key: string } | null>(null);
   const invalid = plan?.items.some(
     (i) =>
+      (i.target_is_open === false && quantities[i.product_id] !== "0") ||
       !validQuantity(
         quantities[i.product_id] ?? "",
         i.batch_size,
@@ -106,6 +112,8 @@ export function App() {
     show,
     refreshHistory: () => loadHistory(0),
   };
+  const salesOnly =
+    dataset?.target === "item_line_count" || dataset?.unit === "item_line";
   return (
     <main>
       <header>
@@ -113,9 +121,29 @@ export function App() {
         <span className="tag">Локальный прототип · одна пекарня</span>
         <h1>План выпечки на завтра</h1>
         <p>
-          История → прогноз B0/B1 или ML → ручная проверка → сохранённый план.
+          Импорт → модель по желанию → расчёт → ручная проверка → подтверждение
+          → история и экспорт.
         </p>
       </header>
+      <ol className="workflow" aria-label="Порядок работы">
+        <li>
+          <a href="#import">1. Импорт</a>
+        </li>
+        {salesOnly ? (
+          <li>
+            <a href="#model">2. Диагностика строк продаж</a>
+          </li>
+        ) : (
+          <>
+            <li>
+              <a href="#planning">2. План и проверка</a>
+            </li>
+            <li>
+              <a href="#history">3. История и CSV</a>
+            </li>
+          </>
+        )}
+      </ol>
       <aside>
         Прогноз — ориентир, а не гарантия спроса. Синтетические данные служат
         только для демонстрации. Общую загрузку печи проверьте вручную.
@@ -124,6 +152,10 @@ export function App() {
         <div role="alert" className="error">
           <strong>Не удалось выполнить действие</strong>
           <pre>{error}</pre>
+          <p>
+            Проверьте сообщение и повторите действие. Для конфликта версии
+            откройте план заново из истории.
+          </p>
         </div>
       )}
       {notice && !busy && (
@@ -131,7 +163,12 @@ export function App() {
           {notice}
         </div>
       )}
-      {busy && <p role="status">Выполняется…</p>}
+      {busy && (
+        <p role="status" className="pending">
+          Выполняется запрос… Поля временно заблокированы. Обучение может занять
+          до 60 секунд.
+        </p>
+      )}
       <ImportSection {...sectionProps} />
       {dataset && (
         <ModelSection key={dataset.id} {...sectionProps} dataset={dataset} />

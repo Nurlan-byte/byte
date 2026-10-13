@@ -2,30 +2,14 @@ import { useRef, useState } from "react";
 import { api } from "./api";
 import type { Dataset, Forecast, ModelSummary } from "./types";
 import type { SectionProps } from "./sectionProps";
+import { ForecastResult, type ForecastSnapshot } from "./ForecastResult";
+import { forecastInputsChanged } from "./snapshots";
+import { reasonText } from "./explanations";
 
 type Props = Pick<
   SectionProps,
   "busy" | "cutoff" | "setCutoff" | "target" | "setTarget" | "run" | "setNotice"
 > & { dataset: Dataset };
-type ForecastSnapshot = {
-  result: Forecast;
-  cutoff: string;
-  targetDate: string;
-};
-
-function reasonText(reason: string) {
-  const reasons: Record<string, string> = {
-    insufficient_history_dates:
-      "Недостаточно дат истории для временной проверки",
-    insufficient_training_feature_rows:
-      "Недостаточно пригодных строк с признаками",
-    no_holdout_pairs: "Нет сопоставимых наблюдений на отложенном периоде",
-    no_ready_products: "Нет товаров с готовой моделью",
-    estimator_failure: "Не удалось обучить модель",
-  };
-  return reasons[reason] ? `${reasons[reason]} (${reason})` : reason;
-}
-
 export function ModelSection({
   dataset,
   busy,
@@ -45,8 +29,18 @@ export function ModelSection({
   const unitLabel = salesOnly ? "строк продаж" : "шт.";
 
   return (
-    <section aria-labelledby="model-heading" data-testid="model-panel">
+    <section
+      id="model"
+      aria-labelledby="model-heading"
+      data-testid="model-panel"
+    >
       <h2 id="model-heading">Модель и диагностический прогноз</h2>
+      {!salesOnly && (
+        <p className="optional-step">
+          Необязательный шаг. Для первого плана можно сразу перейти к расчёту с
+          B1 ниже.
+        </p>
+      )}
       <p>
         ML использует последний подходящий снимок модели для этого набора и
         среза. Если модель или признаки недоступны, применяется B1 с явной
@@ -114,6 +108,7 @@ export function ModelSection({
                   idempotency_key: training.current.key,
                 },
               );
+              setForecast(null);
               setModels((previous) => [
                 model,
                 ...previous.filter((entry) => entry.id !== model.id),
@@ -154,7 +149,12 @@ export function ModelSection({
                 cutoff,
                 method: forecastMethod,
               });
-              setForecast({ result, cutoff, targetDate: target });
+              setForecast({
+                result,
+                cutoff,
+                targetDate: target,
+                method: forecastMethod,
+              });
               setNotice(
                 "Диагностический прогноз готов. Фактический метод и причины перехода на B1 показаны по каждому товару.",
               );
@@ -182,15 +182,25 @@ export function ModelSection({
           </h3>
           {model.reason && <p>Причина: {reasonText(model.reason)}</p>}
           <p>
-            Снимок модели: {model.id} · протокол: {model.protocol_version}
+            Срез обучения: {model.training_cutoff} ·{" "}
+            {model.unit === "item_line" ? "строки продаж" : "физические штуки"}.
           </p>
-          <p>
-            Набор: {model.dataset_id} · версия данных: {model.dataset_version}
+          <p className="muted">
+            Готовность означает возможность расчёта, а не преимущество перед B1.
           </p>
-          <p>
-            Пекарня: {model.bakery_id} · срез обучения: {model.training_cutoff}{" "}
-            · {model.target} / {model.unit}
-          </p>
+          <details>
+            <summary>Технические данные модели</summary>
+            <p>
+              Снимок модели: {model.id} · протокол: {model.protocol_version}
+            </p>
+            <p>
+              Набор: {model.dataset_id} · версия данных: {model.dataset_version}
+            </p>
+            <p>
+              Пекарня: {model.bakery_id} · {model.target} / {model.unit}
+            </p>
+            {model.reason && <p>Код причины: {model.reason}</p>}
+          </details>
           {model.training_cutoff !== cutoff && (
             <p className="muted">
               Срез этой модели отличается от выбранного. Сервер проверит
@@ -220,12 +230,30 @@ export function ModelSection({
                 {model.evaluation.holdout_end ?? "нет данных"}.
               </p>
               <p>
+                Горизонт оценки:{" "}
+                {model.evaluation.horizon_days == null
+                  ? "не указан"
+                  : `${model.evaluation.horizon_days} дн. от среза до целевой даты`}
+                .
+                {model.evaluation.horizon_days === 2 &&
+                  " Используется история не позже t−2; это соответствует паре «завтра / вчера»."}
+              </p>
+              <p>
+                Сопоставимые даты:{" "}
+                {model.evaluation.paired_start ?? "нет данных"} —{" "}
+                {model.evaluation.paired_end ?? "нет данных"} · дат:{" "}
+                {model.evaluation.paired_date_count ?? "не указано"}.
+              </p>
+              <p>
                 Сопоставимых прогнозов: {model.evaluation.paired_n ?? 0} ·
                 покрытие:{" "}
                 {model.evaluation.coverage == null
                   ? "нет данных"
                   : `${(model.evaluation.coverage * 100).toFixed(1)}%`}
-                .
+                . Доля рассчитана от{" "}
+                {model.evaluation.coverage_denominator_n ??
+                  "неуказанного числа"}{" "}
+                пригодных наблюдаемых меток отложенного периода.
               </p>
               <p>
                 Средняя абсолютная ошибка B1:{" "}
@@ -238,7 +266,10 @@ export function ModelSection({
                   : model.evaluation.ml_mae.toFixed(2)}{" "}
                 {unitLabel}.
               </p>
-              <pre>{JSON.stringify(model.evaluation, null, 2)}</pre>
+              <details>
+                <summary>Полный протокол оценки</summary>
+                <pre>{JSON.stringify(model.evaluation, null, 2)}</pre>
+              </details>
             </details>
           ) : (
             <p className="muted">Оценка качества не предоставлена.</p>
@@ -246,59 +277,15 @@ export function ModelSection({
         </article>
       ))}
       {forecast && (
-        <div data-testid="forecast-result">
-          <h3>Диагностический прогноз на {forecast.targetDate}</h3>
-          <p>
-            Срез: {forecast.cutoff} · набор: {forecast.result.dataset_id} ·
-            пекарня: {forecast.result.bakery_id}
-          </p>
-          <p>
-            Цель: {forecast.result.target} · единица: {forecast.result.unit} ·
-            снимок модели: {forecast.result.model_id ?? "не использован"}
-          </p>
-          <div className="table">
-            <table data-testid="forecast-table">
-              <thead>
-                <tr>
-                  <th>Товар</th>
-                  <th>Прогноз, {unitLabel}</th>
-                  <th>B1, {unitLabel}</th>
-                  <th>Фактический метод и ограничения</th>
-                </tr>
-              </thead>
-              <tbody>
-                {forecast.result.items.map((item) => (
-                  <tr key={item.product_id}>
-                    <td>{item.product_id}</td>
-                    <td>
-                      {item.forecast_mean == null
-                        ? "Нет оценки"
-                        : item.forecast_mean.toFixed(1)}
-                    </td>
-                    <td>
-                      {item.b1_mean == null
-                        ? "Нет оценки"
-                        : item.b1_mean.toFixed(1)}
-                    </td>
-                    <td>
-                      {item.method}
-                      {item.fallback_reason && (
-                        <small>Причина перехода: {item.fallback_reason}</small>
-                      )}
-                      <small>
-                        Подходящих наблюдений:{" "}
-                        {item.n ?? item.used_dates?.length ?? 0}
-                      </small>
-                      {!!item.used_dates?.length && (
-                        <small>Даты: {item.used_dates.join(", ")}</small>
-                      )}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
+        <ForecastResult
+          snapshot={forecast}
+          stale={forecastInputsChanged(forecast, {
+            target,
+            cutoff,
+            method: forecastMethod,
+          })}
+          unitLabel={unitLabel}
+        />
       )}
     </section>
   );

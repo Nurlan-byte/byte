@@ -33,7 +33,11 @@ async function importHistory(page: Page, options: { salesOnly?: boolean; days?: 
   const response = await saved;
   expect(response.ok()).toBeTruthy();
   const dataset = await response.json();
-  await expect(page.getByTestId('dataset-summary')).toContainText(dataset.id);
+  const datasetDetails = page.getByTestId('dataset-summary').locator('details');
+  if (!(await datasetDetails.evaluate(element => element.hasAttribute('open')))) {
+    await datasetDetails.getByText('Технические данные набора', { exact: true }).click();
+  }
+  await expect(page.getByTestId('dataset-summary').getByText(`Набор: ${dataset.id}`, { exact: true })).toBeVisible();
   await page.getByLabel('Срез обучения и прогноза').fill(cutoff);
   await page.getByLabel('Дата прогноза', { exact: true }).fill(target);
   return dataset;
@@ -51,11 +55,20 @@ test('explicit units → train/status → ML forecast → safeguarded plan → c
   const models = await (await request.get(`${base}/datasets/${dataset.id}/models`)).json();
   expect(models[0].status).toBe('ready');
   expect(JSON.stringify(models)).not.toContain('coefficients');
+  await page.getByTestId('model-summary').getByText('Диагностика оценки модели', { exact: true }).click();
+  await expect(page.getByTestId('model-summary').getByText(/Горизонт оценки: 2 дн./)).toBeVisible();
+  await expect(page.getByTestId('model-summary')).toContainText('пригодных наблюдаемых меток');
 
   await page.getByRole('button', { name: 'Получить прогноз' }).click();
-  await expect(page.getByTestId('forecast-result')).toContainText(models[0].id);
+  await page.getByTestId('forecast-result').getByText('Технические данные прогноза', { exact: true }).click();
+  await expect(page.getByTestId('forecast-result').getByText(new RegExp(models[0].id))).toBeVisible();
+  await expect(page.getByTestId('forecast-result').getByTestId('evaluation-applicability').first()).toContainText('оценка 2 дн., прогноз 1 дн.');
   await expect(page.getByTestId('forecast-table').locator('tbody tr').first()).toContainText('ML');
   await expect(page.getByTestId('forecast-result').getByRole('spinbutton')).toHaveCount(0);
+  await page.getByLabel('Дата прогноза', { exact: true }).fill('2026-10-13');
+  await page.getByRole('button', { name: 'Получить прогноз', exact: true }).click();
+  await expect(page.getByTestId('forecast-result').getByTestId('evaluation-applicability').first()).toContainText('Горизонт совпадает с оценкой: 2 дн.');
+  await page.getByLabel('Дата прогноза', { exact: true }).fill(target);
   await page.getByLabel('Базовый метод').selectOption('ML');
   const planned = page.waitForResponse(response => response.url().endsWith('/api/plans') && response.request().method() === 'POST');
   await page.getByRole('button', { name: 'Рассчитать план', exact: true }).click();
@@ -89,11 +102,14 @@ test('explicit units → train/status → ML forecast → safeguarded plan → c
   await expect(savedDataset).toHaveValue(dataset.id);
   await page.getByRole('button', { name: 'Открыть набор', exact: true }).click();
   await page.getByRole('button', { name: 'Обновить модели' }).click();
-  await expect(page.getByTestId('model-summary')).toContainText(models[0].id);
+  await page.getByTestId('model-summary').getByText('Технические данные модели', { exact: true }).click();
+  await expect(page.getByTestId('model-summary').getByText(new RegExp(models[0].id))).toBeVisible();
   await page.getByRole('button', { name: 'Обновить историю' }).click();
   await page.getByRole('button', { name: /2026-10-12.*synthetic.*confirmed/ }).first().click();
   await expect(page.getByTestId('plan-table').locator('tbody tr').first().getByRole('spinbutton')).toHaveValue('84');
-  await expect(page.getByTestId('plan-table').locator('tbody tr').first()).toContainText(models[0].id);
+  const savedRow = page.getByTestId('plan-table').locator('tbody tr').first();
+  await savedRow.getByText('Источники и модель', { exact: true }).click();
+  await expect(savedRow.getByText(`Снимок модели: ${models[0].id}`, { exact: true })).toBeVisible();
 });
 
 test('sales-only forecast cannot expose production controls or inherit a units model', async ({ page, request }) => {
@@ -113,7 +129,8 @@ test('sales-only forecast cannot expose production controls or inherit a units m
   await expect(page.getByRole('button', { name: 'Обновить историю' })).toHaveCount(0);
   await expect(page.getByTestId('sales-only-notice')).toContainText('не преобразуются');
   await page.getByRole('button', { name: 'Получить прогноз' }).click();
-  await expect(page.getByTestId('forecast-result')).toContainText('item_line');
+  await page.getByTestId('forecast-result').getByText('Технические данные прогноза', { exact: true }).click();
+  await expect(page.getByTestId('forecast-result').getByText(/Цель: item_line_count · единица: item_line/)).toBeVisible();
   await expect(page.getByTestId('forecast-table').locator('tbody tr').first()).toContainText('B1');
   await expect(page.getByTestId('forecast-table').locator('tbody tr').first()).toContainText('Причина перехода');
   await page.getByRole('button', { name: 'Обучить модель', exact: true }).click();
@@ -131,7 +148,8 @@ test('short histories report not-ready and explicit B1 fallback', async ({ page 
   await importHistory(page, { days: 14, bakery: 'e2e-short' });
   await page.getByRole('button', { name: 'Обучить модель', exact: true }).click();
   await expect(page.getByTestId('model-summary')).toContainText('Модель не готова', { timeout: 65_000 });
-  await expect(page.getByTestId('model-summary')).toContainText('insufficient_history_dates');
+  await page.getByTestId('model-summary').getByText('Технические данные модели', { exact: true }).click();
+  await expect(page.getByTestId('model-summary').getByText('Код причины: insufficient_history_dates', { exact: true })).toBeVisible();
   await page.getByRole('button', { name: 'Получить прогноз' }).click();
   const row = page.getByTestId('forecast-table').locator('tbody tr').first();
   await expect(row).toContainText('B1');

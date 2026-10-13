@@ -3,6 +3,8 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { PlanningSection } from "./PlanningSection";
 import { ModelSection } from "./ModelSection";
 import { SavedDatasetSelect } from "./ImportSection";
+import { ForecastResult } from "./ForecastResult";
+import { EvaluationNotice } from "./EvaluationNotice";
 import type { Dataset, Plan } from "./types";
 
 const units: Dataset = {
@@ -21,6 +23,7 @@ const plan: Plan = {
   target_date: "2026-10-12",
   cutoff: "2026-10-11",
   source: "synthetic",
+  requested_method: "ML",
   status: "draft",
   revision: 0,
   model_id: "model-1",
@@ -38,6 +41,8 @@ const plan: Plan = {
       fallback_reason: "Недостаточно данных модели",
       model_id: "model-1",
       warnings: [],
+      target_is_open: true,
+      automatic_eligible: true,
     },
   ],
 };
@@ -131,4 +136,135 @@ test("saved dataset control has an exact stable label independent of its options
     '<option value="second-dataset" selected="">second-dataset · local</option>',
   );
   expect(html).not.toMatch(/<label[^>]*>[^<]*<select/);
+});
+
+test("changing planning inputs blocks confirmation of the previous snapshot", () => {
+  for (const changed of [
+    { target: "2026-10-13" },
+    { cutoff: "2026-10-10" },
+    { method: "B0" },
+    { targetOpen: false },
+  ]) {
+    const html = renderToStaticMarkup(
+      <PlanningSection {...planningProps(units)} {...changed} />,
+    );
+    expect(html).toContain('data-testid="stale-plan"');
+    expect(html).toMatch(
+      /<button disabled="">Подтвердить и сохранить<\/button>/,
+    );
+    expect(html).toContain("прежний план на 2026-10-12");
+    expect(html).toContain('value="48"');
+  }
+});
+
+test("closed-day plan locks manual increases without disabling valid zero confirmation", () => {
+  const closedPlan = {
+    ...plan,
+    items: plan.items.map((item) => ({
+      ...item,
+      target_is_open: false,
+      automatic_eligible: false,
+      forecast_mean: null,
+      recommended_qty: 0,
+      method: "manual",
+    })),
+  };
+  const html = renderToStaticMarkup(
+    <PlanningSection
+      {...planningProps(units)}
+      plan={closedPlan}
+      targetOpen={false}
+      quantities={{ p1: "0" }}
+    />,
+  );
+  expect(html).toMatch(/type="number" disabled=""/);
+  expect(html).toContain("Закрытый день");
+  expect(html).toContain("Нет оценки");
+  expect(html).toContain("<button>Подтвердить и сохранить</button>");
+});
+
+test("saved quantities stay distinguishable from unsaved manual edits", () => {
+  const confirmed = {
+    ...plan,
+    status: "confirmed",
+    revision: 1,
+    items: plan.items.map((item) => ({ ...item, confirmed_qty: 48 })),
+  };
+  const html = renderToStaticMarkup(
+    <PlanningSection
+      {...planningProps(units)}
+      plan={confirmed}
+      quantities={{ p1: "60" }}
+    />,
+  );
+  expect(html).toContain("Сохранено: 48 шт.");
+  expect(html).toContain("Есть несохранённое изменение");
+  expect(html).toContain("Несохранённые правки в файл не попадут");
+  expect(html).toContain('href="/api/plans/plan-1/export"');
+});
+
+test("stale diagnostic snapshot retains its own dates and method with an actionable warning", () => {
+  const html = renderToStaticMarkup(
+    <ForecastResult
+      stale
+      unitLabel="шт."
+      snapshot={{
+        cutoff: "2026-10-10",
+        targetDate: "2026-10-12",
+        method: "ML",
+        result: {
+          dataset_id: units.id,
+          bakery_id: "test",
+          target: "sold_units",
+          unit: "physical_unit",
+          model_id: "model-1",
+          items: [
+            {
+              product_id: "p1",
+              forecast_mean: null,
+              b1_mean: null,
+              method: "manual",
+              fallback_reason: "no_b1_history",
+            },
+          ],
+        },
+      }}
+    />,
+  );
+  expect(html).toContain('data-testid="stale-forecast"');
+  expect(html).toContain("Нажмите «Получить прогноз» для новых параметров");
+  expect(html).toContain("срез 2026-10-10, выбранный метод ML");
+  expect(html).toContain("Нет подходящей истории даже для B1");
+  expect(html).toContain("Нет оценки");
+  expect(html).toContain("Технические данные прогноза");
+  expect(html).not.toContain('type="number"');
+});
+
+test("horizon compatibility is explained without claiming forecast accuracy", () => {
+  const matched = renderToStaticMarkup(
+    <EvaluationNotice
+      value={{
+        applicable: true,
+        reason: null,
+        requested_horizon_days: 2,
+        evaluated_horizon_days: 2,
+      }}
+    />,
+  );
+  expect(matched).toContain("Горизонт совпадает с оценкой: 2 дн.");
+  expect(matched).toContain("не гарантия точности");
+  const mismatch = renderToStaticMarkup(
+    <EvaluationNotice
+      value={{
+        applicable: false,
+        reason: "forecast_horizon_mismatch",
+        requested_horizon_days: 1,
+        evaluated_horizon_days: 2,
+      }}
+    />,
+  );
+  expect(mismatch).toContain("оценка 2 дн., прогноз 1 дн.");
+  expect(mismatch).toContain("качество на этом горизонте здесь не измерено");
+  const legacy = renderToStaticMarkup(<EvaluationNotice />);
+  expect(legacy).toContain("Применимость оценки к этому прогнозу не указана");
 });

@@ -1,6 +1,13 @@
 export type DatasetTarget = "sold_units" | "item_line_count";
 export type MeasurementUnit = "physical_unit" | "item_line";
+export type EvaluationApplicability = {
+  applicable: boolean;
+  reason: string | null;
+  evaluated_horizon_days: number | null;
+  requested_horizon_days: number;
+};
 export type Item = {
+  evaluation_applicability?: EvaluationApplicability;
   product_id: string;
   name: string;
   batch_size: number;
@@ -10,6 +17,8 @@ export type Item = {
   confirmed_qty: number | null;
   method: string;
   diagnostic_method?: string;
+  target_is_open?: boolean;
+  automatic_eligible?: boolean;
   model_id?: string | null;
   fallback_reason?: string | null;
   warnings: string[];
@@ -28,6 +37,9 @@ export type PlanSummary = {
 export type Plan = PlanSummary & {
   items: Item[];
   cutoff: string;
+  requested_method?: string;
+  dataset_version?: string;
+  bakery_id?: string;
   mode?: string;
   model_id?: string | null;
   model_version?: string;
@@ -63,6 +75,16 @@ export type ModelSummary = {
   evaluation?: {
     protocol?: string;
     experimental?: boolean;
+    horizon_days?: number;
+    feature_cutoff_policy?: string;
+    first_holdout_cutoff?: string | null;
+    embargoed_dates?: string[];
+    coverage_denominator?: string;
+    coverage_denominator_n?: number;
+    paired_dates?: string[];
+    paired_date_count?: number;
+    paired_start?: string | null;
+    paired_end?: string | null;
     paired_n?: number;
     b1_mae?: number | null;
     ml_mae?: number | null;
@@ -74,12 +96,14 @@ export type ModelSummary = {
   products: Record<string, { status: string; reason?: string | null }>;
 };
 export type Forecast = {
+  evaluation_applicability?: EvaluationApplicability;
   dataset_id: string;
   bakery_id: string;
   target: DatasetTarget;
   unit: MeasurementUnit;
   model_id: string | null;
   items: {
+    evaluation_applicability?: EvaluationApplicability;
     product_id: string;
     forecast_mean: number | null;
     b1_mean: number | null;
