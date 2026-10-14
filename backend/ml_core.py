@@ -1,7 +1,12 @@
-"""Bounded experimental B1 + Ridge residuals, with numeric JSON artifacts only.
+"""Bounded experimental B1 + pooled relative Ridge, with numeric JSON artifacts only.
 
-This is a new local deployment protocol, not the earlier offline final test.
-The estimator, alpha, features and chronological split are fixed in advance.
+Protocol v3: one Ridge estimator per dataset, shared by all products. Features
+and target are expressed relative to the product's own B1 (difference divided
+by max(B1, 1)), so products of different scale pool their evidence and the
+estimator cannot memorise an absolute sales level. v2 learned absolute levels
+and pulled forecasts back towards the training-period level after a demand
+shift. The estimator, alpha, features, bounds and chronological split are fixed
+in advance; they were chosen on generated data only, not on any bakery history.
 Missing calendar dates are missing observations, never zero-sales labels.
 """
 
@@ -13,9 +18,15 @@ from datetime import date
 
 import numpy as np
 
-PROTOCOL_VERSION = "residual-ridge-100-v2-horizon-2-experimental"
+PROTOCOL_VERSION = "pooled-relative-ridge-200-v3-horizon-2-experimental"
 FORECAST_HORIZON_DAYS = 2
-ALPHA = 100.0
+ALPHA = 200.0
+# Relative correction bounds: ML may move B1 by -80%..+200% of max(B1, 1).
+MIN_RELATIVE_CORRECTION = -0.8
+MAX_RELATIVE_CORRECTION = 2.0
+# Older models still predict, but their holdout metrics are not presented as
+# applicable: the estimator has not seen the most recent weeks.
+MAX_MODEL_AGE_DAYS = 14
 MAX_ROWS = 10_000
 MAX_PRODUCTS = 50
 MAX_COUNT = 1_000_000
@@ -32,6 +43,19 @@ FEATURE_NAMES = (
     "lag_28",
     "mean_7",
     "mean_28",
+    "observed_count_7",
+    "observed_count_28",
+    "weekday_sin",
+    "weekday_cos",
+)
+# Estimator inputs derived from FEATURE_NAMES; level features become relative.
+MODEL_FEATURE_NAMES = (
+    "rel_lag_2",
+    "rel_lag_7",
+    "rel_lag_14",
+    "rel_lag_28",
+    "rel_mean_7",
+    "rel_mean_28",
     "observed_count_7",
     "observed_count_28",
     "weekday_sin",
@@ -214,19 +238,38 @@ class _PredictionBoundsError(ValueError):
     """A finite estimator output exceeds the declared experimental bound."""
 
 
+def _scale(b1):
+    """Relative unit for one product-day; >= 1 so near-zero B1 stays bounded."""
+    return max(float(b1), 1.0)
+
+
+def _model_features(features):
+    """Level-free estimator inputs: (feature - B1) / max(B1, 1) for levels."""
+    b1 = features[0]
+    scale = _scale(b1)
+    relative = [
+        math.nan if math.isnan(value) else (value - b1) / scale
+        for value in features[1:7]
+    ]
+    return [*relative, *features[7:]]
+
+
+def _relative_target(value, b1):
+    return (value - b1) / _scale(b1)
+
+
 def _fit(samples):
     if any(not _safe_features(sample["features"]) for sample in samples):
         raise ValueError("Features exceed the ML bound")
-    raw = np.asarray([sample["features"] for sample in samples], dtype=float)
+    raw = np.asarray(
+        [_model_features(sample["features"]) for sample in samples], dtype=float
+    )
     missing = np.isnan(raw)
-    # B1 is observed for every feature row. Its train-only median is also a
-    # safe placeholder for an entirely unobserved lag; missingness stays explicit.
-    fallback_median = float(np.median(raw[:, 0]))
+    # An entirely unobserved relative feature is imputed as "same as B1" (0);
+    # missingness stays explicit through the indicator columns.
     medians = np.asarray(
         [
-            np.median(column[~np.isnan(column)])
-            if np.any(~np.isnan(column))
-            else fallback_median
+            np.median(column[~np.isnan(column)]) if np.any(~np.isnan(column)) else 0.0
             for column in raw.T
         ]
     )
@@ -237,17 +280,18 @@ def _fit(samples):
     scales = expanded.std(axis=0)
     scales[scales < 1e-12] = 1.0
     transformed = (expanded - means) / scales
-    residuals = np.asarray(
-        [sample["value"] - sample["b1"] for sample in samples], dtype=float
+    targets = np.asarray(
+        [_relative_target(sample["value"], sample["b1"]) for sample in samples],
+        dtype=float,
     )
-    intercept = float(residuals.mean())
+    intercept = float(targets.mean())
     coefficients = np.linalg.solve(
         transformed.T @ transformed + ALPHA * np.eye(transformed.shape[1]),
-        transformed.T @ (residuals - intercept),
+        transformed.T @ (targets - intercept),
     )
     params = {
         "alpha": ALPHA,
-        "feature_names": list(FEATURE_NAMES),
+        "feature_names": list(MODEL_FEATURE_NAMES),
         "imputation_medians": medians.tolist(),
         "means": means.tolist(),
         "scales": scales.tolist(),
@@ -271,13 +315,13 @@ def _validate_params(params):
         "intercept",
     }:
         raise ValueError("Invalid estimator fields")
-    if params.get("feature_names") != list(FEATURE_NAMES):
+    if params.get("feature_names") != list(MODEL_FEATURE_NAMES):
         raise ValueError("Invalid feature schema")
     for key, size in (
-        ("imputation_medians", len(FEATURE_NAMES)),
-        ("means", 2 * len(FEATURE_NAMES)),
-        ("scales", 2 * len(FEATURE_NAMES)),
-        ("coefficients", 2 * len(FEATURE_NAMES)),
+        ("imputation_medians", len(MODEL_FEATURE_NAMES)),
+        ("means", 2 * len(MODEL_FEATURE_NAMES)),
+        ("scales", 2 * len(MODEL_FEATURE_NAMES)),
+        ("coefficients", 2 * len(MODEL_FEATURE_NAMES)),
     ):
         values = params.get(key)
         if not isinstance(values, list) or len(values) != size:
@@ -305,17 +349,22 @@ def _predict(params, features, b1):
     raw = np.asarray(features, dtype=float)
     if raw.shape != (len(FEATURE_NAMES),) or not _safe_features(raw):
         raise ValueError("Invalid prediction features")
-    missing = np.isnan(raw)
-    filled = np.where(missing, params["imputation_medians"], raw)
+    if type(b1) not in (int, float) or not math.isfinite(b1) or b1 != raw[0]:
+        raise ValueError("B1 does not match the prediction features")
+    model_raw = np.asarray(_model_features(raw.tolist()), dtype=float)
+    missing = np.isnan(model_raw)
+    filled = np.where(missing, params["imputation_medians"], model_raw)
     expanded = np.concatenate([filled, missing.astype(float)])
     transformed = (expanded - np.asarray(params["means"])) / np.asarray(
         params["scales"]
     )
-    result = (
-        b1
-        + params["intercept"]
-        + float(transformed @ np.asarray(params["coefficients"]))
+    correction = params["intercept"] + float(
+        transformed @ np.asarray(params["coefficients"])
     )
+    if not math.isfinite(correction):
+        raise ValueError("Nonfinite prediction")
+    correction = min(max(correction, MIN_RELATIVE_CORRECTION), MAX_RELATIVE_CORRECTION)
+    result = b1 + correction * _scale(b1)
     if not math.isfinite(result):
         raise ValueError("Nonfinite prediction")
     if result > MAX_COUNT:
@@ -347,6 +396,15 @@ def _paired_evaluation(pairs, paired_dates, eligible_n):
     }
 
 
+def _model_age_days(model, cutoff):
+    """Days between the training cutoff and the forecast cutoff, or None."""
+    try:
+        trained = _day(model.get("training_cutoff"))
+    except ValueError, TypeError:
+        return None
+    return (cutoff - trained).days
+
+
 def evaluation_applicability(model, target, cutoff, product_id=None):
     """Describe horizon compatibility, never promise future forecast accuracy."""
     target, cutoff = _day(target), _day(cutoff)
@@ -368,6 +426,10 @@ def evaluation_applicability(model, target, cutoff, product_id=None):
         reason = "forecast_horizon_mismatch"
     elif model.get("status") != "ready":
         reason = "model_not_ready"
+    elif _model_age_days(model, cutoff) is None:
+        reason = "invalid_training_cutoff"
+    elif _model_age_days(model, cutoff) > MAX_MODEL_AGE_DAYS:
+        reason = "model_too_old"
     elif type(evaluation.get("paired_n")) is not int or evaluation["paired_n"] < 1:
         reason = "no_paired_evaluation"
     elif product_id is not None:
@@ -457,6 +519,26 @@ def train_model(dataset: dict, cutoff: date) -> dict:
                     "b1": baseline["b1_mean"],
                 }
             )
+    # Protocol v3: one estimator pooled across products. Relative features and
+    # targets make products of different scale comparable. The frozen estimator
+    # sees only labels through train_end; deployment refits through cutoff.
+    pooled_prefix = [
+        sample
+        for product in sorted(samples)
+        for sample in samples[product]
+        if train_end and sample["date"] <= train_end
+    ]
+    pooled_all = [sample for product in sorted(samples) for sample in samples[product]]
+    frozen = deployment = None
+    pooled_reason = None
+    if split_ok and len(pooled_prefix) >= MIN_TRAIN_ROWS:
+        try:
+            frozen = _fit(pooled_prefix)
+            deployment = _fit(pooled_all)
+        except ValueError, TypeError, ArithmeticError, np.linalg.LinAlgError:
+            frozen = deployment = None
+            pooled_reason = "estimator_failure"
+    deployment_fit_end = max((sample["date"] for sample in pooled_all), default=None)
     products, all_pairs, all_paired_dates = {}, [], []
     holdout_eligible_n = (
         sum(
@@ -523,8 +605,10 @@ def train_model(dataset: dict, cutoff: date) -> dict:
         if not later:
             result["reason"] = "no_holdout_pairs"
             continue
+        if frozen is None or deployment is None:
+            result["reason"] = pooled_reason or "insufficient_training_feature_rows"
+            continue
         try:
-            frozen = _fit(prefix)
             pairs = [
                 (
                     sample["value"],
@@ -533,7 +617,6 @@ def train_model(dataset: dict, cutoff: date) -> dict:
                 )
                 for sample in later
             ]
-            deployment = _fit(samples[product])
         except ValueError, TypeError, ArithmeticError, np.linalg.LinAlgError:
             result["reason"] = "estimator_failure"
             continue
@@ -545,7 +628,7 @@ def train_model(dataset: dict, cutoff: date) -> dict:
                 "parameters_hash": _digest(deployment),
                 "evaluation_fit_end": train_end,
                 "evaluation_parameters_hash": _digest(frozen),
-                "deployment_fit_end": samples[product][-1]["date"],
+                "deployment_fit_end": deployment_fit_end,
                 "evaluation": _paired_evaluation(
                     pairs, [sample["date"] for sample in later], product_holdout_n
                 ),
@@ -579,6 +662,10 @@ def train_model(dataset: dict, cutoff: date) -> dict:
         ),
         "experimental": True,
         "selection_performed": False,
+        "design_selected_on": "generated_synthetic_data_only",
+        "estimator_scope": "pooled_all_products",
+        "pooled_evaluation_training_rows": len(pooled_prefix) if frozen else 0,
+        "pooled_deployment_training_rows": len(pooled_all) if deployment else 0,
         "fit_end": train_end,
         "holdout_start": holdout_start,
         "holdout_end": holdout_dates[-1] if holdout_dates else None,
@@ -643,6 +730,12 @@ def train_model(dataset: dict, cutoff: date) -> dict:
             "min_training_feature_rows": MIN_TRAIN_ROWS,
             "min_holdout_dates": MIN_HOLDOUT_DATES,
             "raw_feature_count": len(FEATURE_NAMES),
+            "model_feature_count": len(MODEL_FEATURE_NAMES),
+            "relative_correction_bounds": [
+                MIN_RELATIVE_CORRECTION,
+                MAX_RELATIVE_CORRECTION,
+            ],
+            "max_model_age_days_for_applicable_metrics": MAX_MODEL_AGE_DAYS,
             "ridge_alpha": ALPHA,
             "forecast_horizon_days": FORECAST_HORIZON_DAYS,
         },

@@ -570,7 +570,10 @@ def test_horizon_contract_and_applicability_are_visible_through_api(client):
     dataset = import_dataset(client)
     model = train(client, dataset).json()
     evaluation = model["evaluation"]
-    assert model["protocol_version"] == "residual-ridge-100-v2-horizon-2-experimental"
+    assert (
+        model["protocol_version"]
+        == "pooled-relative-ridge-200-v3-horizon-2-experimental"
+    )
     assert evaluation["horizon_days"] == 2
     assert (
         evaluation["first_holdout_cutoff"]

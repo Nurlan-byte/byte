@@ -73,7 +73,7 @@ def test_safe_json_deterministic_artifact_and_prediction(target):
     assert result["fallback_reason"] is None
     assert 0 <= result["forecast_mean"] <= core.MAX_COUNT
     assert result["n"] == 4
-    assert decoded["products"]["p1"]["parameters"]["alpha"] == 100
+    assert decoded["products"]["p1"]["parameters"]["alpha"] == core.ALPHA == 200
     assert "pickle" not in encoded
 
 
@@ -283,10 +283,10 @@ def test_missing_sales_dates_not_invented_as_zero_labels():
     assert model["counts"]["eligible_labels"] == 59
     assert model["products"]["p1"]["exclusions"] == {"missing_label": 1}
     assert model["products"]["p1"]["parameters"]["feature_names"] == list(
-        core.FEATURE_NAMES
+        core.MODEL_FEATURE_NAMES
     )
     assert len(model["products"]["p1"]["parameters"]["means"]) == 2 * len(
-        core.FEATURE_NAMES
+        core.MODEL_FEATURE_NAMES
     )
 
 
@@ -377,11 +377,24 @@ def test_counts_and_predictions_bounded():
         == 1
     )
     params = train(fixture())["products"]["p1"]["parameters"]
+    features = [50.0] + [1.0] * (len(core.FEATURE_NAMES) - 1)
+    # v3 clips the relative correction instead of trusting an extreme estimator.
+    params["intercept"] = 1e10
+    assert core._predict(params, features, 50.0) == 50.0 * (
+        1 + core.MAX_RELATIVE_CORRECTION
+    )
+    params["intercept"] = -1e10
+    assert core._predict(params, features, 50.0) == pytest.approx(
+        50.0 * (1 + core.MIN_RELATIVE_CORRECTION)
+    )
+    near_zero = [0.5] + [1.0] * (len(core.FEATURE_NAMES) - 1)
+    assert core._predict(params, near_zero, 0.5) == 0
+    large = [900_000.0] + [1.0] * (len(core.FEATURE_NAMES) - 1)
     params["intercept"] = 1e10
     with pytest.raises(ValueError, match="Prediction exceeds"):
-        core._predict(params, [1.0] * len(core.FEATURE_NAMES), 50)
-    params["intercept"] = -1e10
-    assert core._predict(params, [1.0] * len(core.FEATURE_NAMES), 50) == 0
+        core._predict(params, large, 900_000.0)
+    with pytest.raises(ValueError, match="B1 does not match"):
+        core._predict(params, features, 49.0)
 
 
 def test_holdout_label_exclusions_are_visible_separately():
@@ -416,7 +429,9 @@ def test_maximum_accepted_snapshot_uses_fixed_dimensions():
     model = train(data, 200)
     assert model["counts"]["ready_products"] == core.MAX_PRODUCTS
     assert all(
-        len(product["parameters"]["coefficients"]) == 22
+        len(product["parameters"]["coefficients"])
+        == 2 * len(core.MODEL_FEATURE_NAMES)
+        == 20
         for product in model["products"].values()
     )
     assert len(json.dumps(model, allow_nan=False)) < 500_000
@@ -428,9 +443,10 @@ def test_entirely_missing_lag_has_train_only_imputation_and_indicator():
     model = train(data, 150)
     assert model["status"] == "ready"
     params = model["products"]["p1"]["parameters"]
-    lag_two = core.FEATURE_NAMES.index("lag_2")
-    assert params["imputation_medians"][lag_two] > 0
-    assert params["means"][len(core.FEATURE_NAMES) + lag_two] == 1.0
+    lag_two = core.MODEL_FEATURE_NAMES.index("rel_lag_2")
+    # An entirely unobserved relative lag is imputed as "no deviation from B1".
+    assert params["imputation_medians"][lag_two] == 0.0
+    assert params["means"][len(core.MODEL_FEATURE_NAMES) + lag_two] == 1.0
     assert model["counts"]["eligible_labels"] == 50
 
 
@@ -495,12 +511,27 @@ def test_out_of_bounds_training_features_have_explicit_exclusions():
     )
 
 
-def test_finite_prediction_above_bound_is_explicit_b1_fallback():
+def test_extreme_estimator_is_clipped_relative_to_b1():
     data = fixture()
     model = train(data)
     product = model["products"]["p1"]
     product["parameters"]["intercept"] = 1e10
     product["parameters_hash"] = core._digest(product["parameters"])
+    result = forecast(model, data)
+    assert result["method"] == "ML"
+    assert result["forecast_mean"] == result["b1_mean"] + (
+        core.MAX_RELATIVE_CORRECTION * max(result["b1_mean"], 1.0)
+    )
+
+
+def test_finite_prediction_above_bound_is_explicit_b1_fallback(monkeypatch):
+    data = fixture()
+    model = train(data)
+    product = model["products"]["p1"]
+    product["parameters"]["intercept"] = 1e10
+    product["parameters_hash"] = core._digest(product["parameters"])
+    # Features stay inside the bound; only the clipped prediction exceeds it.
+    monkeypatch.setattr(core, "MAX_COUNT", 100)
     result = forecast(model, data)
     assert result["method"] == "B1"
     assert result["fallback_reason"] == "prediction_out_of_bounds"
@@ -602,7 +633,9 @@ def test_paired_scores_recompute_on_identical_explicit_date_product_cohort():
     _, records, _ = core._snapshot(data, date.fromisoformat(model["training_cutoff"]))
     histories = core._history(records)
     all_pairs = []
-    for product_id, product in model["products"].items():
+    collected = {}
+    pooled_prefix = []
+    for product_id in sorted(model["products"]):
         prefix, later = [], []
         eligible_n = 0
         for row in records:
@@ -626,7 +659,13 @@ def test_paired_scores_recompute_on_identical_explicit_date_product_cohort():
                 prefix.append(sample)
             elif row["date"] >= evaluation["holdout_start"]:
                 later.append(sample)
-        frozen = core._fit(prefix)
+        pooled_prefix.extend(prefix)
+        collected[product_id] = later, eligible_n
+    # Protocol v3: one frozen estimator shared by every product.
+    frozen = core._fit(pooled_prefix)
+    for product_id, product in model["products"].items():
+        later, eligible_n = collected[product_id]
+        assert product["evaluation_parameters_hash"] == core._digest(frozen)
         pairs = [
             (
                 sample["value"],
@@ -683,3 +722,47 @@ def test_old_one_day_protocol_cannot_silently_use_new_feature_schema():
     assert result["fallback_reason"] == "unsupported_protocol"
     assert result["evaluation_applicability"]["applicable"] is False
     assert result["evaluation_applicability"]["reason"] == "unsupported_protocol"
+
+
+def test_v3_estimator_is_pooled_across_products():
+    model = train(fixture(products=("p1", "p2", "p3")))
+    ready = [p for p in model["products"].values() if p["status"] == "ready"]
+    assert len(ready) == 3
+    assert len({p["parameters_hash"] for p in ready}) == 1
+    assert len({p["evaluation_parameters_hash"] for p in ready}) == 1
+    assert model["evaluation"]["estimator_scope"] == "pooled_all_products"
+    assert model["evaluation"]["pooled_deployment_training_rows"] == sum(
+        p["counts"]["deployment_training_rows"] for p in ready
+    )
+
+
+def test_v3_prediction_scales_with_level_instead_of_memorising_it():
+    """Doubling every level feature doubles the forecast (B1 >= 1).
+
+    v2 learned absolute levels and pulled forecasts back towards the training
+    period after a demand shift; v3 corrections are relative to B1.
+    """
+    params = train(fixture(products=("p1", "p2")))["products"]["p1"]["parameters"]
+    features = [40.0, 38.0, 41.0, math.nan, 36.0, 39.5, 37.0, 6, 26, 0.43, -0.9]
+    doubled = [value * 2 for value in features[:7]] + features[7:]
+    assert core._predict(params, doubled, 80.0) == pytest.approx(
+        2 * core._predict(params, features, 40.0)
+    )
+
+
+def test_old_model_still_predicts_but_metrics_are_not_applicable():
+    data = fixture(150)
+    model = train(data, 90)
+    fresh = core.evaluation_applicability(
+        model, START + timedelta(days=92), START + timedelta(days=90), "p1"
+    )
+    assert fresh["applicable"] is True
+    limit = 89 + core.MAX_MODEL_AGE_DAYS
+    at_limit = core.evaluation_applicability(
+        model, START + timedelta(days=limit + 2), START + timedelta(days=limit), "p1"
+    )
+    assert at_limit["applicable"] is True
+    stale = forecast(model, data, offset=limit + 3, cutoff_offset=limit + 1)
+    assert stale["method"] == "ML"
+    assert stale["evaluation_applicability"]["applicable"] is False
+    assert stale["evaluation_applicability"]["reason"] == "model_too_old"

@@ -47,7 +47,7 @@ def test_exact_demo_api_replay_preserves_external_database(tmp_path, monkeypatch
     assert metrics["paired_n"] == metrics["coverage_denominator_n"] == 60
     assert metrics["coverage"] == 1.0
     assert metrics["b1_mae"] == pytest.approx(0.4166666666666667)
-    assert metrics["ml_mae"] == pytest.approx(0.7672253798564735)
+    assert metrics["ml_mae"] == pytest.approx(1.0585618476597316)
     assert metrics["ml_mae"] > metrics["b1_mae"]
     assert metrics["first_holdout_cutoff"] == "2026-09-28"
     assert metrics["holdout_start"] == "2026-09-30"
@@ -57,14 +57,16 @@ def test_exact_demo_api_replay_preserves_external_database(tmp_path, monkeypatch
         assert values["paired_dates"] == metrics["paired_dates"]
         assert values["coverage"] == 1
         if product != "p1":
-            assert values["b1_mae"] == values["ml_mae"] == 0
+            # B1 is exact on these constant synthetic weekdays; the pooled v3
+            # estimator still applies a small shared correction.
+            assert values["b1_mae"] == 0 < values["ml_mae"] < 1
     assert report["forecast"]["target_actual_available"] is False
     assert report["forecast"]["target_mae"] is None
     assert all(item["method"] == "ML" for item in report["forecast"]["ml"]["items"])
     p1 = next(
         item for item in report["confirmed_plan"]["items"] if item["product_id"] == "p1"
     )
-    assert p1["forecast_mean"] == pytest.approx(29.7621242495623)
+    assert p1["forecast_mean"] == pytest.approx(27.644832659891915)
     assert p1["recommended_qty"] == 24 and p1["confirmed_qty"] == 84
     assert p1["batch_size"] == 12 and p1["max_daily_qty"] == 100
     assert report["invalid_balance"]["status"] == 422

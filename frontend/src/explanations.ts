@@ -17,6 +17,8 @@ const reasons: Record<string, string> = {
   prediction_out_of_bounds: "Прогноз ML выходит за допустимые границы",
   nonfinite_prediction: "ML не вернул допустимое число",
   invalid_artifact: "Сохранённая модель повреждена или неприменима",
+  model_too_old:
+    "Модель обучена более 14 дней назад относительно среза; её метрики к этому прогнозу не относятся. Обучите модель заново",
 };
 
 export function reasonText(reason: string) {
