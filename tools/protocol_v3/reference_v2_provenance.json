@@ -1,0 +1,7 @@
+{
+  "source_commit": "3cbfbfae14bfd617d162cbe955fd8090c40b53e0",
+  "source_path": "backend/ml_core.py",
+  "frozen_path": "tools/protocol_v3/reference_v2.py",
+  "sha256": "b9f126601244c5ad0bab32a870f8c4a6e5348188089a5a613229c26445272935",
+  "policy": "Exact historical module bytes. Do not modify or regenerate from current backend."
+}

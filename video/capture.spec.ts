@@ -199,12 +199,12 @@ test('record a real 105-second synthetic BakePlan demonstration', async ({ brows
     const trainingStarted = elapsed();
     const model = await postFromUi<ModelSummary>('Обучить модель', `/datasets/${dataset.id}/train`);
     manifest.training_elapsed_seconds = elapsed() - trainingStarted;
-    expect(model).toMatchObject({ status: 'ready', dataset_id: dataset.id, training_cutoff: cutoff });
+    expect(model).toMatchObject({ status: 'ready', dataset_id: dataset.id, training_cutoff: cutoff, protocol_version: 'pooled-relative-ridge-200-v3-horizon-2-experimental' });
     expect(Object.keys(model.products)).toEqual(['p1', 'p2', 'p3', 'p4', 'p5']);
     expect(Object.values(model.products).every(product => product.status === 'ready')).toBe(true);
     expect(model.evaluation).toMatchObject({ horizon_days: 2, paired_n: 60, coverage_denominator_n: 60, coverage: 1 });
     expect(model.evaluation!.b1_mae).toBeCloseTo(0.416667, 6);
-    expect(model.evaluation!.ml_mae).toBeCloseTo(0.767225, 6);
+    expect(model.evaluation!.ml_mae).toBeCloseTo(1.058562, 6);
     expect(model.evaluation!.ml_mae!).toBeGreaterThan(model.evaluation!.b1_mae!);
     states.model = model;
     await show(page.getByTestId('model-summary').getByRole('heading', { name: 'Модель готова', exact: true }));
@@ -214,7 +214,7 @@ test('record a real 105-second synthetic BakePlan demonstration', async ({ brows
     const evaluation = page.getByTestId('model-evaluation');
     await show(evaluation);
     await expect(evaluation).toContainText('0,416667');
-    await expect(evaluation).toContainText('0,767225');
+    await expect(evaluation).toContainText('1,058562');
     await expect(evaluation).toContainText('60/60');
     await expect(evaluation).toContainText('На этой проверке ML хуже B1');
     await expect(evaluation.locator('.metric-grid')).toBeInViewport({ ratio: 1 });
@@ -227,10 +227,10 @@ test('record a real 105-second synthetic BakePlan demonstration', async ({ brows
     expect(forecast.items).toHaveLength(5);
     expect(forecast.items.every(item => item.method === 'ML' && item.fallback_reason == null)).toBe(true);
     expect(forecast.items[0]).toMatchObject({ product_id: 'p1', b1_mean: 26 });
-    expect(forecast.items[0].forecast_mean).toBeCloseTo(29.7621242495623, 10);
+    expect(forecast.items[0].forecast_mean).toBeCloseTo(27.644832659891915, 10);
     states.forecast = forecast;
     await show(page.getByTestId('forecast-result'));
-    await expect(page.getByTestId('forecast-table').locator('tbody tr').first()).toContainText('29.8');
+    await expect(page.getByTestId('forecast-table').locator('tbody tr').first()).toContainText('27.6');
     await expect(page.getByTestId('stale-forecast')).toHaveCount(0);
     await holdUntil(58);
 
@@ -241,22 +241,22 @@ test('record a real 105-second synthetic BakePlan demonstration', async ({ brows
     await holdUntil(61);
     const plan = await postFromUi<Plan>('Рассчитать план', '/plans');
     expect(plan).toMatchObject({ dataset_id: dataset.id, model_id: model.id, target_date: targetDate, cutoff, mode: 'replay', requested_method: 'ML', status: 'draft', revision: 0 });
-    expect(plan.items.map(item => item.recommended_qty)).toEqual([24, 30, 32, 36, 36]);
+    expect(plan.items.map(item => item.recommended_qty)).toEqual([24, 30, 32, 36, 48]);
     expect(plan.items[0]).toMatchObject({ product_id: 'p1', forecast_mean: forecast.items[0].forecast_mean, recommended_qty: 24, confirmed_qty: null, method: 'ML', batch_size: 12, max_daily_qty: 100 });
     states.draft_plan = plan;
     const firstRow = page.getByTestId('plan-table').locator('tbody tr').first();
     const quantity = page.getByLabel('Количество Хлеб пшеничный', { exact: true });
     await show(page.getByTestId('plan-table'));
     await expect(quantity).toHaveValue('24');
-    await expect(firstRow).toContainText('29.8');
+    await expect(firstRow).toContainText('27.6');
     await holdUntil(67);
 
-    scene('Manually change p1 to 84; forecast 29.8 and recommendation 24 stay separate');
+    scene('Manually change p1 to 84; forecast 27.6 and recommendation 24 stay separate');
     await quantity.fill('84');
     await expect(quantity).toHaveValue('84');
     await expect(firstRow).toContainText('Изменено вручную · не сохранено');
     await expect(firstRow.locator('.recommendation-cell')).toHaveText('24');
-    await expect(firstRow.locator('.forecast-cell')).toHaveText('29.8');
+    await expect(firstRow.locator('.forecast-cell')).toHaveText('27.6');
     await expect(firstRow).toBeInViewport({ ratio: 1 });
     states.manual_adjustment = { product_id: 'p1', quantity: 84, reason: 'Demonstration of owner override only; not a forecast or production recommendation.' };
     await holdUntil(75);
@@ -264,7 +264,7 @@ test('record a real 105-second synthetic BakePlan demonstration', async ({ brows
     scene('Confirm and persist the owner-reviewed quantities');
     const confirmed = await postFromUi<Plan>('Подтвердить и сохранить', `/plans/${plan.id}/confirm`);
     expect(confirmed).toMatchObject({ id: plan.id, revision: 1, status: 'confirmed', mode: 'replay' });
-    expect(confirmed.items.map(item => item.confirmed_qty)).toEqual([84, 30, 32, 36, 36]);
+    expect(confirmed.items.map(item => item.confirmed_qty)).toEqual([84, 30, 32, 36, 48]);
     expect(confirmed.items[0]).toMatchObject({ forecast_mean: forecast.items[0].forecast_mean, recommended_qty: 24, confirmed_qty: 84, method: 'ML' });
     states.confirmed_plan = confirmed;
     await show(firstRow);
@@ -304,7 +304,7 @@ test('record a real 105-second synthetic BakePlan demonstration', async ({ brows
     await expect(quantity).toHaveValue('84');
     await expect(firstRow).toContainText('Сохранено: 84 шт.');
     await expect(firstRow.locator('.recommendation-cell')).toHaveText('24');
-    await expect(firstRow.locator('.forecast-cell')).toHaveText('29.8');
+    await expect(firstRow.locator('.forecast-cell')).toHaveText('27.6');
     await expect(page.getByTestId('stale-plan')).toHaveCount(0);
     const stored = await request.get(`${apiBase}/plans/${plan.id}`);
     expect(stored.ok()).toBe(true);

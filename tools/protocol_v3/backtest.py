@@ -35,43 +35,61 @@ SCENARIOS = {
 }
 
 
-def run(name, kw, seed, horizon=2, train_cutoff=TRAIN_CUTOFF):
-    ds, truth = make_dataset(seed=seed, **kw)
-    model = core.train_model(ds, START + timedelta(days=train_cutoff))
-    ev = model["evaluation"]
-    rows = {(r["date"], r["product_id"]): r for r in ds["rows"]}
+def target_rows(dataset, eval_days=EVAL):
+    """Observed open target rows, including excluded stockout training labels."""
+    dates = {(START + timedelta(days=t)).isoformat() for t in eval_days}
+    return {(r["date"], r["product_id"]): r for r in dataset["rows"]
+            if r["is_open"] and r["date"] in dates and r.get("_demand") is not None}
+
+
+def forecast_rows(ds, implementation, horizon=2, train_cutoff=TRAIN_CUTOFF):
+    model = implementation.train_model(ds, START + timedelta(days=train_cutoff))
+    predictions = {}
+    for key, row in target_rows(ds).items():
+        target = implementation._day(row["date"])
+        predictions[key] = implementation.forecast_model(
+            model, ds, row["product_id"], target, target - timedelta(days=horizon)
+        )
+    return model, predictions
+
+
+def score(ds, truth, model, predictions, cohort=None):
+    targets = target_rows(ds)
+    eligible = set(targets)
+    usable = {k for k, f in predictions.items()
+              if f.get("forecast_mean") is not None and f.get("b1_mean") is not None}
+    cohort = usable if cohort is None else usable & set(cohort)
     out = defaultdict(list)
-    for t in EVAL:
-        target = START + timedelta(days=t)
-        cutoff = target - timedelta(days=horizon)
-        for p in sorted({r["product_id"] for r in ds["rows"]}):
-            row = rows.get((target.isoformat(), p))
-            if row is None or not row["is_open"]:
-                continue
-            f = core.forecast_model(model, ds, p, target, cutoff)
-            if f["method"] != "ML":
-                out["fallback"].append(1)
-                continue
-            out["fallback"].append(0)
-            mu = truth[(target.isoformat(), p)]
-            demand = row["_demand"]
-            for tag, pred in (
-                ("b1", f["b1_mean"]),
-                ("ml", f["forecast_mean"]),
-                ("oracle", mu),
-            ):
-                out[f"{tag}_ae_demand"].append(abs(demand - pred))
-                out[f"{tag}_err_mu"].append(pred - mu)  # signed bias vs true mean
-                q = nearest_allowed_quantity(pred, BATCH, 10_000)
-                out[f"{tag}_waste"].append(max(q - demand, 0))
-                out[f"{tag}_short"].append(max(demand - q, 0))
-            out["demand"].append(demand)
+    for key in sorted(cohort):
+        row, f = targets[key], predictions[key]
+        mu, demand = truth[key], row["_demand"]
+        for tag, pred in (("b1", f["b1_mean"]), ("ml", f["forecast_mean"]),
+                          ("conditional_mean", mu)):
+            out[f"{tag}_ae_demand"].append(abs(demand - pred))
+            out[f"{tag}_err_mu"].append(pred - mu)
+            q = nearest_allowed_quantity(pred, BATCH, 10_000)
+            out[f"{tag}_waste"].append(max(q - demand, 0))
+            out[f"{tag}_short"].append(max(demand - q, 0))
+        out["demand"].append(demand)
     res = {k: float(np.mean(v)) for k, v in out.items() if v}
-    res["n"] = len(out["demand"])
-    res["internal_b1_mae"] = ev.get("b1_mae")
-    res["internal_ml_mae"] = ev.get("ml_mae")
-    res["internal_n"] = ev.get("paired_n")
+    ev = model["evaluation"]
+    res.update(n=len(cohort), eligible_n=len(eligible), numeric_n=len(usable),
+               ml_n=sum(f["method"] == "ML" for f in predictions.values()),
+               fallback_n=sum(f["method"] != "ML" for f in predictions.values()),
+               missing_prediction_n=len(eligible - usable),
+               excluded_label_target_n=sum(core._label(r, ds["target"])[0] is None
+                                           for r in targets.values()),
+               fallback=sum(f["method"] != "ML" for f in predictions.values()) / len(eligible)
+                        if eligible else 0.0,
+               internal_b1_mae=ev.get("b1_mae"), internal_ml_mae=ev.get("ml_mae"),
+               internal_n=ev.get("paired_n"))
     return res
+
+
+def run(name, kw, seed, horizon=2, train_cutoff=TRAIN_CUTOFF, implementation=core):
+    ds, truth = make_dataset(seed=seed, **kw)
+    model, predictions = forecast_rows(ds, implementation, horizon, train_cutoff)
+    return score(ds, truth, model, predictions)
 
 
 def summarize(results):
@@ -90,14 +108,19 @@ def summarize(results):
     agree = np.mean([a == b for a, b in internal]) if internal else float("nan")
     return {
         "seeds": len(results),
+        "eligible_n": sum(r["eligible_n"] for r in results),
+        "scored_n": sum(r["n"] for r in results),
+        "ml_n": sum(r["ml_n"] for r in results),
+        "missing_prediction_n": sum(r["missing_prediction_n"] for r in results),
+        "excluded_label_target_n": sum(r["excluded_label_target_n"] for r in results),
         "mean_demand": m("demand"),
         "MAE_B1": m("b1_ae_demand"),
         "MAE_ML": m("ml_ae_demand"),
-        "MAE_oracle": m("oracle_ae_demand"),
+        "MAE_conditional_mean_reference": m("conditional_mean_ae_demand"),
         "ML/B1 ratio": float(ratio.mean()),
         "ML wins %": float((ratio < 1).mean() * 100),
-        "bias_B1_vs_true": m("b1_err_mu"),
-        "bias_ML_vs_true": m("ml_err_mu"),
+        "bias_B1_vs_conditional_mean": m("b1_err_mu"),
+        "bias_ML_vs_conditional_mean": m("ml_err_mu"),
         "waste_B1": m("b1_waste"),
         "short_B1": m("b1_short"),
         "waste_ML": m("ml_waste"),

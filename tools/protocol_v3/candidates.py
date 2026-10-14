@@ -4,7 +4,9 @@ Dev seeds choose; confirm seeds (disjoint) only report. Selection rule fixed up 
 lowest mean MAE ratio vs B1 across scenarios, subject to worst-scenario ratio <= 1.02.
 """
 
+import hashlib
 import json
+import subprocess
 import math
 import sys
 from collections import defaultdict
@@ -19,6 +21,7 @@ sys.path[:0] = [str(HERE.parents[1]), str(HERE)]
 
 from backend import ml_core as core  # noqa: E402
 from gen import START, make_dataset  # noqa: E402
+import reference_v2  # noqa: E402
 
 H = 2
 SCEN = {
@@ -154,9 +157,9 @@ def run_candidate(name, samples, train_end, eval_days, refit_every=None):
             p: [(i, s) for i, s in d.items() if i <= cut and s[2] is not None]
             for p, d in samples.items()
         }
-        if name.startswith("v2"):  # per-product absolute, core implementation
+        if name.startswith("v2"):  # immutable historical per-product absolute fit
             return {
-                p: core._fit(
+                p: reference_v2._fit(
                     [
                         {"features": s[0][:11], "b1": s[1], "value": s[2]}
                         for _, s in rows
@@ -191,7 +194,7 @@ def run_candidate(name, samples, train_end, eval_days, refit_every=None):
         if name == "B1":
             return b1
         if name.startswith("v2"):
-            return core._predict(m[p], f[:11], b1) if p in m else b1
+            return reference_v2._predict(m[p], f[:11], b1) if p in m else b1
         if name.startswith("rel_pp"):
             return max(0.0, b1 + m[p].predict(rel(f))) if p in m else b1
         if name == "B2":
@@ -216,7 +219,7 @@ def run_candidate(name, samples, train_end, eval_days, refit_every=None):
             last_fit = cut
         for p, d in samples.items():
             s = d.get(t)
-            if s is None or s[2] is None:
+            if s is None or s[3] is None:
                 continue
             out.append((predict(models, p, s), s[1], s[2], s[3]))
     return out
@@ -224,14 +227,20 @@ def run_candidate(name, samples, train_end, eval_days, refit_every=None):
 
 def evaluate(cands, seeds, refit_every=None):
     res = {c: defaultdict(list) for c in cands}
+    per_seed = []
     for sc, kw in SCEN.items():
         for seed in seeds:
             samples = prepare(kw, seed)
+            evidence = {"scenario": sc, "seed": seed, "models": {}}
             for c in cands:
                 pairs = run_candidate(c, samples, 83, range(88, 126), refit_every)
                 mae = np.mean([abs(d - p) for p, b, y, d in pairs])  # vs true demand
                 b1 = np.mean([abs(d - b) for p, b, y, d in pairs])
                 res[c][sc].append(mae / b1)
+                evidence["models"][c] = {"n": len(pairs), "MAE": float(mae), "MAE_B1": float(b1), "ratio": float(mae / b1),
+                                          "excluded_label_target_n": sum(y is None for _, _, y, _ in pairs)}
+            assert len({v["n"] for v in evidence["models"].values()}) == 1
+            per_seed.append(evidence)
     table = {}
     for c in cands:
         per = {sc: float(np.mean(v)) for sc, v in res[c].items()}
@@ -240,7 +249,16 @@ def evaluate(cands, seeds, refit_every=None):
             "worst": max(per.values()),
             **per,
         }
-    return table
+    return {"summary": table, "per_seed": per_seed,
+            "seeds": list(seeds), "refit_every": refit_every,
+            "interpretation": "Corrected audit rerun on previously inspected seeds, not fresh confirmation.",
+            "provenance": {
+                "git_head": subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=HERE, text=True).strip(),
+                "working_tree_dirty": bool(subprocess.check_output(["git", "status", "--porcelain"], cwd=HERE, text=True).strip()),
+                "source_sha256": {str(p.relative_to(HERE.parents[1])): hashlib.sha256(p.read_bytes()).hexdigest()
+                                  for p in [HERE / "candidates.py", HERE / "gen.py", HERE / "reference_v2.py", HERE.parents[1] / "backend/ml_core.py"]}},
+            "reference_v2": json.loads((HERE / "reference_v2_provenance.json").read_text()),
+            "cohort": "Feature-eligible observed open targets with latent demand, including excluded training labels. All candidates use identical targets."}
 
 
 if __name__ == "__main__":
@@ -249,6 +267,6 @@ if __name__ == "__main__":
     refit = int(sys.argv[3]) if len(sys.argv) > 3 and sys.argv[3] != "-" else None
     seeds = range(0, 12) if mode == "dev" else range(100, 130)
     t = evaluate(cands, seeds, refit)
-    for c, row in sorted(t.items(), key=lambda kv: kv[1]["mean"]):
+    for c, row in sorted(t["summary"].items(), key=lambda kv: kv[1]["mean"]):
         print(f"{c:18s}", " ".join(f"{k}={v:.3f}" for k, v in row.items()), flush=True)
     json.dump(t, open(HERE / f"cand_{mode}_{refit}.json", "w"), indent=1)

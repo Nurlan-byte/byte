@@ -43,7 +43,7 @@ def make_dataset(
         day = START + timedelta(days=d)
         for p, base in zip(products, bases):
             mu = demand_mean(scenario, base, d, day.weekday(), state)
-            truth[(day.isoformat(), p)] = mu
+            truth[(day.isoformat(), p)] = mu * (1 + 3 * outlier_prob) + 20 * outlier_prob
             if d in closed:
                 rows.append(_row(day, p, False, 0, 0, "none"))
                 continue
