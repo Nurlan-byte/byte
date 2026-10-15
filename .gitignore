@@ -26,3 +26,22 @@ data/
 private/
 *.docx
 *.pdf
+
+# Reproducible local reports; historical evidence is retained explicitly.
+/tools/protocol_v3/cand_*.json
+/tools/protocol_v3/backtest_report.json
+/tools/protocol_v3/confirm_*.json
+!/tools/protocol_v3/confirm_audit.json
+/.coverage
+/.coverage.*
+/htmlcov/
+/frontend/coverage/
+/npm-debug.log*
+/frontend/npm-debug.log*
+
+# Local operator configuration and backups stay outside version control.
+/.env.*
+!/.env.example
+/deploy/.env.*
+!/deploy/.env.example
+/backups/
