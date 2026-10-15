@@ -1,3 +1,5 @@
+> Архив: отчёт описывает указанный в нём этап и SHA, а не текущий статус. Актуальные проверки — в [VERIFICATION](../../VERIFICATION.md), открытая работа — в [REMAINING_TASKS](../REMAINING_TASKS.md).
+
 # ML integration verification, 2026-10-13
 
 Cloud Linux checkout of `feature/bakeplan-scaffold`, based on unchanged commit `86c23e516916ac56ebac30a28a27317d841bcc5f`. Original history and authors were retained. New release: API 0.3.0 / SQLite schema 3 / `residual-ridge-100-v1-experimental`.

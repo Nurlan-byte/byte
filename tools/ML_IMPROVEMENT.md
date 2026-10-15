@@ -8,7 +8,7 @@ Train/validation/test и5 позиций сохраняются. Test уже п�
 
 ## Запуск
 
-Из корня репозитория после установки `backend/requirements.txt` и `tools/requirements.txt`:
+Из корня репозитория после установки `backend/requirements.lock` и `tools/requirements.lock`:
 
 ```powershell
 .\.venv\Scripts\python.exe tools/compare_sales_ml.py --csv <private-sales.csv> --output <private-report.json> --source external-sales-only --history-mode rolling-one-day-ahead --expected-sha256 5f7e0af51f4bf985f0d2ac2e35209c94d2426726993b98d1c2e9d8bc145860ee

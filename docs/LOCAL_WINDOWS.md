@@ -2,7 +2,7 @@
 
 **Самый быстрый запасной вариант** — уже знакомый запуск Python 3.14 + Node 24 из [README](../README.md#быстрый-запуск). Ниже — отдельный Docker-вариант: одна локальная ссылка `http://127.0.0.1:8080`, собранный React, FastAPI и постоянная SQLite. Он не публикует приложение в интернет и не создаёт платных ресурсов.
 
-**Честный статус:** приложение и snapshot/restore проверены в cloud Linux; Docker Desktop/WSL2 на вашем Windows-компьютере ещё не проверены. В среде подготовки нет Docker runtime. На SHA `9948d911` [полный CI](https://github.com/Nurlan-byte/byte/actions/runs/38462149030) прошёл Windows unit/browser и Linux container build/ML/restart/backup/restore. Он не заменяет ручную проверку Docker Desktop на вашем ноутбуке. Финальную более позднюю версию сверяйте по SHA и CI в [CI ветки UI-polish](https://github.com/Nurlan-byte/byte/actions?query=branch%3Afeature%2Fbakeplan-ui-polish). Не удаляйте прежнюю рабочую папку и её SQLite, пока не пройдёте сценарий ниже.
+**Статус проверок:** Windows unit/browser и Linux container build/ML/restart/backup/restore проверяются в CI точного commit — см. [VERIFICATION](../VERIFICATION.md). Это не заменяет ручную проверку Docker Desktop/WSL2 на вашем ноутбуке. Инструкция ниже относится к опубликованной основной ветке; отдельная установленная UI-версия описана в [remaining tasks](REMAINING_TASKS.md). Сохраняйте прежнюю рабочую папку и SQLite.
 
 Краткий порядок действий утром: [MORNING_CHECKLIST](MORNING_CHECKLIST.md).
 
@@ -44,12 +44,12 @@ Docker должен отвечать серверной частью; Compose н
 ```sh
 mkdir -p ~/projects
 cd ~/projects
-git clone --branch feature/bakeplan-ui-polish https://github.com/Nurlan-byte/byte.git bakeplan-docker
+git clone https://github.com/Nurlan-byte/byte.git bakeplan-docker
 cd bakeplan-docker
 git rev-parse HEAD
 ```
 
-Сверьте SHA с переданным результатом проверки. При ошибке clone проверьте адрес и доступность GitHub; не заменяйте ветку старой версией без Docker-файлов. Если `bakeplan-docker` уже существует, не удаляйте её и не сбрасывайте изменения; используйте прежний проверенный checkout либо новое имя каталога. Исходная Windows-папка с данными остаётся запасным вариантом.
+Сверьте SHA с переданным результатом проверки. При ошибке clone проверьте адрес и доступность GitHub; сверьте default branch и её SHA, не подменяйте версию непроверенным checkout. Если `bakeplan-docker` уже существует, не удаляйте её и не сбрасывайте изменения; используйте прежний проверенный checkout либо новое имя каталога. Исходная Windows-папка с данными остаётся запасным вариантом.
 
 ## 3. Локальный доступ задаёт владелец
 

@@ -58,3 +58,20 @@ Run from the repository root:
 
 The report is written to `tools/protocol_v3/confirm_audit.json`. Conditional-mean
 metrics use the name `conditional_mean`, replacing the misleading `oracle` label.
+
+## Saved evidence and local output
+
+- [Development candidate report](archive/cand_dev_None.json) and
+  [reporting-seed candidate report](archive/cand_confirm_None.json) preserve the
+  historical selection evidence byte-for-byte. They are archived outputs, not
+  application inputs or a fresh independent confirmation.
+- [Integrated corrected audit](confirm_audit.json) remains tracked at its original
+  path because [EVALUATION](../../docs/EVALUATION.md) cites it.
+- The frozen `reference_v2.py` and its provenance are required by the audit and
+  integrity tests; they are not redundant application code.
+
+Candidate runs still write `cand_<mode>_<refit>.json` alongside the scripts. Those
+local reruns, `backtest_report.json` and `confirm_<tag>.json` are ignored, except
+the tracked `confirm_audit.json`. For a local integrated rerun use `--tag local`
+instead of `--tag audit` to avoid overwriting the saved audit. A new report does
+not replace historical evidence or make previously inspected seeds independent.
