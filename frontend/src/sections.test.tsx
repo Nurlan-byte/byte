@@ -133,7 +133,7 @@ test("saved dataset control has an exact stable label independent of its options
   );
   expect(html).toContain('<select id="saved-dataset">');
   expect(html).toContain(
-    '<option value="second-dataset" selected="">second-dataset · local</option>',
+    '<option value="second-dataset" selected="">2. Данные пекарни · — строк · дата не указана</option>',
   );
   expect(html).not.toMatch(/<label[^>]*>[^<]*<select/);
 });
@@ -295,7 +295,7 @@ test("method and import selects have exact option-independent labels and retain 
       />,
     );
     for (const [html, id, label, selected, options] of [
-      [planning, "planning-method", "Базовый метод", "ML", ["B1", "ML", "B0"]],
+      [planning, "planning-method", "Способ расчёта", "ML", ["B1", "ML", "B0"]],
       [model, "diagnostic-method", "Метод диагностики", "ML", ["ML", "B1"]],
       [
         imported,

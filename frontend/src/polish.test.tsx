@@ -6,7 +6,7 @@ import { App } from "./App";
 
 const evaluation = {
   b1_mae: 0.416667,
-  ml_mae: 0.767225,
+  ml_mae: 1.058562,
   paired_n: 60,
   coverage_denominator_n: 60,
   coverage: 1,
@@ -19,7 +19,7 @@ test("model comparison exposes exact synthetic evidence without implying real ac
     "MAE B1",
     "MAE ML",
     "0,416667",
-    "0,767225",
+    "1,058562",
     "Парное N",
     "60/60",
     "Чем ниже, тем лучше",
@@ -77,16 +77,17 @@ test("history uses readable statuses and exact saved export paths, locking actio
     if (busy) expect(html).toContain('aria-disabled="true"');
   }
 });
-test("home is Plan, B1 remains selected and navigation has stable keyboard-accessible labels", () => {
+test("home offers one primary start action and accessible navigation without premature controls", () => {
   const html = renderToStaticMarkup(<App />);
   expect(html).toContain('aria-current="page" aria-controls="panel-planning"');
-  expect(html).toContain('<option value="B1" selected="">');
+  expect(html).toContain("Подготовим выпечку на день");
+  expect(html).not.toContain("Рассчитать план");
   expect(html).toContain('id="panel-import" hidden=""');
   expect(html).toContain('id="panel-model" hidden=""');
   expect(html).toContain('id="panel-history" hidden=""');
   expect(html).toContain('aria-label="Разделы BakePlan"');
-  expect(html).toContain('aria-hidden="true">ML</span>');
-  expect(html).toContain('for="plan-date"');
-  expect(html).toContain('for="plan-cutoff"');
-  expect(html).toContain('for="plan-open"');
+  expect(html).toContain('aria-hidden="true">Опыт</span>');
+  expect(html).not.toContain('for="plan-date"');
+  expect(html).not.toContain('for="plan-cutoff"');
+  expect(html).not.toContain('for="plan-open"');
 });

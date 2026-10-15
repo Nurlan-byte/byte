@@ -11,7 +11,24 @@ export function errorMessage(status: number, data: unknown): string {
         "details" in error && error.details != null
           ? `\n${JSON.stringify(error.details)}`
           : "";
-      return error.message + details;
+      const entries =
+        "details" in error && Array.isArray(error.details) ? error.details : [];
+      const readable = entries
+        .slice(0, 3)
+        .map((entry: unknown) => {
+          if (typeof entry === "string") return entry;
+          if (entry && typeof entry === "object" && "message" in entry) {
+            const field =
+              "loc" in entry && Array.isArray(entry.loc)
+                ? entry.loc.filter((x) => x !== "body").join(" → ")
+                : "Поле";
+            return `${field}: ${String(entry.message)}`;
+          }
+          return "";
+        })
+        .filter(Boolean)
+        .join("; ");
+      return error.message + (readable ? `. ${readable}` : "") + details;
     }
   }
   if (status === 413)

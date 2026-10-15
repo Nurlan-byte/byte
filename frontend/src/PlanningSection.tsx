@@ -7,8 +7,11 @@ import { businessDate } from "./dates";
 import { planInputsChanged } from "./snapshots";
 import { methodText, reasonText } from "./explanations";
 import { EvaluationNotice } from "./EvaluationNotice";
+import { hasQuantityChanges } from "./workspace";
+import { formatDatasetPeriod } from "./datasetSummary";
 export function PlanningSection({
   onImport,
+  onHistory,
   dataset,
   plan,
   busy,
@@ -49,7 +52,7 @@ export function PlanningSection({
   | "run"
   | "show"
   | "refreshHistory"
-> & { onImport?: () => void }) {
+> & { onImport?: () => void; onHistory?: () => void }) {
   if (dataset?.target === "item_line_count" || dataset?.unit === "item_line") {
     return (
       <aside className="sales-only" data-testid="sales-only-notice">
@@ -66,12 +69,43 @@ export function PlanningSection({
     plan?.items.length &&
     plan.items.every((item) => item.target_is_open === false);
   const calendarKnown = plan?.items.some((item) => item.target_is_open != null);
-  const dirty = plan?.items.some(
-    (item) =>
-      quantities[item.product_id] !==
-      String(item.confirmed_qty ?? item.recommended_qty),
-  );
+  const dirty = hasQuantityChanges(plan, quantities);
   const replay = target <= businessDate();
+  if (!dataset && !plan)
+    return (
+      <section
+        id="planning"
+        aria-labelledby="planning-heading"
+        className="welcome"
+      >
+        <span className="empty-icon">
+          <Icon name="bread" />
+        </span>
+        <p className="eyebrow">ВАШ ПЕРВЫЙ ПЛАН</p>
+        <h2 id="planning-heading">Подготовим выпечку на день</h2>
+        <p>
+          Добавьте историю продаж. BakePlan предложит количество для каждого
+          изделия, а вы проверите и сохраните свой выпуск.
+        </p>
+        <button disabled={busy} onClick={onImport}>
+          Перейти к данным <Icon name="arrow" />
+        </button>
+        <p className="muted">
+          Нет файла под рукой? В «Данных» можно попробовать синтетический
+          пример.
+        </p>
+        <div className="welcome-next">
+          <strong>Что дальше</strong>
+          <p>
+            Выберите дату → получите план → поправьте количества → подтвердите.
+            Сохранённый план можно открыть в истории и скачать в CSV.
+          </p>
+        </div>
+        <button className="text-button" disabled={busy} onClick={onHistory}>
+          Открыть сохранённые планы
+        </button>
+      </section>
+    );
   return (
     <section id="planning" aria-labelledby="planning-heading">
       <div className="section-heading">
@@ -90,22 +124,6 @@ export function PlanningSection({
             : "Новый план"}
         </span>
       </div>
-      {!dataset && !plan && (
-        <div className="empty-state compact">
-          <span className="empty-icon">
-            <Icon name="bread" />
-          </span>
-          <h3>Начнём с вашей истории</h3>
-          <p>
-            Загрузите CSV или попробуйте демо. После проверки данных здесь
-            появится план по каждому изделию.
-          </p>
-          <button onClick={onImport}>
-            Перейти к данным
-            <Icon name="arrow" />
-          </button>
-        </div>
-      )}
       {replay && !plan && (
         <aside className="replay-notice">
           <strong>Историческое воспроизведение</strong>
@@ -137,16 +155,16 @@ export function PlanningSection({
           />
         </div>
         <div className="control-field">
-          <label htmlFor="planning-method">Базовый метод</label>
+          <label htmlFor="planning-method">Способ расчёта</label>
           <select
             id="planning-method"
             disabled={busy}
             value={method}
             onChange={(e) => setMethod(e.target.value)}
           >
-            <option value="B1">B1 · по дням недели</option>
-            <option value="ML">ML · экспериментальный</option>
-            <option value="B0">B0 · неделю назад</option>
+            <option value="B1">По похожим дням недели (B1)</option>
+            <option value="ML">Экспериментальная модель (ML)</option>
+            <option value="B0">По прошлой неделе (B0)</option>
           </select>
         </div>
         <div className="control-field calendar-field">
@@ -164,10 +182,31 @@ export function PlanningSection({
         </div>
       </div>
       <p className="control-hint">
-        B1 работает без обучения. ML при недоступности переходит на B1 с явной
-        причиной. Срез — только завершённые дни; при задержке учёта сдвиньте его
-        назад.
+        Обычно планируем завтра по данным до вчера включительно: разрыв — два
+        дня (t−2). Базовый расчёт по дням недели работает без обучения. При
+        задержке учёта выберите более раннюю дату данных.
       </p>
+      {dataset && (
+        <p className="control-hint">
+          Период выбранной истории: {formatDatasetPeriod(dataset)}. Новые дни
+          после этой истории не добавляются автоматически.
+        </p>
+      )}
+      <details>
+        <summary>Подробнее о способах расчёта</summary>
+        <p>
+          B1 — среднее до четырёх таких же дней недели за 56 дней. B0 — тот же
+          день неделю назад. ML — экспериментальная поправка к B1; если модель
+          недоступна, используется B1 с явной причиной. Отсутствие подходящей
+          истории означает отсутствие оценки, а не нулевой спрос.
+        </p>
+      </details>
+      {dirty && (
+        <p className="status-note">
+          Новый расчёт заменит несохранённые поля ниже. Сначала подтвердите
+          текущие правки, если хотите их сохранить.
+        </p>
+      )}
       <button
         disabled={busy || !dataset || !target || !cutoff}
         onClick={() =>
@@ -227,7 +266,10 @@ export function PlanningSection({
             </p>
             <p>
               Срез: {plan.cutoff} · выбранный метод:{" "}
-              {plan.requested_method ?? "не сохранён в старом плане"} · день{" "}
+              {plan.requested_method
+                ? methodText(plan.requested_method)
+                : "не сохранён в старом плане"}{" "}
+              · день{" "}
               {calendarKnown
                 ? closed
                   ? "закрыт"
@@ -268,23 +310,23 @@ export function PlanningSection({
             </div>
           </details>
           <p className="table-hint">
-            На узком экране прокрутите таблицу вправо → выпуск, фактический
-            метод и ограничения.
+            Прогноз — ожидаемые продажи. Рекомендация учитывает партии. Ваш
+            выпуск сохраняется только после подтверждения.
           </p>
           <div
             className="table plan-table-scroll"
             tabIndex={0}
             role="region"
-            aria-label="Таблица плана с горизонтальной прокруткой"
+            aria-label="План по изделиям: прогноз, рекомендация и ваш выпуск"
           >
             <table data-testid="plan-table">
               <thead>
                 <tr>
-                  <th>Товар</th>
-                  <th>Прогноз, шт.</th>
-                  <th>Рекомендация</th>
-                  <th>Подтверждение, шт.</th>
-                  <th>Метод и ограничения</th>
+                  <th scope="col">Изделие</th>
+                  <th scope="col">Прогноз, шт.</th>
+                  <th scope="col">Рекомендация, шт.</th>
+                  <th scope="col">Ваш выпуск, шт.</th>
+                  <th scope="col">Метод и ограничения</th>
                 </tr>
               </thead>
               <tbody>
@@ -293,17 +335,23 @@ export function PlanningSection({
                     <td>
                       <strong>{i.name}</strong>
                       <small>
-                        {i.product_id} · партия {i.batch_size} · максимум{" "}
+                        Партия {i.batch_size} шт. · максимум{" "}
                         {Math.floor(i.max_daily_qty / i.batch_size) *
                           i.batch_size}
                       </small>
                     </td>
-                    <td className="numeric-cell forecast-cell">
+                    <td
+                      className="numeric-cell forecast-cell"
+                      data-label="Прогноз, шт."
+                    >
                       {i.forecast_mean == null
                         ? "Нет оценки"
                         : i.forecast_mean.toFixed(1)}
                     </td>
-                    <td className="numeric-cell recommendation-cell">
+                    <td
+                      className="numeric-cell recommendation-cell"
+                      data-label="Рекомендация, шт."
+                    >
                       {i.recommended_qty}
                       {i.automatic_eligible === false && (
                         <small>
@@ -313,7 +361,10 @@ export function PlanningSection({
                         </small>
                       )}
                     </td>
-                    <td className="confirmation-cell">
+                    <td
+                      className="confirmation-cell"
+                      data-label="Ваш выпуск, шт."
+                    >
                       <label
                         className="sr-only"
                         htmlFor={`quantity-${i.product_id}`}
@@ -330,6 +381,14 @@ export function PlanningSection({
                           i.batch_size
                         }
                         step={i.batch_size}
+                        aria-invalid={
+                          !validQuantity(
+                            quantities[i.product_id] ?? "",
+                            i.batch_size,
+                            i.max_daily_qty,
+                          )
+                        }
+                        aria-describedby={`quantity-help-${i.product_id}`}
                         value={quantities[i.product_id] ?? ""}
                         onChange={(e) =>
                           setQuantities({
@@ -338,6 +397,12 @@ export function PlanningSection({
                           })
                         }
                       />
+                      <small id={`quantity-help-${i.product_id}`}>
+                        Шаг {i.batch_size}, до{" "}
+                        {Math.floor(i.max_daily_qty / i.batch_size) *
+                          i.batch_size}{" "}
+                        шт. (предел {i.max_daily_qty})
+                      </small>
                       <small>
                         {i.confirmed_qty == null
                           ? "Ещё не сохранено"
@@ -363,8 +428,10 @@ export function PlanningSection({
                         i.max_daily_qty,
                       ) && (
                         <small className="error">
-                          Введите целое число, кратное партии, в пределах
-                          максимума.
+                          Введите 0 или кратное {i.batch_size}, не больше{" "}
+                          {Math.floor(i.max_daily_qty / i.batch_size) *
+                            i.batch_size}{" "}
+                          шт.
                         </small>
                       )}
                     </td>
@@ -390,6 +457,9 @@ export function PlanningSection({
                       ))}
                       <details className="item-details">
                         <summary>Источники и модель</summary>
+                        <small>
+                          Код изделия: {i.product_id} · метод: {i.method}
+                        </small>
                         {i.model_id && (
                           <small>Снимок модели: {i.model_id}</small>
                         )}
@@ -442,7 +512,9 @@ export function PlanningSection({
                     ? "Проверьте введённые количества"
                     : dirty
                       ? "Сохраните проверенные изменения"
-                      : "Подтвердите выпуск"}
+                      : plan.status === "confirmed"
+                        ? "План сохранён. Можно передать в работу"
+                        : "Подтвердите выпуск"}
               </strong>
               <p>Проверьте партии, ограничения и общую загрузку печи.</p>
             </div>
@@ -490,11 +562,21 @@ export function PlanningSection({
               </button>{" "}
               <a
                 className="button-link secondary"
-                href={`/api/plans/${plan.id}/export`}
+                href={busy ? undefined : `/api/plans/${plan.id}/export`}
+                aria-disabled={busy || undefined}
                 download
               >
                 Экспорт CSV
               </a>
+              {plan.status === "confirmed" && (
+                <button
+                  className="secondary"
+                  disabled={busy}
+                  onClick={onHistory}
+                >
+                  Открыть историю
+                </button>
+              )}
             </div>
           </div>
           <p className="muted">

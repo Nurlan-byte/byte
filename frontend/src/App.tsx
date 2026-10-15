@@ -1,4 +1,9 @@
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
+import {
+  savedDataset,
+  workspaceReference,
+  hasQuantityChanges,
+} from "./workspace";
 import { Icon } from "./Icon";
 import { formatDatasetPeriod, datasetSourceLabel } from "./datasetSummary";
 import { api } from "./api";
@@ -19,7 +24,7 @@ export function App() {
     [plan, setPlan] = useState<Plan | null>(null),
     [history, setHistory] = useState<PlanSummary[]>([]),
     [quantities, setQuantities] = useState<Record<string, string>>({}),
-    [busy, setBusy] = useState(false),
+    [busy, setBusy] = useState(true),
     [error, setError] = useState(""),
     [notice, setNotice] = useState("");
   const [bakeryId, setBakeryId] = useState("demo");
@@ -34,6 +39,77 @@ export function App() {
   const [targetOpen, setTargetOpen] = useState(true);
   const [historyOffset, setHistoryOffset] = useState(0);
   const [historyLoaded, setHistoryLoaded] = useState(false);
+  const [restored, setRestored] = useState(false);
+  const errorBox = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (error) errorBox.current?.focus();
+  }, [error]);
+  useEffect(() => {
+    let active = true;
+    const datasetId = workspaceReference("dataset");
+    const planId = workspaceReference("plan");
+    void Promise.allSettled([
+      datasetId
+        ? api<Dataset>(`/datasets/${encodeURIComponent(datasetId)}`)
+        : Promise.resolve(null),
+      planId
+        ? api<Plan>(`/plans/${encodeURIComponent(planId)}`)
+        : Promise.resolve(null),
+      api<PlanSummary[]>(`/plans?limit=${HISTORY_PAGE_SIZE}&offset=0`),
+    ]).then(([data, previousPlan, plans]) => {
+      if (!active) return;
+      if (data.status === "fulfilled" && data.value) {
+        const stored = savedDataset(data.value);
+        setDataset(stored);
+        setSource(stored.source);
+        setBakeryId(stored.bakery_id);
+        setDataTarget(stored.target);
+        setProvenance(stored.provenance);
+      }
+      if (previousPlan.status === "fulfilled" && previousPlan.value)
+        show(previousPlan.value);
+      if (plans.status === "fulfilled") {
+        setHistory(plans.value);
+        setHistoryLoaded(true);
+      }
+      if (data.status === "rejected" || previousPlan.status === "rejected") {
+        setError(
+          "Не удалось открыть прошлый набор или план. Откройте сохранённый набор в «Данных» или план в «Истории». Если сервер временно недоступен, обновите страницу.",
+        );
+      } else if (plans.status === "rejected") {
+        setError(
+          "Не удалось загрузить историю. Проверьте соединение с сервером и нажмите «Обновить историю».",
+        );
+      }
+      setBusy(false);
+      setRestored(true);
+    });
+    return () => {
+      active = false;
+    };
+  }, []);
+  useEffect(() => {
+    if (restored && dataset) workspaceReference("dataset", dataset.id);
+  }, [restored, dataset]);
+  useEffect(() => {
+    if (restored && plan) workspaceReference("plan", plan.id);
+  }, [restored, plan]);
+  const unsaved = hasQuantityChanges(plan, quantities);
+  useEffect(() => {
+    if (!unsaved) return;
+    const warn = (event: BeforeUnloadEvent) => {
+      event.preventDefault();
+      event.returnValue = "";
+    };
+    window.addEventListener("beforeunload", warn);
+    return () => window.removeEventListener("beforeunload", warn);
+  }, [unsaved]);
+  function changeView(next: View) {
+    setView(next);
+    window.scrollTo({ top: 0 });
+    if (next === "history" && view !== "history" && !busy)
+      void run(() => loadHistory(historyOffset));
+  }
   async function loadHistory(offset: number) {
     const rows = await api<PlanSummary[]>(
       `/plans?limit=${HISTORY_PAGE_SIZE}&offset=${offset}`,
@@ -97,7 +173,12 @@ export function App() {
     provenance,
     setProvenance,
     plan,
-    setPlan,
+    setPlan: (
+      value: Plan | null | ((previous: Plan | null) => Plan | null),
+    ) => {
+      if (value === null) workspaceReference("plan", null);
+      setPlan(value);
+    },
     busy,
     setError,
     setNotice,
@@ -137,7 +218,7 @@ export function App() {
         <a
           className="brand"
           href="#workspace"
-          onClick={() => setView("planning")}
+          onClick={() => changeView("planning")}
           aria-label="BakePlan — план выпечки"
         >
           <span className="brand-mark">
@@ -155,13 +236,13 @@ export function App() {
               type="button"
               aria-current={view === item.id ? "page" : undefined}
               aria-controls={`panel-${item.id}`}
-              onClick={() => setView(item.id)}
+              onClick={() => changeView(item.id)}
             >
               <Icon name={item.icon} />
               <span>{item.label}</span>
               {item.id === "model" && (
                 <span className="nav-hint" aria-hidden="true">
-                  ML
+                  Опыт
                 </span>
               )}
             </button>
@@ -191,51 +272,82 @@ export function App() {
             </span>
           </div>
         </header>
-        <div className="provenance-strip" data-testid="workspace-source">
-          <span className={`source-icon ${dataset ? "loaded" : ""}`}>
-            <Icon name="data" />
-          </span>
-          <div>
-            {dataset ? (
-              <>
-                <strong>{sourceLabel} · для нового расчёта</strong>
-                <span>
-                  {dataset.row_count ?? "—"} строк · {period}
-                </span>
-                <small>{dataset.provenance}</small>
-              </>
-            ) : (
-              <>
-                <strong>
-                  {plan
-                    ? "Набор для нового расчёта не выбран"
-                    : "История продаж ещё не загружена"}
-                </strong>
-                <span>
-                  {plan
-                    ? "Открытый план использует свой сохранённый снимок данных."
-                    : "Начните с CSV или безопасных демонстрационных данных."}
-                </span>
-              </>
-            )}
+        <ol className="journey" aria-label="Шаги подготовки плана">
+          <li className={!dataset ? "current" : "done"}>1. Данные</li>
+          <li className={dataset && !plan ? "current" : plan ? "done" : ""}>
+            2. Расчёт
+          </li>
+          <li
+            className={
+              plan && (plan.status !== "confirmed" || unsaved) ? "current" : ""
+            }
+          >
+            3. Проверка и сохранение
+          </li>
+        </ol>
+        {(dataset || plan) && (
+          <div className="provenance-strip" data-testid="workspace-source">
+            <span className={`source-icon ${dataset ? "loaded" : ""}`}>
+              <Icon name="data" />
+            </span>
+            <div>
+              {dataset ? (
+                <>
+                  <strong>{sourceLabel} · для нового расчёта</strong>
+                  <span>
+                    {dataset.row_count ?? "—"} строк · {period}
+                  </span>
+                  <small>{dataset.provenance}</small>
+                </>
+              ) : (
+                <>
+                  <strong>
+                    {plan
+                      ? "Набор для нового расчёта не выбран"
+                      : "История продаж ещё не загружена"}
+                  </strong>
+                  <span>
+                    {plan
+                      ? "Открытый план использует свой сохранённый снимок данных."
+                      : "Начните с CSV или безопасных демонстрационных данных."}
+                  </span>
+                </>
+              )}
+            </div>
+            <button
+              className="text-button"
+              onClick={() => changeView("import")}
+            >
+              {dataset ? "Открыть данные" : "Загрузить данные"}
+              <Icon name="arrow" />
+            </button>
           </div>
-          <button className="text-button" onClick={() => setView("import")}>
-            {dataset ? "Открыть данные" : "Загрузить данные"}
-            <Icon name="arrow" />
-          </button>
-        </div>
+        )}
         <p className="safety-note">
           Прогноз — ориентир, а не гарантия спроса. Синтетические данные только
           для демонстрации. Загрузку печи проверьте вручную.
         </p>
         {error && (
-          <div role="alert" className="error">
+          <div role="alert" className="error" tabIndex={-1} ref={errorBox}>
             <strong>Не удалось выполнить действие</strong>
-            <pre>{error}</pre>
+            <p className="error-message">{error.split("\n")[0]}</p>
+            {error.includes("\n") && (
+              <details>
+                <summary>Подробности ошибки</summary>
+                <pre>{error.slice(error.indexOf("\n") + 1)}</pre>
+              </details>
+            )}
             <p>
-              Проверьте сообщение и повторите действие. При конфликте версии
-              откройте актуальный план из истории.
+              Исправьте указанную причину и повторите действие. При конфликте
+              версии откройте актуальный план из истории.
             </p>
+            <button
+              className="secondary"
+              disabled={busy}
+              onClick={() => changeView("history")}
+            >
+              Открыть историю
+            </button>
           </div>
         )}
         {notice && !busy && (
@@ -253,13 +365,15 @@ export function App() {
         <div id="panel-planning" hidden={view !== "planning"}>
           <PlanningSection
             {...sectionProps}
-            onImport={() => setView("import")}
+            onImport={() => changeView("import")}
+            onHistory={() => changeView("history")}
           />
         </div>
         <div id="panel-import" hidden={view !== "import"}>
           <ImportSection
             {...sectionProps}
-            onContinue={() => setView(salesOnly ? "model" : "planning")}
+            active={view === "import"}
+            onContinue={() => changeView(salesOnly ? "model" : "planning")}
           />
         </div>
         <div id="panel-model" hidden={view !== "model"}>
@@ -268,6 +382,7 @@ export function App() {
               key={dataset.id}
               {...sectionProps}
               dataset={dataset}
+              active={view === "model"}
             />
           ) : (
             <section className="empty-state">
@@ -284,7 +399,7 @@ export function App() {
           )}
         </div>
         <div id="panel-history" hidden={view !== "history"}>
-          {!salesOnly ? (
+          {
             <HistorySection
               history={history}
               offset={historyOffset}
@@ -293,23 +408,29 @@ export function App() {
               onPage={(offset) => void run(() => loadHistory(offset))}
               onLoad={(id) =>
                 void run(async () => {
-                  show(await api<Plan>(`/plans/${id}`));
+                  const storedPlan = await api<Plan>(`/plans/${id}`);
+                  if (salesOnly || !dataset) {
+                    try {
+                      setDataset(
+                        savedDataset(
+                          await api<Dataset>(
+                            `/datasets/${storedPlan.dataset_id}`,
+                          ),
+                        ),
+                      );
+                    } catch {
+                      setDataset(null);
+                      setNotice(
+                        "План открыт из сохранённого снимка. Набор для нового расчёта недоступен; откройте его в разделе «Данные».",
+                      );
+                    }
+                  }
+                  show(storedPlan);
                   setView("planning");
                 })
               }
             />
-          ) : (
-            <section className="empty-state">
-              <h2>История производственных планов</h2>
-              <p>
-                Строки продаж доступны только для диагностики. Откройте набор в
-                физических штуках, чтобы работать с планами.
-              </p>
-              <button onClick={() => setView("import")}>
-                Перейти к данным
-              </button>
-            </section>
-          )}
+          }
         </div>
         <footer>
           Без реальной истории точность и экономия не заявляются.

@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useRef, useState, useEffect } from "react";
 import { api } from "./api";
 import type { Dataset, Forecast, ModelSummary } from "./types";
 import type { SectionProps } from "./sectionProps";
@@ -9,7 +9,7 @@ import { reasonText } from "./explanations";
 type Props = Pick<
   SectionProps,
   "busy" | "cutoff" | "setCutoff" | "target" | "setTarget" | "run" | "setNotice"
-> & { dataset: Dataset };
+> & { dataset: Dataset; active?: boolean };
 export function ModelSection({
   dataset,
   busy,
@@ -19,11 +19,34 @@ export function ModelSection({
   setTarget,
   run,
   setNotice,
+  active = true,
 }: Props) {
   const [models, setModels] = useState<ModelSummary[]>([]);
   const [loaded, setLoaded] = useState(false);
   const [forecast, setForecast] = useState<ForecastSnapshot | null>(null);
   const [forecastMethod, setForecastMethod] = useState("ML");
+  const [loadError, setLoadError] = useState("");
+  const modelRead = useRef(0);
+  useEffect(() => {
+    if (!active) return;
+    const version = ++modelRead.current;
+    void api<ModelSummary[]>(`/datasets/${dataset.id}/models`)
+      .then((rows) => {
+        if (modelRead.current !== version) return;
+        setModels(rows);
+        setLoaded(true);
+        setLoadError("");
+      })
+      .catch(() => {
+        if (modelRead.current === version)
+          setLoadError(
+            "Не удалось загрузить модели. Нажмите «Обновить модели» после восстановления соединения.",
+          );
+      });
+    return () => {
+      modelRead.current++;
+    };
+  }, [active, dataset.id]);
   const training = useRef<{ signature: string; key: string } | null>(null);
   const salesOnly =
     dataset.target === "item_line_count" || dataset.unit === "item_line";
@@ -43,8 +66,9 @@ export function ModelSection({
         <span className="badge">Необязательный шаг</span>
       </div>
       <p className="section-copy">
-        Сравните ошибку ML и базового метода B1 на прошлых данных, прежде чем
-        выбирать метод. Готовая модель ещё не означает более точный прогноз.
+        Сравните ошибку экспериментальной модели (ML) и расчёта по дням недели
+        (B1) на прошлых данных, прежде чем выбирать метод. Готовая модель ещё не
+        означает более точный прогноз.
       </p>
       {!salesOnly && (
         <p className="status-note">
@@ -104,8 +128,8 @@ export function ModelSection({
             value={forecastMethod}
             onChange={(e) => setForecastMethod(e.target.value)}
           >
-            <option value="ML">ML · с явным переходом на B1</option>
-            <option value="B1">B1 · базовый ориентир</option>
+            <option value="ML">Экспериментальная модель (ML)</option>
+            <option value="B1">По похожим дням недели (B1)</option>
           </select>
         </div>
       </div>
@@ -114,6 +138,7 @@ export function ModelSection({
           disabled={busy || !cutoff || dataset.metadata_declared === false}
           onClick={() =>
             void run(async () => {
+              modelRead.current++;
               const signature = JSON.stringify({ dataset: dataset.id, cutoff });
               if (training.current?.signature !== signature) {
                 training.current = { signature, key: crypto.randomUUID() };
@@ -146,10 +171,12 @@ export function ModelSection({
           disabled={busy}
           onClick={() =>
             void run(async () => {
+              modelRead.current++;
               setModels(
                 await api<ModelSummary[]>(`/datasets/${dataset.id}/models`),
               );
               setLoaded(true);
+              setLoadError("");
               setNotice("Статусы сохранённых моделей обновлены.");
             })
           }
@@ -181,6 +208,11 @@ export function ModelSection({
           Получить прогноз
         </button>
       </div>
+      {loadError && (
+        <p role="alert" className="error">
+          {loadError}
+        </p>
+      )}
       {!models.length && (
         <div className="status-note">
           <strong>
@@ -321,19 +353,19 @@ export function ModelEvaluation({
       </p>
       <div className="metric-grid">
         <div className="metric-card">
-          <span>MAE B1</span>
+          <span>Ошибка базового расчёта</span>
           <strong>{formatError(b1)}</strong>
-          <small>Базовый метод · {unitLabel}</small>
+          <small>MAE B1 · {unitLabel}</small>
         </div>
         <div className="metric-card">
-          <span>MAE ML</span>
+          <span>Ошибка модели</span>
           <strong>{formatError(ml)}</strong>
-          <small>Модель · {unitLabel}</small>
+          <small>MAE ML · {unitLabel}</small>
         </div>
         <div className="metric-card">
-          <span>Парное N</span>
+          <span>Общие наблюдения</span>
           <strong>{evaluation.paired_n ?? "Нет данных"}</strong>
-          <small>Сопоставимых прогнозов</small>
+          <small>Парное N · сопоставимых прогнозов</small>
         </div>
         <div className="metric-card">
           <span>Покрытие</span>

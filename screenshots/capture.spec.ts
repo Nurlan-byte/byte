@@ -145,7 +145,7 @@ test('capture real synthetic desktop, laptop and mobile planning evidence', asyn
 
     await page.setViewportSize({ width: 1366, height: 900 });
     await navigate(page, 'План');
-    await page.getByLabel('Базовый метод', { exact: true }).selectOption('ML');
+    await page.getByLabel('Способ расчёта', { exact: true }).selectOption('ML');
     const plan = await postFromUi(page, 'Рассчитать план', '/plans');
     expect(plan.items[0]).toMatchObject({ product_id: 'p1', recommended_qty: 24, confirmed_qty: null, method: 'ML' });
     expect(plan.items[0].forecast_mean).toBe(forecast.items[0].forecast_mean);
@@ -210,7 +210,7 @@ test('capture real synthetic desktop, laptop and mobile planning evidence', asyn
       element.scrollLeft += input.getBoundingClientRect().left - element.getBoundingClientRect().left - Math.max(110, stickyWidth + 12);
     });
     await expect(quantity).toBeInViewport({ ratio: 1 });
-    await capture('09-mobile-saved-quantity.png', 'Mobile viewport: internally scrolled table showing the saved 84-unit quantity, separate from forecast and recommendation.');
+    await capture('09-mobile-saved-quantity.png', 'Mobile viewport: saved 84-unit quantity, separate from forecast and recommendation; owner UX uses cards without horizontal scrolling.');
     await firstRow.getByText('Источники и модель', { exact: true }).click();
     await tableContainer.evaluate(element => {
       const methodCell = element.querySelector('tbody tr td:last-child')!;
@@ -222,7 +222,7 @@ test('capture real synthetic desktop, laptop and mobile planning evidence', asyn
     await expect(firstRow.getByText('Подходящих наблюдений: 4', { exact: true })).toBeVisible();
     await expect(firstRow.locator('td').last().locator('strong')).toBeInViewport({ ratio: 1 });
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
-    await capture('10-mobile-method-details.png', 'Mobile viewport: horizontally scrolled actual-method and source-date details, with page width still contained.');
+    await capture('10-mobile-method-details.png', 'Mobile viewport: actual method and source dates remain readable within page width.');
 
     // Same real persisted state, collapsed details and plan-section scroll origin.
     // These are raw browser captures, not image-diff snapshots or composed mockups.
