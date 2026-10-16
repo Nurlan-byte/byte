@@ -12,7 +12,7 @@ from pathlib import Path
 from backend.dataset_identity import identity
 from backend.errors import ServiceError
 from backend.forecasting import baseline
-from backend.ml_core import PROTOCOL_VERSION, evaluation_applicability, forecast_model
+from backend.ml_core import evaluation_applicability, forecast_model, protocol_for_dataset
 from backend.model_storage import (
     InvalidArtifact,
     TrainingConflict,
@@ -78,20 +78,21 @@ def train_dataset(ident, body, today):
             422, "Обучение допускает только завершённые дни строго раньше сегодня"
         )
     dataset = identity(get_dataset(ident))
+    protocol_version = protocol_for_dataset(dataset)
     if not dataset["metadata_declared"]:
         raise ServiceError(
             422,
             "Модель не готова: повторно импортируйте CSV с явной пекарней, целевой величиной, единицей и происхождением",
         )
     encoded = json.dumps(
-        {"cutoff": str(body.cutoff), "protocol_version": PROTOCOL_VERSION},
+        {"cutoff": str(body.cutoff), "protocol_version": protocol_version},
         sort_keys=True,
     )
     try:
         previous = previous_training(ident, body.idempotency_key, encoded)
         if previous:
             return model_summary(previous), False
-        existing = find_model(ident, body.cutoff, PROTOCOL_VERSION)
+        existing = find_model(ident, body.cutoff, protocol_version)
         if existing and existing["training_cutoff"] == str(body.cutoff):
             saved, created = save_training(existing, body.idempotency_key, encoded)
             return model_summary(saved), created
@@ -133,7 +134,7 @@ def train_dataset(ident, body, today):
             model = output["model"]
             model.update(
                 id=hashlib.sha256(
-                    f"{ident}:{body.cutoff}:{PROTOCOL_VERSION}".encode()
+                    f"{ident}:{body.cutoff}:{protocol_version}".encode()
                 ).hexdigest(),
                 source=dataset["source"],
                 provenance=dataset["provenance"],
@@ -160,11 +161,12 @@ def train_dataset(ident, body, today):
 
 
 def _b1(dataset, product, target, cutoff, reason):
-    kwargs = (
-        {"eligible": lambda _: True, "value_key": "item_line_count"}
-        if dataset["target"] == "item_line_count"
-        else {}
-    )
+    if dataset.get("planning_kind") == "procurement":
+        kwargs = {"eligible": lambda row: row.get("is_open") is not False}
+    elif dataset["target"] == "item_line_count":
+        kwargs = {"eligible": lambda _: True, "value_key": "item_line_count"}
+    else:
+        kwargs = {}
     value = baseline(
         dataset["rows"],
         product_id=product,
@@ -184,13 +186,14 @@ def _b1(dataset, product, target, cutoff, reason):
 
 def forecast_items(dataset, target, cutoff, model_id=None, method="ML"):
     dataset = identity(dataset)
+    protocol_version = protocol_for_dataset(dataset)
     model, evaluation_model, reason = None, None, None
     if method == "ML":
         try:
             model = (
                 get_model(model_id)
                 if model_id
-                else find_model(dataset["id"], cutoff, PROTOCOL_VERSION)
+                else find_model(dataset["id"], cutoff, protocol_version)
             )
         except InvalidArtifact:
             reason = "Сохранённая модель повреждена; используется B1"
@@ -216,7 +219,7 @@ def forecast_items(dataset, target, cutoff, model_id=None, method="ML"):
                     422,
                     "Срез модели позже доступных данных: выберите более раннюю модель или B1",
                 )
-            if model.get("protocol_version") != PROTOCOL_VERSION:
+            if model.get("protocol_version") != protocol_version:
                 reason = "Версия протокола модели не поддерживается; используется B1"
                 model = None
     items = []

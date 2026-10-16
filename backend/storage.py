@@ -259,7 +259,7 @@ def update_plan(con, plan):
     _update_plan_metadata(con, plan, plan["id"])
 
 
-def _summaries(table, columns, limit, offset):
+def _summaries(table, columns, limit, offset, extras=None):
     if isinstance(limit, bool) or not isinstance(limit, int) or not 1 <= limit <= 100:
         raise ValueError("limit must be an integer between 1 and 100")
     if (
@@ -268,12 +268,15 @@ def _summaries(table, columns, limit, offset):
         or not 0 <= offset <= MAX_SQLITE_INTEGER
     ):
         raise ValueError("offset must be a nonnegative SQLite integer")
+    extras = extras or {}
+    selections = [*columns, *(f"{expression} AS {name}" for name, expression in extras.items())]
+    keys = [*columns, *extras]
     with connection() as con:
         rows = con.execute(
-            f"SELECT {','.join(columns)} FROM {table} ORDER BY rowid DESC LIMIT ? OFFSET ?",
+            f"SELECT {','.join(selections)} FROM {table} ORDER BY rowid DESC LIMIT ? OFFSET ?",
             (limit, offset),
         )
-        return [dict(zip(columns, row, strict=True)) for row in rows]
+        return [dict(zip(keys, row, strict=True)) for row in rows]
 
 
 def list_datasets(limit=100, offset=0):
@@ -290,6 +293,7 @@ def list_datasets(limit=100, offset=0):
         ],
         limit,
         offset,
+        {"planning_kind": "CASE WHEN json_valid(payload) THEN COALESCE(json_extract(payload,'$.planning_kind'),'production') ELSE 'production' END"},
     )
 
 
@@ -308,4 +312,9 @@ def list_plans(limit=100, offset=0):
         ],
         limit,
         offset,
+        {
+            "planning_kind": "CASE WHEN json_valid(payload) THEN COALESCE(json_extract(payload,'$.planning_kind'),'production') ELSE 'production' END",
+            "order_date": "CASE WHEN json_valid(payload) THEN json_extract(payload,'$.order_date') END",
+            "lead_time_days": "CASE WHEN json_valid(payload) THEN json_extract(payload,'$.lead_time_days') END",
+        },
     )

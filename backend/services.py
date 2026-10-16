@@ -5,12 +5,14 @@ import io
 import hashlib
 import json
 import uuid
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 from backend.config import CATALOG, VERSION
 from backend.errors import ServiceError
 from backend.dataset_identity import identity, parse_sales_csv
 from backend.imports import parse_csv
 from backend.planning import plan_item
+from backend.procurement_imports import parse_procurement_csv
+from backend.procurement_planning import procurement_item, suggested_order
 from backend.schemas import ConfirmRequest, ImportRequest, PlanRequest
 from backend.storage import (
     connection,
@@ -24,17 +26,22 @@ from backend.storage import (
 
 
 def import_history(body: ImportRequest, today: date):
-    rows = (
-        parse_sales_csv(body.csv_text, today)
-        if body.schema_version == "sales-1"
-        else parse_csv(
+    catalog = [product.model_dump() for product in body.catalog] if body.catalog else None
+    continuity = []
+    if body.schema_version == "procurement-1":
+        rows, continuity = parse_procurement_csv(
+            body.csv_text, today, {product["product_id"] for product in catalog}
+        )
+    elif body.schema_version == "sales-1":
+        rows = parse_sales_csv(body.csv_text, today)
+    else:
+        rows = parse_csv(
             body.csv_text,
             allowed_product_ids={p["product_id"] for p in CATALOG},
             latest_date=today,
         )
-    )
     missing = 0
-    for product in CATALOG:
+    for product in catalog or CATALOG:
         dates = {
             date.fromisoformat(r["date"])
             for r in rows
@@ -48,30 +55,40 @@ def import_history(body: ImportRequest, today: date):
         rows=rows,
         version=hashlib.sha256(body.csv_text.encode()).hexdigest(),
         schema_version=body.schema_version,
+        planning_kind="procurement" if catalog is not None else "production",
+        catalog=catalog,
         created_at=datetime.now(timezone.utc).isoformat(),
         row_count=len(rows),
         missing_calendar_days=missing,
         stockout_count=sum(r.get("stockout_status") == "occurred" for r in rows)
-        if body.schema_version == "history-1"
+        if body.schema_version in {"history-1", "procurement-1"}
         else None,
         unknown_stockout_count=sum(r.get("stockout_status") == "unknown" for r in rows)
-        if body.schema_version == "history-1"
+        if body.schema_version in {"history-1", "procurement-1"}
         else None,
         diagnostics=[
             "Пропуски не заменены нулями; закрытые дни задаются явно.",
             "Нулевой остаток после списания не доказывает дефицит.",
         ],
     )
+    if catalog is not None:
+        dataset["continuity_warnings"] = continuity
+        dataset["diagnostics"] = [
+            "Received is ready-made goods intake, not bakery production.",
+            "Sales are observed units; unknown opening/stockout evidence does not prove unconstrained demand.",
+            "Next-day stock continuity differences are reported, not corrected.",
+        ]
     if body.bakery_id is not None:
         metadata = {
             key: getattr(body, key)
             for key in ("bakery_id", "target", "unit", "provenance")
         }
         dataset.update(**metadata, metadata_declared=True)
+        hash_content = {**metadata, "csv_hash": dataset["version"]}
+        if catalog is not None:
+            hash_content["catalog"] = catalog
         dataset["content_hash"] = hashlib.sha256(
-            json.dumps(
-                {**metadata, "csv_hash": dataset["version"]}, sort_keys=True
-            ).encode()
+            json.dumps(hash_content, sort_keys=True).encode()
         ).hexdigest()
         dataset["version"] = dataset["content_hash"]
     else:
@@ -96,6 +113,10 @@ def create_plan(body: PlanRequest, today: date):
     if body.cutoff >= body.target_date:
         raise ServiceError(422, "cutoff должен быть раньше target_date")
     dataset = identity(get_dataset(body.dataset_id))
+    if dataset["planning_kind"] == "procurement":
+        return _create_procurement_plan(body, today, dataset)
+    if body.lead_time_days is not None or body.usable_stock_assumption is not None:
+        raise ServiceError(422, "Procurement assumptions require a procurement dataset")
     if dataset["target"] != "sold_units" or dataset["unit"] != "physical_unit":
         raise ServiceError(
             422,
@@ -197,6 +218,78 @@ def create_plan(body: PlanRequest, today: date):
     return plan
 
 
+def _create_procurement_plan(body: PlanRequest, today: date, dataset: dict):
+    if body.lead_time_days is None:
+        raise ServiceError(422, "Procurement lead_time_days is required")
+    products = dataset.get("catalog") or []
+    by_id = {product["product_id"]: product for product in products}
+    assumptions = body.usable_stock_assumption or {}
+    if set(assumptions) - set(by_id):
+        raise ServiceError(422, "Usable stock refers to an unknown product")
+    order_date = today if body.mode == "operational" else body.cutoff + timedelta(days=1)
+    if body.target_date < order_date + timedelta(days=body.lead_time_days):
+        raise ServiceError(422, "Target date is earlier than the explicit supplier lead time")
+    if body.method == "B0":
+        raise ServiceError(422, "Procurement supports B1 or ML, not B0")
+    items = [
+        procurement_item(
+            dataset["rows"], product, body.target_date, body.cutoff,
+            "B1", body.target_is_open, assumptions.get(product["product_id"]),
+        )
+        for product in products
+    ]
+    model = None
+    if body.method == "ML":
+        from backend.ml_service import forecast_items
+
+        result = forecast_items(dataset, body.target_date, body.cutoff, body.model_id)
+        model = result.get("model")
+        predictions = {item["product_id"]: item for item in result["items"]}
+        for item in items:
+            prediction = predictions.get(item["product_id"])
+            if prediction is None:
+                item["warnings"].append("No model forecast for this product; B1 remains in use.")
+                continue
+            item["model_id"] = result["model_id"]
+            item["fallback_reason"] = prediction.get("fallback_reason")
+            item["evaluation_applicability"] = prediction.get("evaluation_applicability")
+            if prediction.get("fallback_reason"):
+                item["warnings"].append("ML fallback: " + prediction["fallback_reason"])
+            if body.target_is_open and prediction["method"] == "ML":
+                item["forecast_mean"] = prediction["forecast_mean"]
+                item["diagnostic_method"] = "ML"
+                item["used_dates"] = prediction["used_dates"]
+                item["n"] = prediction["n"]
+                if item["automatic_eligible"] and prediction["forecast_mean"] is not None:
+                    item["method"] = "ML"
+                    item["recommended_qty"], capped = suggested_order(
+                        prediction["forecast_mean"], item["usable_stock_assumption"],
+                        item["pack_size"], item["max_order_qty"],
+                    )
+                    item["max_constraint_active"] = capped
+                    if capped and not any("Supplier maximum" in w for w in item["warnings"]):
+                        item["warnings"].append("Supplier maximum is below forecast uncovered sales; unmet need remains.")
+    plan = {
+        "id": str(uuid.uuid4()), "revision": 0, "status": "draft",
+        "planning_kind": "procurement", "dataset_id": dataset["id"],
+        "target_date": str(body.target_date), "cutoff": str(body.cutoff),
+        "order_date": str(order_date), "lead_time_days": body.lead_time_days,
+        "usable_stock_assumption": assumptions, "source": dataset["source"],
+        "provenance": dataset["provenance"],
+        "bakery_id": dataset["bakery_id"], "target": dataset["target"],
+        "unit": dataset["unit"], "requested_method": body.method,
+        "model_id": model["id"] if model else None,
+        "protocol_version": model["protocol_version"] if model else None,
+        "dataset_version": dataset["version"], "config_version": "procurement-1",
+        "config_hash": hashlib.sha256(json.dumps(products, sort_keys=True).encode()).hexdigest(),
+        "created_at": datetime.now(timezone.utc).isoformat(),
+        "items": items, "mode": body.mode, "timezone": "Asia/Qyzylorda",
+        "availability_assumption": "Sales are observed units. Availability and stockouts remain unknown unless explicitly recorded; usable target-day stock is supplied as a scenario.",
+    }
+    save_plan(plan)
+    return plan
+
+
 def confirm_plan(ident: str, body: ConfirmRequest, today: date):
     encoded_body = json.dumps(body.model_dump(), sort_keys=True)
     with connection() as con:
@@ -213,6 +306,15 @@ def confirm_plan(ident: str, body: ConfirmRequest, today: date):
             return json.loads(previous[1])
         plan = fetch(con, "plans", ident)
         if (
+            plan.get("planning_kind") == "procurement"
+            and plan["mode"] == "operational"
+            and date.fromisoformat(plan["order_date"]) != today
+        ):
+            raise ServiceError(
+                409,
+                "The saved procurement order date has passed; create a fresh plan with today's lead-time check",
+            )
+        if (
             plan["mode"] == "operational"
             and date.fromisoformat(plan["target_date"]) <= today
         ):
@@ -226,6 +328,17 @@ def confirm_plan(ident: str, body: ConfirmRequest, today: date):
             raise ServiceError(422, "Требуются количества всех пяти продуктов")
         for item in plan["items"]:
             q = body.quantities[item["product_id"]]
+            if plan.get("planning_kind", "production") == "procurement":
+                multiple = item["pack_size"]
+                maximum = item["max_order_qty"]
+                if (
+                    q < 0 or q > 1_000_000_000 or q % multiple
+                    or (maximum is not None and q > maximum // multiple * multiple)
+                    or (not item.get("target_is_open", True) and q != 0)
+                ):
+                    raise ServiceError(422, f"{item['name']}: order violates pack, maximum or closed-day rule")
+                item["confirmed_qty"] = q
+                continue
             target_date = plan["target_date"]
             product_inactive = (
                 (item.get("active_from") and target_date < item["active_from"])
@@ -262,6 +375,8 @@ def confirm_plan(ident: str, body: ConfirmRequest, today: date):
 
 def export_csv(ident: str):
     plan = get_plan(ident)
+    if plan.get("planning_kind", "production") == "procurement":
+        return _export_procurement_csv(plan)
     out = io.StringIO(newline="")
     writer = csv.writer(out)
     writer.writerow(
@@ -323,4 +438,32 @@ def export_csv(ident: str):
                 for v in values
             ]
         )
+    return "\ufeff" + out.getvalue()
+
+
+def _export_procurement_csv(plan: dict):
+    out = io.StringIO(newline="")
+    writer = csv.writer(out)
+    columns = (
+        "plan_id", "revision", "planning_kind", "order_date", "target_date",
+        "cutoff", "lead_time_days", "dataset_id", "dataset_version",
+        "source", "provenance", "product_id", "name", "forecast_sales_units",
+        "assumed_usable_stock_units", "suggested_order_units", "confirmed_order_units",
+        "pack_size", "max_order_qty", "method", "requested_method", "model_id",
+        "protocol_version", "used_dates", "fallback_reason",
+    )
+    writer.writerow(columns)
+    for item in plan["items"]:
+        record = {
+            **plan, **item,
+            "forecast_sales_units": item["forecast_mean"],
+            "assumed_usable_stock_units": item["usable_stock_assumption"],
+            "suggested_order_units": item["recommended_qty"],
+            "confirmed_order_units": item["confirmed_qty"],
+            "used_dates": ";".join(item.get("used_dates") or []),
+        }
+        writer.writerow([
+            "'" + value if isinstance(value, str) and value.lstrip().startswith(("=", "+", "-", "@")) else value
+            for value in (record.get(column) for column in columns)
+        ])
     return "\ufeff" + out.getvalue()
