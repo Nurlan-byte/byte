@@ -89,10 +89,10 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.14'
-      - name: Verify Linux snapshot and deployment contracts
+      - name: Verify Linux snapshot, deployment, and replay contracts
         run: |
           python -m pip install -r backend/requirements.lock
           python -m ruff check scripts
-          python -m pytest backend/tests/test_deployment.py -q
+          python -m pytest backend/tests/test_deployment.py backend/tests/test_demo_replay.py -q
       - name: Build and exercise isolated controlled demo
         run: bash scripts/test_containers.sh
