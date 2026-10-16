@@ -52,3 +52,42 @@ test('history pages request summaries and load detail separately', async ({ page
   await expect(page.getByRole('navigation', { name: 'Страницы истории' })).toContainText('Страница 1');
   expect(offsets).toEqual([0,20,20,0]);
 });
+
+test('legacy inactive plan can be corrected to zero without unlocking a stale snapshot', async ({ page }) => {
+  const legacy = {
+    id: 'legacy-inactive', dataset_id: 'dataset', target_date: '2026-10-12',
+    cutoff: '2026-10-11', source: 'synthetic', requested_method: 'B1',
+    status: 'draft', revision: 0,
+    items: [{ product_id: 'p1', name: 'Legacy', batch_size: 12,
+      max_daily_qty: 100, forecast_mean: 24, recommended_qty: 24,
+      confirmed_qty: null, method: 'B1', warnings: [],
+      target_is_open: true, active_to: '2026-10-11' }],
+  };
+  await page.addInitScript(() => localStorage.setItem('bakeplan.owner.plan', 'legacy-inactive'));
+  await page.route('**/api/plans/legacy-inactive', route => route.fulfill({ json: legacy }));
+  await page.route('**/api/plans?*', route => route.fulfill({ json: [] }));
+  const submitted: unknown[] = [];
+  await page.route('**/api/plans/legacy-inactive/confirm', route => {
+    submitted.push(route.request().postDataJSON());
+    return route.fulfill({ json: { ...legacy, status: 'confirmed', revision: 1,
+      items: [{ ...legacy.items[0], confirmed_qty: 0 }] } });
+  });
+  await page.goto('/');
+  const quantity = page.getByRole('spinbutton', { name: 'Количество Legacy' });
+  const repair = page.getByRole('button', { name: 'Установить 0 для Legacy' });
+  const confirm = page.getByRole('button', { name: 'Подтвердить и сохранить' });
+  await expect(quantity).toHaveValue('24');
+  await expect(quantity).toBeDisabled();
+  await expect(confirm).toBeDisabled();
+  await page.getByLabel('Дата плана', { exact: true }).fill('2026-10-13');
+  await expect(page.getByTestId('stale-plan')).toBeVisible();
+  await expect(repair).toBeDisabled();
+  await expect(confirm).toBeDisabled();
+  await page.getByLabel('Дата плана', { exact: true }).fill('2026-10-12');
+  await repair.click();
+  await expect(quantity).toHaveValue('0');
+  await expect(confirm).toBeEnabled();
+  await confirm.click();
+  expect(submitted).toHaveLength(1);
+  expect(submitted[0]).toMatchObject({ revision: 0, quantities: { p1: 0 } });
+});

@@ -126,6 +126,23 @@ test("inactive product disables the quantity field and explains the guard", () =
   expect(html).toMatch(/id="quantity-p1"[^>]*disabled=""/);
 });
 
+test("legacy inactive recommendation exposes zero repair but stale snapshot stays locked", () => {
+  const props = planningProps(units);
+  props.plan = {
+    ...plan,
+    items: [{ ...plan.items[0], active_to: "2026-10-11", automatic_eligible: false }],
+  };
+  const current = renderToStaticMarkup(<PlanningSection {...props} />);
+  expect(current).toMatch(/id="quantity-p1"[^>]*disabled=""[^>]*value="48"/);
+  expect(current).toContain("Для подтверждения старого плана установите 0.");
+  expect(current).toContain("<button type=\"button\">Установить 0 для");
+  const stale = renderToStaticMarkup(
+    <PlanningSection {...props} target="2026-10-13" />,
+  );
+  expect(stale).toContain('data-testid="stale-plan"');
+  expect(stale).toContain('<button type="button" disabled="">Установить 0 для');
+});
+
 test("legacy metadata visibly disables training until explicit reimport", () => {
   const props = planningProps({ ...units, metadata_declared: false });
   const html = renderToStaticMarkup(

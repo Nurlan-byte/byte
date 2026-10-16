@@ -404,6 +404,27 @@ export function PlanningSection({
                           })
                         }
                       />
+                      {(i.target_is_open === false ||
+                        !productActiveOnTarget(i, plan.target_date)) &&
+                        quantities[i.product_id] !== "0" && (
+                          <div>
+                            <small>
+                              Товар или день закрыт для этой даты. Для подтверждения старого плана установите 0.
+                            </small>
+                            <button
+                              type="button"
+                              disabled={busy || stale}
+                              onClick={() =>
+                                setQuantities({
+                                  ...quantities,
+                                  [i.product_id]: "0",
+                                })
+                              }
+                            >
+                              Установить 0 для {i.name}
+                            </button>
+                          </div>
+                        )}
                       <small id={`quantity-help-${i.product_id}`}>
                         Шаг {i.batch_size}, до{" "}
                         {Math.floor(i.max_daily_qty / i.batch_size) *
