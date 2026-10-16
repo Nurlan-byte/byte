@@ -53,9 +53,9 @@ test('old plan cannot be confirmed under changed date, cutoff, method or calenda
     await page.getByLabel(label, { exact: true }).fill(original);
     await expect(confirm).toBeEnabled();
   }
-  await page.getByLabel('Базовый метод', { exact: true }).selectOption('B0');
+  await page.getByLabel('Способ расчёта', { exact: true }).selectOption('B0');
   await expect(confirm).toBeDisabled();
-  await page.getByLabel('Базовый метод', { exact: true }).selectOption('B1');
+  await page.getByLabel('Способ расчёта', { exact: true }).selectOption('B1');
   await expect(confirm).toBeEnabled();
   await page.getByLabel('Целевой день открыт', { exact: true }).uncheck();
   await expect(confirm).toBeDisabled();
@@ -115,7 +115,7 @@ test('uncertain confirmation retries with the same snapshot and key', async ({ p
   await expect(page.getByTestId('plan-table').locator('tbody tr').first()).toContainText('Сохранено: 84 шт.');
 });
 
-test('mobile page keeps controls in the viewport and scrolls the plan table internally', async ({ page }) => {
+test('mobile page keeps all quantity fields visible in cards without horizontal scrolling', async ({ page }) => {
   await page.setViewportSize({ width: 375, height: 812 });
   await prepare(page);
   await navigate(page, 'Данные');
@@ -127,7 +127,11 @@ test('mobile page keeps controls in the viewport and scrolls the plan table inte
   const widths = await page.evaluate(() => ({ body: document.documentElement.scrollWidth, viewport: window.innerWidth }));
   expect(widths.body).toBeLessThanOrEqual(widths.viewport);
   const table = page.getByTestId('plan-table').locator('..');
-  expect(await table.evaluate(element => element.scrollWidth > element.clientWidth)).toBe(true);
+  expect(await table.evaluate(element => element.scrollWidth <= element.clientWidth)).toBe(true);
+  for (const input of await page.getByTestId('plan-table').getByRole('spinbutton').all()) {
+    await input.scrollIntoViewIfNeeded();
+    await expect(input).toBeInViewport({ ratio: 1 });
+  }
   await page.getByLabel('Дата плана', { exact: true }).scrollIntoViewIfNeeded();
   await expect(page.getByLabel('Дата плана', { exact: true })).toBeInViewport();
 });
@@ -147,7 +151,7 @@ test('history restores its own planning parameters while the current imported da
   await navigate(page, 'План');
   await page.getByLabel('Дата плана', { exact: true }).fill('2026-10-13');
   await page.getByLabel('Данные доступны до', { exact: true }).fill('2026-10-10');
-  await page.getByLabel('Базовый метод', { exact: true }).selectOption('B0');
+  await page.getByLabel('Способ расчёта', { exact: true }).selectOption('B0');
   await page.getByLabel('Целевой день открыт', { exact: true }).uncheck();
   await page.route('**/api/plans?*', route => route.fulfill({ json: [{
     id: original.id, dataset_id: original.dataset_id, target_date: original.target_date,
@@ -158,7 +162,7 @@ test('history restores its own planning parameters while the current imported da
   await openHistoryPlan(page, '2026-10-12', original.id);
   await expect(page.getByLabel('Дата плана', { exact: true })).toHaveValue('2026-10-12');
   await expect(page.getByLabel('Данные доступны до', { exact: true })).toHaveValue('2026-10-11');
-  await expect(page.getByLabel('Базовый метод', { exact: true })).toHaveValue('B1');
+  await expect(page.getByLabel('Способ расчёта', { exact: true })).toHaveValue('B1');
   await expect(page.getByLabel('Целевой день открыт', { exact: true })).toBeChecked();
   await expect(page.getByTestId('stale-plan')).toHaveCount(0);
   await expect(page.getByText('Открыт план другого сохранённого набора.', { exact: false })).toBeVisible();

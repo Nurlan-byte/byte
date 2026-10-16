@@ -18,6 +18,8 @@ export type Item = {
   method: string;
   diagnostic_method?: string;
   target_is_open?: boolean;
+  active_from?: string | null;
+  active_to?: string | null;
   automatic_eligible?: boolean;
   model_id?: string | null;
   fallback_reason?: string | null;

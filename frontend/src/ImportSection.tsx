@@ -1,11 +1,12 @@
-import { useMemo, useRef, useState } from "react";
+import { useMemo, useRef, useState, useEffect } from "react";
+import { savedDataset } from "./workspace";
 import { api } from "./api";
 import { businessDate } from "./dates";
 import { datasetSourceLabel, formatDatasetPeriod } from "./datasetSummary";
 import type { Dataset, DatasetTarget } from "./types";
 import type { SectionProps } from "./sectionProps";
 
-type SavedDataset = Pick<Dataset, "id" | "source">;
+type SavedDataset = Pick<Dataset, "id" | "source" | "created_at" | "row_count">;
 
 export function SavedDatasetSelect({
   datasets,
@@ -27,9 +28,14 @@ export function SavedDatasetSelect({
         value={value}
         onChange={(event) => onChange(event.target.value)}
       >
-        {datasets.map((entry) => (
+        <option value="">Выберите набор из списка</option>
+        {datasets.map((entry, index) => (
           <option value={entry.id} key={entry.id}>
-            {entry.id} · {entry.source}
+            {index + 1}. {datasetSourceLabel(entry.source)} ·{" "}
+            {entry.row_count ?? "—"} строк ·{" "}
+            {entry.created_at
+              ? new Date(entry.created_at).toLocaleString("ru-RU")
+              : "дата не указана"}
           </option>
         ))}
       </select>
@@ -70,7 +76,7 @@ type ImportProps = Pick<
   | "setError"
   | "setNotice"
   | "run"
-> & { onContinue?: () => void };
+> & { onContinue?: () => void; active?: boolean };
 
 export function ImportSection({
   csv,
@@ -91,12 +97,39 @@ export function ImportSection({
   setNotice,
   run,
   onContinue = () => {},
+  active = true,
 }: ImportProps) {
   const [saved, setSaved] = useState<SavedDataset[]>([]);
   const [savedId, setSavedId] = useState("");
   const [savedLoaded, setSavedLoaded] = useState(false);
   const [fileName, setFileName] = useState("");
+  const [savedError, setSavedError] = useState("");
+  useEffect(() => {
+    if (!active) return;
+    let current = true;
+    void api<SavedDataset[]>("/datasets?limit=100")
+      .then((rows) => {
+        if (!current) return;
+        setSaved(rows);
+        setSavedLoaded(true);
+        setSavedError("");
+        setSavedId(dataset?.id ?? "");
+      })
+      .catch(() => {
+        if (current)
+          setSavedError(
+            "Не удалось получить сохранённые наборы. Нажмите «Обновить наборы», когда соединение восстановится.",
+          );
+      });
+    return () => {
+      current = false;
+    };
+  }, [active, dataset?.id]);
   const fileInput = useRef<HTMLInputElement>(null);
+  const summary = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (active && dataset) summary.current?.focus();
+  }, [active, dataset]);
   const [importedDraft, setImportedDraft] = useState<{
     datasetId: string;
     signature: string;
@@ -145,12 +178,17 @@ export function ImportSection({
           </p>
         </div>
         <span className={`badge ${dataset ? "badge-success" : ""}`}>
-          {dataset ? "Набор загружен" : "Начните с импорта"}
+          {dataset ? "Проверено и сохранено" : "Начните с импорта"}
         </span>
       </div>
 
       {dataset && (
-        <div className="success" data-testid="dataset-summary">
+        <div
+          className="success"
+          data-testid="dataset-summary"
+          ref={summary}
+          tabIndex={-1}
+        >
           <div className="section-heading">
             <h3>Текущий сохранённый набор для расчёта</h3>
             <span
@@ -231,7 +269,7 @@ export function ImportSection({
             <span className="muted">
               {savedSalesOnly
                 ? "Прогноз наблюдаемых строк продаж"
-                : "B1 доступен без обучения модели"}
+                : "Расчёт по дням недели доступен без обучения"}
             </span>
           </div>
           <details>
@@ -253,7 +291,118 @@ export function ImportSection({
         </div>
       )}
 
+      <details className="saved-datasets">
+        <summary>Продолжить работу с сохранённым набором</summary>
+        <button
+          className="secondary"
+          disabled={busy}
+          onClick={() =>
+            void run(async () => {
+              const datasets = await api<SavedDataset[]>("/datasets?limit=100");
+              setSaved(datasets);
+              setSavedId(dataset?.id ?? "");
+              setSavedLoaded(true);
+              setSavedError("");
+            })
+          }
+        >
+          Обновить наборы
+        </button>
+        {!!saved.length && (
+          <div className="controls">
+            <SavedDatasetSelect
+              datasets={saved}
+              value={savedId}
+              onChange={setSavedId}
+              disabled={busy}
+            />
+            <button
+              className="secondary"
+              disabled={busy || !savedId}
+              onClick={() =>
+                void run(async () => {
+                  const result = await api<Dataset>(`/datasets/${savedId}`);
+                  const stored = savedDataset(result);
+                  setDataset(stored);
+                  setPlan(null);
+                  setCsv("");
+                  setFileName("");
+                  if (fileInput.current) fileInput.current.value = "";
+                  setImportedDraft(null);
+                  setSource(stored.source);
+                  setBakeryId(stored.bakery_id);
+                  setDataTarget(stored.target);
+                  setProvenance(stored.provenance);
+                  setNotice(
+                    "Сохранённый набор открыт. Проверьте его период и перейдите к плану.",
+                  );
+                })
+              }
+            >
+              Открыть набор
+            </button>
+          </div>
+        )}
+        {savedLoaded && !saved.length && (
+          <p className="muted">Сохранённых наборов нет.</p>
+        )}
+        {savedError && (
+          <p role="alert" className="error">
+            {savedError}
+          </p>
+        )}
+        {saved.length === 100 && (
+          <p className="muted">Показаны последние 100 наборов.</p>
+        )}
+      </details>
+
       <h3>{dataset ? "Загрузить другой набор" : "Загрузить историю"}</h3>
+      {!dataset && (
+        <div className="data-guide">
+          <h3>Какие данные нужны?</h3>
+          <p>
+            По каждому изделию и дню: сколько осталось утром, испекли, продали,
+            списали и осталось вечером. Отметьте закрытые дни и случаи, когда
+            товар закончился.
+          </p>
+          <p>
+            Для расчёта по дням недели полезна история за последние 8 недель.
+            Короткую историю можно импортировать, но для части изделий оценки
+            может не быть.
+          </p>
+          <details>
+            <summary>Формат файла и пять изделий</summary>
+            <p>
+              Одна строка — один день и одно изделие. Количества — целые
+              физические штуки. Пропуск даты не означает нулевые продажи.
+            </p>
+            <p>
+              Каталог фиксирован: p1 — хлеб пшеничный, p2 — хлеб ржаной, p3 —
+              багет, p4 — круассан, p5 — булочка. Другие изделия нельзя
+              переименовывать в эти коды ради импорта.
+            </p>
+            <p>
+              Столбцы CSV: date, product_id, is_open, opening, produced, sold,
+              waste, closing, other_out, stockout_status.
+            </p>
+            <p>
+              Баланс: остаток утром + выпуск = продажи + списания + остаток
+              вечером + прочее выбытие. stockout_status: none — товар не
+              заканчивался, occurred — заканчивался, unknown — неизвестно.
+            </p>
+            <a href="/demo.csv" download>
+              Скачать синтетический пример CSV
+            </a>
+          </details>
+        </div>
+      )}
+      <p className="import-stage" data-testid="import-stage">
+        {draftMatchesSaved
+          ? "3 из 3 · Данные проверены и сохранены. Можно рассчитывать план."
+          : csv.trim()
+            ? "2 из 3 · Файл подготовлен, но ещё не импортирован. Проверьте источник и нажмите «Проверить и импортировать»."
+            : "1 из 3 · Выберите файл или попробуйте демо."}
+      </p>
       <div className="file-drop">
         <label htmlFor="import-file">CSV-файл</label>
         <p className="muted" id="import-file-help">
@@ -297,7 +446,7 @@ export function ImportSection({
               setCsv(text);
               setFileName(file.name);
               setNotice(
-                "Файл прочитан. Проверьте источник, измеряемую величину и происхождение, затем нажмите «Проверить и импортировать».",
+                "Файл прочитан, но ещё не импортирован. Проверьте источник и нажмите «Проверить и импортировать».",
               );
             });
           }}
@@ -370,7 +519,7 @@ export function ImportSection({
               );
             }}
           >
-            <option value="synthetic">Синтетические / демонстрационные</option>
+            <option value="synthetic">Синтетические данные</option>
             <option value="local">Локальные данные пекарни</option>
             <option value="external">Внешние данные</option>
           </select>
@@ -385,12 +534,8 @@ export function ImportSection({
               setDataTarget(event.target.value as DatasetTarget)
             }
           >
-            <option value="sold_units">
-              Проданные физические штуки · sold_units
-            </option>
-            <option value="item_line_count">
-              Строки продаж · item_line_count
-            </option>
+            <option value="sold_units">Продажи в штуках</option>
+            <option value="item_line_count">Строки чеков — диагностика</option>
           </select>
         </div>
       </div>
@@ -507,73 +652,6 @@ export function ImportSection({
           импорта.
         </p>
       )}
-      <details>
-        <summary>Продолжить работу с сохранённым набором</summary>
-        <button
-          className="secondary"
-          disabled={busy}
-          onClick={() =>
-            void run(async () => {
-              const datasets = await api<SavedDataset[]>("/datasets?limit=100");
-              setSaved(datasets);
-              setSavedId(datasets[0]?.id ?? "");
-              setSavedLoaded(true);
-            })
-          }
-        >
-          Обновить наборы
-        </button>
-        {!!saved.length && (
-          <div className="controls">
-            <SavedDatasetSelect
-              datasets={saved}
-              value={savedId}
-              onChange={setSavedId}
-              disabled={busy}
-            />
-            <button
-              className="secondary"
-              disabled={busy || !savedId}
-              onClick={() =>
-                void run(async () => {
-                  const result = await api<Dataset>(`/datasets/${savedId}`);
-                  const stored: Dataset = {
-                    ...result,
-                    bakery_id: result.bakery_id ?? "legacy",
-                    target: result.target ?? "sold_units",
-                    unit: result.unit ?? "physical_unit",
-                    provenance:
-                      result.provenance ??
-                      "Старый импорт: происхождение не указано",
-                    metadata_declared: result.metadata_declared ?? false,
-                  };
-                  setDataset(stored);
-                  setPlan(null);
-                  setCsv("");
-                  setFileName("");
-                  if (fileInput.current) fileInput.current.value = "";
-                  setImportedDraft(null);
-                  setSource(stored.source);
-                  setBakeryId(stored.bakery_id);
-                  setDataTarget(stored.target);
-                  setProvenance(stored.provenance);
-                  setNotice(
-                    "Сохранённый набор открыт. Обновите модели, чтобы увидеть их статусы.",
-                  );
-                })
-              }
-            >
-              Открыть набор
-            </button>
-          </div>
-        )}
-        {savedLoaded && !saved.length && (
-          <p className="muted">Сохранённых наборов нет.</p>
-        )}
-        {saved.length === 100 && (
-          <p className="muted">Показаны последние 100 наборов.</p>
-        )}
-      </details>
     </section>
   );
 }

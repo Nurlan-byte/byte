@@ -73,7 +73,7 @@ test('explicit units → train/status → ML forecast → safeguarded plan → c
   await expect(page.getByTestId('forecast-result').getByTestId('evaluation-applicability').first()).toContainText('Горизонт совпадает с оценкой: 2 дн.');
   await page.getByLabel('Дата прогноза', { exact: true }).fill(target);
   await navigate(page, 'План');
-  await page.getByLabel('Базовый метод').selectOption('ML');
+  await page.getByLabel('Способ расчёта').selectOption('ML');
   const planned = page.waitForResponse(response => response.url().endsWith('/api/plans') && response.request().method() === 'POST');
   await page.getByRole('button', { name: 'Рассчитать план', exact: true }).click();
   const plan = await (await planned).json();
@@ -133,7 +133,9 @@ test('sales-only forecast cannot expose production controls or inherit a units m
   await expect(page.getByTestId('forecast-result')).toHaveCount(0);
   await expect(page.getByRole('button', { name: 'Рассчитать план', exact: true, includeHidden: true })).toHaveCount(0);
   await expect(page.getByRole('button', { name: 'Подтвердить и сохранить', includeHidden: true })).toHaveCount(0);
-  await expect(page.getByRole('button', { name: 'Обновить историю', includeHidden: true })).toHaveCount(0);
+  await navigate(page, 'История');
+  await expect(page.getByRole('button', { name: 'Обновить историю' })).toBeEnabled();
+  await expect(page.getByRole('button', { name: 'Подтвердить и сохранить', includeHidden: true })).toHaveCount(0);
   await navigate(page, 'План');
   await expect(page.getByTestId('sales-only-notice')).toContainText('не преобразуются');
   await navigate(page, 'Модель');
@@ -164,7 +166,7 @@ test('short histories report not-ready and explicit B1 fallback', async ({ page 
   await expect(row).toContainText('B1');
   await expect(row).toContainText('Причина перехода');
   await navigate(page, 'План');
-  await page.getByLabel('Базовый метод').selectOption('ML');
+  await page.getByLabel('Способ расчёта').selectOption('ML');
   await page.getByRole('button', { name: 'Рассчитать план', exact: true }).click();
   await expect(page.getByTestId('plan-table').locator('tbody tr').first()).toContainText('B1');
   await expect(page.getByTestId('plan-table').locator('tbody tr').first()).toContainText('Причина перехода');

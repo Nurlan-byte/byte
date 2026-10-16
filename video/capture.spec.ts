@@ -164,7 +164,8 @@ test('record a real 105-second synthetic BakePlan demonstration', async ({ brows
   try {
     scene('Empty plan workspace');
     await page.goto('/');
-    await expect(page.getByLabel('Базовый метод', { exact: true })).toHaveValue('B1');
+    await expect(page.getByRole('heading', { name: 'Подготовим выпечку на день' })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Рассчитать план', exact: true })).toHaveCount(0);
     await holdUntil(4);
 
     scene('Import the committed synthetic CSV through the real file input');
@@ -186,7 +187,7 @@ test('record a real 105-second synthetic BakePlan demonstration', async ({ brows
     await navigate(page, 'План');
     await page.getByLabel('Дата плана', { exact: true }).fill(targetDate);
     await page.getByLabel('Данные доступны до', { exact: true }).fill(cutoff);
-    await expect(page.getByLabel('Базовый метод', { exact: true })).toHaveValue('B1');
+    await expect(page.getByLabel('Способ расчёта', { exact: true })).toHaveValue('B1');
     await show(page.locator('.planning-controls'));
     await expect(page.locator('#planning')).toContainText('Историческое воспроизведение');
     states.default_plan_method = 'B1';
@@ -236,8 +237,8 @@ test('record a real 105-second synthetic BakePlan demonstration', async ({ brows
 
     scene('Choose ML explicitly for this demonstration and calculate a plan');
     await navigate(page, 'План');
-    await expect(page.getByLabel('Базовый метод', { exact: true })).toHaveValue('B1');
-    await page.getByLabel('Базовый метод', { exact: true }).selectOption('ML');
+    await expect(page.getByLabel('Способ расчёта', { exact: true })).toHaveValue('B1');
+    await page.getByLabel('Способ расчёта', { exact: true }).selectOption('ML');
     await holdUntil(61);
     const plan = await postFromUi<Plan>('Рассчитать план', '/plans');
     expect(plan).toMatchObject({ dataset_id: dataset.id, model_id: model.id, target_date: targetDate, cutoff, mode: 'replay', requested_method: 'ML', status: 'draft', revision: 0 });

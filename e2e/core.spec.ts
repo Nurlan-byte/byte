@@ -68,7 +68,9 @@ test('invalid balance is rejected visibly and creates no plan', async ({ page, r
   await page.getByRole('button', { name: 'Проверить и импортировать' }).click();
   await expect(page.getByRole('alert')).toBeVisible();
   await navigate(page, 'План');
-  await expect(page.getByRole('button', { name: 'Рассчитать план' })).toBeDisabled();
+  await expect(page.getByRole('button', { name: 'Рассчитать план' })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Перейти к данным', exact: true })).toBeEnabled();
+  await expect(page.getByTestId('plan-table')).toHaveCount(0);
   expect(await (await request.get('http://127.0.0.1:18000/api/plans')).json()).toEqual(before);
 });
 
