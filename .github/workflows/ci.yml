@@ -49,11 +49,19 @@ jobs:
           $PSNativeCommandUseErrorActionPreference = $true
           $baseline = Join-Path $env:RUNNER_TEMP 'bakeplan-ui-before'
           git worktree add --detach $baseline 756829475615d37d024b12e720d7cfc9338e4b68
+          npm.cmd --prefix $baseline ci
           npm.cmd --prefix (Join-Path $baseline 'frontend') ci
-          $env:BAKEPLAN_CAPTURE_SOURCE_DIR = $baseline
-          $env:BAKEPLAN_CAPTURE_BASELINE = '1'
-          $env:BAKEPLAN_CAPTURE_EXPECTED_SHA = '756829475615d37d024b12e720d7cfc9338e4b68'
-          npx.cmd playwright test --config=playwright.screenshots.config.ts
+          New-Item -ItemType Junction -Path (Join-Path $baseline '.venv') -Target (Resolve-Path .venv) | Out-Null
+          $env:GITHUB_SHA = '756829475615d37d024b12e720d7cfc9338e4b68'
+          Push-Location $baseline
+          try {
+            npx.cmd playwright test --config=playwright.screenshots.config.ts
+          } finally {
+            Pop-Location
+          }
+          $before = Join-Path (Get-Location) 'test-results/screenshots/before'
+          New-Item -ItemType Directory -Force -Path $before | Out-Null
+          Copy-Item -Path (Join-Path $baseline 'test-results/screenshots/*') -Destination $before -Recurse
       - name: Capture real synthetic UI evidence
         run: npx.cmd playwright test --config=playwright.screenshots.config.ts
       - name: Record real 105-second synthetic UI demonstration
