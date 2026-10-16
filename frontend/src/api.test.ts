@@ -1,6 +1,16 @@
 import { expect, test, vi, afterEach } from "vitest";
 import { api, errorMessage } from "./api";
 afterEach(() => vi.unstubAllGlobals());
+test("CSV row correction is visible before expandable technical details", () => {
+  const message = errorMessage(422, {
+    error: {
+      message: "CSV отклонён",
+      details: ["Строка 2: Нарушен баланс остатков"],
+    },
+  });
+  expect(message.split("\n")[0]).toContain("Строка 2: Нарушен баланс остатков");
+  expect(message).toContain('["Строка 2: Нарушен баланс остатков"]');
+});
 test("structured error preserves useful server message and diagnostics", () => {
   expect(
     errorMessage(413, {

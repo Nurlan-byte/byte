@@ -105,6 +105,27 @@ test("units plan keeps batch constraints and actual fallback/model lineage", () 
   expect(html).toContain("Подтвердить и сохранить");
 });
 
+test("inactive product disables the quantity field and explains the guard", () => {
+  const props = planningProps(units);
+  props.plan = {
+    ...plan,
+    items: [
+      {
+        ...plan.items[0],
+        active_to: "2026-10-11",
+        automatic_eligible: false,
+        forecast_mean: null,
+        recommended_qty: 0,
+        method: "manual",
+      },
+    ],
+  };
+  props.quantities = { p1: "0" };
+  const html = renderToStaticMarkup(<PlanningSection {...props} />);
+  expect(html).toContain("Выпуск запрещён");
+  expect(html).toMatch(/id="quantity-p1"[^>]*disabled=""/);
+});
+
 test("legacy metadata visibly disables training until explicit reimport", () => {
   const props = planningProps({ ...units, metadata_declared: false });
   const html = renderToStaticMarkup(
@@ -133,7 +154,7 @@ test("saved dataset control has an exact stable label independent of its options
   );
   expect(html).toContain('<select id="saved-dataset">');
   expect(html).toContain(
-    '<option value="second-dataset" selected="">second-dataset · local</option>',
+    '<option value="second-dataset" selected="">2. Данные пекарни · — строк · дата не указана</option>',
   );
   expect(html).not.toMatch(/<label[^>]*>[^<]*<select/);
 });
@@ -295,7 +316,7 @@ test("method and import selects have exact option-independent labels and retain 
       />,
     );
     for (const [html, id, label, selected, options] of [
-      [planning, "planning-method", "Базовый метод", "ML", ["B1", "ML", "B0"]],
+      [planning, "planning-method", "Способ расчёта", "ML", ["B1", "ML", "B0"]],
       [model, "diagnostic-method", "Метод диагностики", "ML", ["ML", "B1"]],
       [
         imported,

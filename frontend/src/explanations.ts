@@ -27,9 +27,9 @@ export function reasonText(reason: string) {
 
 export function methodText(method: string) {
   const descriptions: Record<string, string> = {
-    B0: "B0 · тот же день неделю назад",
-    B1: "B1 · среднее до 4 таких дней недели",
-    ML: "ML · B1 с поправкой локальной модели",
+    B0: "По прошлой неделе (B0)",
+    B1: "По похожим дням недели (B1)",
+    ML: "Экспериментальная модель (ML)",
     manual: "Ручной план · автоматический выпуск отключён",
   };
   return descriptions[method] ?? method;

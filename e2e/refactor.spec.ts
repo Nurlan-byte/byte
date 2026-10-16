@@ -9,7 +9,9 @@ test('structured 413 import error displays server message', async ({ page }) => 
   await page.getByRole('button',{name:'Проверить и импортировать'}).click();
   await expect(page.getByRole('alert')).toContainText('CSV превышает допустимый размер');
   await navigate(page, 'План');
-  await expect(page.getByRole('button',{name:'Рассчитать план'})).toBeDisabled();
+  await expect(page.getByRole('button',{name:'Рассчитать план'})).toHaveCount(0);
+  await expect(page.getByTestId('plan-table')).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Перейти к данным', exact: true })).toBeEnabled();
 });
 
 test('non-JSON upstream error displays HTTP fallback', async ({ page }) => {
@@ -34,6 +36,9 @@ test('history pages request summaries and load detail separately', async ({ page
   await page.route('**/api/plans/summary-20', route => route.fulfill({json:{...summaries[20],cutoff:'2026-10-20',mode:'replay',items:[{product_id:'p1',name:'Тестовый хлеб',batch_size:12,max_daily_qty:100,forecast_mean:65,recommended_qty:60,confirmed_qty:null,method:'B1',warnings:[],used_dates:['2026-10-14'],n:1}]}}));
   await page.goto('/');
   await navigate(page, 'История');
+  await expect(page.locator('.history-card')).toHaveCount(20);
+  await expect(page.getByRole('button',{name:'Обновить историю'})).toBeEnabled();
+  offsets.length = 0; // Startup may fetch twice under React StrictMode. Pagination below is exact.
   await page.getByRole('button',{name:'Обновить историю'}).click();
   await expect(page.getByRole('navigation',{name:'Страницы истории'})).toContainText('Страница 1');
   await expect(page.getByRole('button',{name:'Предыдущая страница'})).toBeDisabled();
@@ -45,5 +50,5 @@ test('history pages request summaries and load detail separately', async ({ page
   await navigate(page, 'История');
   await page.getByRole('button',{name:'Предыдущая страница'}).click();
   await expect(page.getByRole('navigation', { name: 'Страницы истории' })).toContainText('Страница 1');
-  expect(offsets).toEqual([0,20,0]);
+  expect(offsets).toEqual([0,20,20,0]);
 });
