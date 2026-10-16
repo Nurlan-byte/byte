@@ -100,6 +100,11 @@ def test_413_json_contract_and_paginated_summaries(client):
     assert "rows" not in dataset
     assert client.get(f"/api/datasets/{dataset['id']}").json()["rows"]
     assert client.get("/api/plans?limit=101").status_code == 422
+    for route in ("datasets", "plans"):
+        assert client.get(f"/api/{route}?offset={2**63 - 1}").status_code == 200
+        too_large = client.get(f"/api/{route}?offset={2**63}")
+        assert too_large.status_code == 422
+        assert too_large.json()["error"]["code"] == "INVALID_REQUEST"
 
 
 def test_concurrent_same_import_returns_one_dataset(client):

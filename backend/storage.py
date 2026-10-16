@@ -9,6 +9,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 SCHEMA_VERSION = "history-1"
+MAX_SQLITE_INTEGER = 2**63 - 1
 
 
 class NotFound(Exception):
@@ -261,8 +262,12 @@ def update_plan(con, plan):
 def _summaries(table, columns, limit, offset):
     if isinstance(limit, bool) or not isinstance(limit, int) or not 1 <= limit <= 100:
         raise ValueError("limit must be an integer between 1 and 100")
-    if isinstance(offset, bool) or not isinstance(offset, int) or offset < 0:
-        raise ValueError("offset must be a nonnegative integer")
+    if (
+        isinstance(offset, bool)
+        or not isinstance(offset, int)
+        or not 0 <= offset <= MAX_SQLITE_INTEGER
+    ):
+        raise ValueError("offset must be a nonnegative SQLite integer")
     with connection() as con:
         rows = con.execute(
             f"SELECT {','.join(columns)} FROM {table} ORDER BY rowid DESC LIMIT ? OFFSET ?",

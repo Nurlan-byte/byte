@@ -168,6 +168,29 @@ def test_active_dates_and_impossible_batch(client, monkeypatch):
     assert any("партии" in w for w in p["items"][1]["warnings"])
 
 
+@pytest.mark.parametrize("active_key,active_date", [
+    ("active_from", "2026-10-13"),
+    ("active_to", "2026-10-11"),
+])
+@pytest.mark.parametrize("method", ["B1", "ML"])
+def test_inactive_target_cannot_be_recommended_or_confirmed(
+    client, monkeypatch, active_key, active_date, method
+):
+    monkeypatch.setitem(CATALOG[0], active_key, active_date)
+    p = plan(client, method=method)
+    item = p["items"][0]
+    assert item["forecast_mean"] is None
+    assert item["recommended_qty"] == 0
+    assert item["automatic_eligible"] is False
+    assert item["target_is_open"] is True
+    assert item["method"] == "manual"
+    assert any("вне периода активности" in warning for warning in item["warnings"])
+    quantities = body(p, "inactive-target")
+    quantities["quantities"][item["product_id"]] = item["batch_size"]
+    response = client.post(f"/api/plans/{p['id']}/confirm", json=quantities)
+    assert response.status_code == 422
+
+
 def test_replay_and_future_date_validation(client):
     data = client.post(
         "/api/datasets", json={"csv_text": sample(), "source": "synthetic"}
