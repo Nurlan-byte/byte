@@ -12,6 +12,7 @@ def identity(dataset):
     """Legacy history remains usable by B1, but cannot implicitly train ML."""
     return {
         **dataset,
+        "planning_kind": dataset.get("planning_kind", "production"),
         "bakery_id": dataset.get("bakery_id", "legacy"),
         "target": dataset.get("target", "sold_units"),
         "unit": dataset.get("unit", "physical_unit"),

@@ -10,10 +10,12 @@ export type ForecastSnapshot = {
 };
 
 export function ForecastResult({
+  procurement = false,
   snapshot,
   stale,
   unitLabel,
 }: {
+  procurement?: boolean;
   snapshot: ForecastSnapshot;
   stale: boolean;
   unitLabel: string;
@@ -32,7 +34,11 @@ export function ForecastResult({
     >
       <div className="section-heading">
         <h3>Диагностический прогноз на {snapshot.targetDate}</h3>
-        <span className="badge">Без назначения выпуска</span>
+        <span className="badge">
+          {procurement
+            ? "Прогноз продаж — без назначения заказа"
+            : "Без назначения выпуска"}
+        </span>
       </div>
       {stale && (
         <aside data-testid="stale-forecast" className="stale-result">
@@ -57,9 +63,15 @@ export function ForecastResult({
       <p className="muted">
         Выбранный метод может отличаться от фактического. Проверьте метод и
         ограничения для каждого товара; эти числа не являются заданием на
-        выпуск.
+        {procurement ? "заказ" : "выпуск"}.
       </p>
       <EvaluationNotice value={snapshot.result.evaluation_applicability} />
+      {procurement && (
+        <p className="status-note">
+          ML/B1 выбирается по внутренней валидации. Её метрики не являются
+          независимой оценкой точности этого прогноза продаж.
+        </p>
+      )}
       <details>
         <summary>Технические данные прогноза</summary>
         <p>

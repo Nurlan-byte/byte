@@ -1,5 +1,12 @@
 import type { Dataset, Item, Plan } from "./types";
 
+export function forPlanningKind<T extends { planning_kind?: string }>(
+  value: T | null,
+  kind = "production",
+): T | null {
+  return value && (value.planning_kind ?? "production") === kind ? value : null;
+}
+
 export function productActiveOnTarget(item: Item, targetDate: string) {
   return (
     (!item.active_from || targetDate >= item.active_from) &&

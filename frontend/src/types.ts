@@ -1,3 +1,10 @@
+export type PlanningKind = "production" | "procurement";
+export type CatalogItem = {
+  product_id: string;
+  name: string;
+  pack_size: number;
+  max_order_qty: number | null;
+};
 export type DatasetTarget = "sold_units" | "item_line_count";
 export type MeasurementUnit = "physical_unit" | "item_line";
 export type EvaluationApplicability = {
@@ -7,6 +14,8 @@ export type EvaluationApplicability = {
   requested_horizon_days: number;
 };
 export type Item = {
+  pack_size?: number;
+  max_order_qty?: number | null;
   evaluation_applicability?: EvaluationApplicability;
   product_id: string;
   name: string;
@@ -28,6 +37,10 @@ export type Item = {
   n?: number;
 };
 export type PlanSummary = {
+  planning_kind?: PlanningKind;
+  order_date?: string;
+  lead_time_days?: number;
+  usable_stock_assumption?: Record<string, number>;
   id: string;
   revision: number;
   status: string;
@@ -37,6 +50,7 @@ export type PlanSummary = {
   created_at?: string;
 };
 export type Plan = PlanSummary & {
+  provenance?: string;
   items: Item[];
   cutoff: string;
   requested_method?: string;
@@ -50,6 +64,8 @@ export type Plan = PlanSummary & {
   unit?: MeasurementUnit;
 };
 export type Dataset = {
+  planning_kind?: PlanningKind;
+  catalog?: CatalogItem[];
   id: string;
   source: string;
   row_count?: number;
@@ -80,6 +96,9 @@ export type ModelSummary = {
   dataset_version: string;
   protocol_version: string;
   evaluation?: {
+    evaluation_role?: string;
+    selection_performed?: boolean;
+    selection_rule?: string;
     protocol?: string;
     experimental?: boolean;
     horizon_days?: number;

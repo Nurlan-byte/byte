@@ -1,3 +1,4 @@
+import { ProcurementPlanning } from "./ProcurementPlanning";
 import { Icon } from "./Icon";
 import { api } from "./api";
 import type { Plan } from "./types";
@@ -7,9 +8,28 @@ import { businessDate } from "./dates";
 import { planInputsChanged } from "./snapshots";
 import { methodText, reasonText } from "./explanations";
 import { EvaluationNotice } from "./EvaluationNotice";
-import { hasQuantityChanges, productActiveOnTarget } from "./workspace";
+import {
+  forPlanningKind,
+  hasQuantityChanges,
+  productActiveOnTarget,
+} from "./workspace";
 import { formatDatasetPeriod } from "./datasetSummary";
-export function PlanningSection({
+export function PlanningSection(
+  props: Parameters<typeof ProductionPlanning>[0],
+) {
+  const selected = {
+    ...props,
+    dataset: forPlanningKind(props.dataset, props.planningKind),
+    plan: forPlanningKind(props.plan, props.planningKind),
+  };
+  return props.planningKind === "procurement" ? (
+    <ProcurementPlanning {...selected} />
+  ) : (
+    <ProductionPlanning {...selected} />
+  );
+}
+
+function ProductionPlanning({
   onImport,
   onHistory,
   dataset,
@@ -33,6 +53,7 @@ export function PlanningSection({
   refreshHistory,
 }: Pick<
   SectionProps,
+  | "planningKind"
   | "dataset"
   | "plan"
   | "busy"
@@ -358,8 +379,8 @@ export function PlanningSection({
                           {!productActiveOnTarget(i, plan.target_date)
                             ? "Выпуск запрещён"
                             : i.target_is_open === false
-                            ? "Закрытый день"
-                            : "Ручная заготовка"}
+                              ? "Закрытый день"
+                              : "Ручная заготовка"}
                         </small>
                       )}
                     </td>
@@ -409,7 +430,8 @@ export function PlanningSection({
                         quantities[i.product_id] !== "0" && (
                           <div>
                             <small>
-                              Товар или день закрыт для этой даты. Для подтверждения старого плана установите 0.
+                              Товар или день закрыт для этой даты. Для
+                              подтверждения старого плана установите 0.
                             </small>
                             <button
                               type="button"

@@ -100,15 +100,22 @@ export function HistorySection({
                   </span>
                 </div>
                 <p className="history-meta">
-                  {sources[p.source] ?? "Другой источник"} · редакция{" "}
+                  {p.planning_kind === "procurement"
+                    ? "Закупаем готовое"
+                    : "Производим сами"}{" "}
+                  · {sources[p.source] ?? "Другой источник"} · редакция{" "}
                   {p.revision}
                 </p>
                 <p className="muted">
-                  {p.status === "confirmed"
-                    ? "Количество выпуска подтверждено и сохранено."
-                    : p.status === "draft"
-                      ? "Количества рассчитаны. Выпуск ещё не подтверждён."
-                      : "Проверьте состояние плана перед использованием."}
+                  {p.planning_kind === "procurement"
+                    ? p.status === "confirmed"
+                      ? "Заказ подтверждён и сохранён."
+                      : "Черновик заказа: проверьте остаток и количества."
+                    : p.status === "confirmed"
+                      ? "Количество выпуска подтверждено и сохранено."
+                      : p.status === "draft"
+                        ? "Количества рассчитаны. Выпуск ещё не подтверждён."
+                        : "Проверьте состояние плана перед использованием."}
                 </p>
                 <div className="actions">
                   <button
