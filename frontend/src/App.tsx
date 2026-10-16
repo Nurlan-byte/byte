@@ -509,7 +509,10 @@ export function App() {
               onLoad={(id) =>
                 void run(async () => {
                   const storedPlan = await api<Plan>(`/plans/${id}`);
-                  if (!dataset || dataset.id !== storedPlan.dataset_id) {
+                  // A history plan may belong to another saved dataset. Keep
+                  // the current import selected; the plan holds its own
+                  // immutable catalog/assumptions for confirmation.
+                  if (!dataset) {
                     try {
                       setDataset(
                         savedDataset(
