@@ -19,6 +19,15 @@ from datetime import date
 import numpy as np
 
 PROTOCOL_VERSION = "pooled-relative-ridge-200-v3-horizon-2-experimental"
+PROCUREMENT_PROTOCOL_VERSION = "procurement-observed-sales-ridge-v1-horizon-2-experimental"
+
+
+def protocol_for_dataset(dataset):
+    return (
+        PROCUREMENT_PROTOCOL_VERSION
+        if dataset.get("planning_kind") == "procurement"
+        else PROTOCOL_VERSION
+    )
 FORECAST_HORIZON_DAYS = 2
 ALPHA = 200.0
 # Relative correction bounds: ML may move B1 by -80%..+200% of max(B1, 1).
@@ -101,9 +110,13 @@ def _identity(dataset):
     return identity
 
 
-def _label(row, target):
+def _label(row, target, planning_kind="production"):
     """Return an observed label or an explicit exclusion reason."""
-    if target == "sold_units":
+    if target == "sold_units" and planning_kind == "procurement":
+        if row.get("is_open") is False:
+            return None, "explicit_closed_day"
+        value = row.get("sold")
+    elif target == "sold_units":
         if row.get("is_open") is not True:
             return None, "closed_or_unknown_open"
         if row.get("stockout_status") != "none":
@@ -124,6 +137,9 @@ def _label(row, target):
 
 def _snapshot(dataset, cutoff):
     identity = _identity(dataset)
+    planning_kind = dataset.get("planning_kind", "production")
+    if planning_kind not in {"production", "procurement"}:
+        raise ValueError("Unsupported planning kind")
     rows = dataset.get("rows")
     if not isinstance(rows, list) or len(rows) > MAX_ROWS:
         raise ValueError(f"Dataset must contain at most {MAX_ROWS} rows")
@@ -145,14 +161,17 @@ def _snapshot(dataset, cutoff):
         products.add(product)
         if len(products) > MAX_PRODUCTS:
             raise ValueError(f"Dataset must contain at most {MAX_PRODUCTS} products")
-        value, reason = _label(row, identity["target"])
+        value, reason = _label(row, identity["target"], planning_kind)
         # Preserve the existing diagnostic B1 history policy. Carryover excludes
         # a training/evaluation label, but does not erase an observed sale from B1.
         history_value = row.get(
             "sold" if identity["target"] == "sold_units" else "item_line_count"
         )
         if identity["target"] == "sold_units" and (
-            row.get("is_open") is not True or row.get("stockout_status") != "none"
+            (planning_kind == "procurement" and row.get("is_open") is False)
+            or (planning_kind == "production" and (
+                row.get("is_open") is not True or row.get("stockout_status") != "none"
+            ))
         ):
             history_value = None
         if (
@@ -170,7 +189,10 @@ def _snapshot(dataset, cutoff):
             }
         )
     records.sort(key=lambda record: (record["date"], record["product_id"]))
-    snapshot_hash = _digest({"identity": identity, "rows": records})
+    snapshot = {"identity": identity, "rows": records}
+    if planning_kind == "procurement":
+        snapshot["planning_kind"] = planning_kind
+    snapshot_hash = _digest(snapshot)
     return identity, records, snapshot_hash
 
 
@@ -418,7 +440,7 @@ def evaluation_applicability(model, target, cutoff, product_id=None):
     reason = None
     if not isinstance(model, dict):
         reason = "no_model"
-    elif model.get("protocol_version") != PROTOCOL_VERSION:
+    elif model.get("protocol_version") not in {PROTOCOL_VERSION, PROCUREMENT_PROTOCOL_VERSION}:
         reason = "unsupported_protocol"
     elif evaluated_horizon != FORECAST_HORIZON_DAYS:
         reason = "unknown_evaluation_horizon"
@@ -620,6 +642,17 @@ def train_model(dataset: dict, cutoff: date) -> dict:
         except ValueError, TypeError, ArithmeticError, np.linalg.LinAlgError:
             result["reason"] = "estimator_failure"
             continue
+        # Procurement has no verified unconstrained-demand label. Retain ML
+        # only when its frozen, pre-cutoff check improves on the same B1 rows.
+        # This decision never uses the later external rolling evaluation.
+        if dataset.get("planning_kind") == "procurement":
+            validation = _paired_evaluation(
+                pairs, [sample["date"] for sample in later], product_holdout_n
+            )
+            if validation["ml_mae"] >= validation["b1_mae"]:
+                result["reason"] = "not_better_than_b1_validation"
+                result["evaluation"] = validation
+                continue
         result.update(
             {
                 "status": "ready",
@@ -661,8 +694,22 @@ def train_model(dataset: dict, cutoff: date) -> dict:
             else []
         ),
         "experimental": True,
-        "selection_performed": False,
-        "design_selected_on": "generated_synthetic_data_only",
+        "selection_performed": dataset.get("planning_kind") == "procurement",
+        "evaluation_role": (
+            "internal_selection_validation_not_independent_accuracy_estimate"
+            if dataset.get("planning_kind") == "procurement"
+            else "chronological_holdout_no_selection"
+        ),
+        "selection_rule": (
+            "Per product: use ML only when frozen validation MAE is below B1 MAE on identical rows; otherwise B1"
+            if dataset.get("planning_kind") == "procurement"
+            else None
+        ),
+        "design_selected_on": (
+            "current_dataset_pre_cutoff_internal_validation"
+            if dataset.get("planning_kind") == "procurement"
+            else "generated_synthetic_data_only"
+        ),
         "estimator_scope": "pooled_all_products",
         "pooled_evaluation_training_rows": len(pooled_prefix) if frozen else 0,
         "pooled_deployment_training_rows": len(pooled_all) if deployment else 0,
@@ -705,7 +752,7 @@ def train_model(dataset: dict, cutoff: date) -> dict:
         },
     }
     return {
-        "protocol_version": PROTOCOL_VERSION,
+        "protocol_version": protocol_for_dataset(dataset),
         **identity,
         "training_cutoff": cutoff.isoformat(),
         "snapshot_hash": snapshot_hash,
@@ -782,7 +829,12 @@ def forecast_model(
 
     if features is None:
         return fallback("no_b1_history")
-    if model.get("protocol_version") != PROTOCOL_VERSION:
+    if (
+        dataset.get("planning_kind") == "procurement"
+        and (target - cutoff).days != FORECAST_HORIZON_DAYS
+    ):
+        return fallback("forecast_horizon_mismatch")
+    if model.get("protocol_version") != protocol_for_dataset(dataset):
         return fallback("unsupported_protocol")
     if trained is None:
         return fallback("invalid_training_cutoff")

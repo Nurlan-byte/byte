@@ -1,5 +1,6 @@
+import { ProcurementImport } from "./ProcurementImport";
 import { useMemo, useRef, useState, useEffect } from "react";
-import { savedDataset } from "./workspace";
+import { forPlanningKind, savedDataset } from "./workspace";
 import { api } from "./api";
 import { businessDate } from "./dates";
 import { datasetSourceLabel, formatDatasetPeriod } from "./datasetSummary";
@@ -57,8 +58,9 @@ function syntheticSalesCsv() {
   return rows.join("\n");
 }
 
-type ImportProps = Pick<
+export type ImportProps = Pick<
   SectionProps,
+  | "planningKind"
   | "csv"
   | "setCsv"
   | "source"
@@ -78,7 +80,19 @@ type ImportProps = Pick<
   | "run"
 > & { onContinue?: () => void; active?: boolean };
 
-export function ImportSection({
+export function ImportSection(props: ImportProps) {
+  const selected = {
+    ...props,
+    dataset: forPlanningKind(props.dataset, props.planningKind),
+  };
+  return props.planningKind === "procurement" ? (
+    <ProcurementImport {...selected} />
+  ) : (
+    <ProductionImport {...selected} />
+  );
+}
+
+function ProductionImport({
   csv,
   setCsv,
   source,

@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect } from "react";
 import {
   savedDataset,
+  forPlanningKind,
   workspaceReference,
   hasQuantityChanges,
   productActiveOnTarget,
@@ -18,6 +19,9 @@ import { HistorySection, HISTORY_PAGE_SIZE } from "./HistorySection";
 type View = "planning" | "import" | "model" | "history";
 
 export function App() {
+  const [planningKind, setPlanningKind] = useState<
+    "production" | "procurement"
+  >("production");
   const [view, setView] = useState<View>("planning");
   const [csv, setCsv] = useState(""),
     [source, setSource] = useState("synthetic"),
@@ -62,6 +66,9 @@ export function App() {
       if (data.status === "fulfilled" && data.value) {
         const stored = savedDataset(data.value);
         setDataset(stored);
+        setPlanningKind(
+          stored.planning_kind === "procurement" ? "procurement" : "production",
+        );
         setSource(stored.source);
         setBakeryId(stored.bakery_id);
         setDataTarget(stored.target);
@@ -136,6 +143,9 @@ export function App() {
   }
   function show(p: Plan) {
     setPlan(p);
+    setPlanningKind(
+      p.planning_kind === "procurement" ? "procurement" : "production",
+    );
     setTarget(p.target_date);
     setCutoff(p.cutoff);
     if (p.requested_method) setMethod(p.requested_method);
@@ -162,27 +172,40 @@ export function App() {
         i.max_daily_qty,
       ),
   );
+  const selectedDataset = forPlanningKind(dataset, planningKind);
+  const selectedPlan = forPlanningKind(plan, planningKind);
+  const hiddenUnsaved = unsaved && !selectedPlan;
   const sectionProps = {
+    planningKind,
     csv,
     setCsv,
     source,
     setSource,
-    dataset,
-    setDataset,
+    dataset: selectedDataset,
+    setDataset: (
+      value: Dataset | null | ((previous: Dataset | null) => Dataset | null),
+    ) => {
+      if (value && typeof value !== "function") {
+        setPlanningKind(
+          value.planning_kind === "procurement" ? "procurement" : "production",
+        );
+      }
+      setDataset(value);
+    },
     bakeryId,
     setBakeryId,
     dataTarget,
     setDataTarget,
     provenance,
     setProvenance,
-    plan,
+    plan: selectedPlan,
     setPlan: (
       value: Plan | null | ((previous: Plan | null) => Plan | null),
     ) => {
       if (value === null) workspaceReference("plan", null);
       setPlan(value);
     },
-    busy,
+    busy: busy || hiddenUnsaved,
     setError,
     setNotice,
     target,
@@ -202,10 +225,15 @@ export function App() {
     refreshHistory: () => loadHistory(0),
   };
   const salesOnly =
-    dataset?.target === "item_line_count" || dataset?.unit === "item_line";
+    selectedDataset?.target === "item_line_count" ||
+    selectedDataset?.unit === "item_line";
   const replay = target <= businessDate();
-  const period = dataset ? formatDatasetPeriod(dataset) : "Период не указан";
-  const sourceLabel = dataset ? datasetSourceLabel(dataset.source) : "";
+  const period = selectedDataset
+    ? formatDatasetPeriod(selectedDataset)
+    : "Период не указан";
+  const sourceLabel = selectedDataset
+    ? datasetSourceLabel(selectedDataset.source)
+    : "";
   const nav = [
     { id: "planning", label: "План", icon: "plan" },
     { id: "import", label: "Данные", icon: "data" },
@@ -222,13 +250,18 @@ export function App() {
           className="brand"
           href="#workspace"
           onClick={() => changeView("planning")}
-          aria-label="BakePlan — план выпечки"
+          aria-label="BakePlan"
         >
           <span className="brand-mark">
             <Icon name="bread" />
           </span>
           <span>
-            BakePlan<small>Пекарня под контролем</small>
+            BakePlan
+            <small>
+              {planningKind === "procurement"
+                ? "Закупки под контролем"
+                : "Пекарня под контролем"}
+            </small>
           </span>
         </a>
         <div className="workspace-label">РАБОЧЕЕ МЕСТО</div>
@@ -253,14 +286,20 @@ export function App() {
         </nav>
         <div className="sidebar-note">
           <span className="status-dot" />
-          Локальный прототип<small>Одна пекарня · Asia/Qyzylorda</small>
+          Локальный прототип
+          <small>
+            {planningKind === "procurement" ? "Торговая точка" : "Одна пекарня"}{" "}
+            · Asia/Qyzylorda
+          </small>
         </div>
       </aside>
       <main id="workspace" tabIndex={-1}>
         <header className="workspace-header">
           <div>
             <p className="eyebrow">ЕЖЕДНЕВНОЕ ПЛАНИРОВАНИЕ</p>
-            <h1>План выпечки</h1>
+            <h1>
+              {planningKind === "procurement" ? "План закупки" : "План выпечки"}
+            </h1>
             <p className="header-subtitle">
               Данные → расчёт → проверка → подтверждение
             </p>
@@ -275,42 +314,97 @@ export function App() {
             </span>
           </div>
         </header>
+        <div className="control-field mode-switch">
+          <label htmlFor="planning-kind">Как пополняем товары</label>
+          <select
+            id="planning-kind"
+            value={planningKind}
+            disabled={busy}
+            onChange={(event) => {
+              setPlanningKind(
+                event.target.value as "production" | "procurement",
+              );
+              setView("import");
+            }}
+          >
+            <option value="production">Производим сами</option>
+            <option value="procurement">Закупаем готовое</option>
+          </select>
+        </div>
+        {((dataset && !selectedDataset) || (plan && !selectedPlan)) && (
+          <aside className="status-note" data-testid="mode-selection-notice">
+            <p>
+              Для выбранного режима загрузите или выберите подходящий набор
+              данных. Данные и план другого режима сохранены в текущей сессии.
+            </p>
+            {hiddenUnsaved && (
+              <>
+                <p>
+                  В другом режиме есть несохранённые изменения. Вернитесь и
+                  сохраните их перед загрузкой другого набора.
+                </p>
+                <button
+                  onClick={() => {
+                    setPlanningKind(
+                      plan?.planning_kind === "procurement"
+                        ? "procurement"
+                        : "production",
+                    );
+                    setView("planning");
+                  }}
+                >
+                  Вернуться к несохранённому плану
+                </button>
+              </>
+            )}
+          </aside>
+        )}
         <ol className="journey" aria-label="Шаги подготовки плана">
-          <li className={!dataset ? "current" : "done"}>1. Данные</li>
-          <li className={dataset && !plan ? "current" : plan ? "done" : ""}>
+          <li className={!selectedDataset ? "current" : "done"}>1. Данные</li>
+          <li
+            className={
+              selectedDataset && !selectedPlan
+                ? "current"
+                : selectedPlan
+                  ? "done"
+                  : ""
+            }
+          >
             2. Расчёт
           </li>
           <li
             className={
-              plan && (plan.status !== "confirmed" || unsaved) ? "current" : ""
+              selectedPlan && (selectedPlan.status !== "confirmed" || unsaved)
+                ? "current"
+                : ""
             }
           >
             3. Проверка и сохранение
           </li>
         </ol>
-        {(dataset || plan) && (
+        {(selectedDataset || selectedPlan) && (
           <div className="provenance-strip" data-testid="workspace-source">
-            <span className={`source-icon ${dataset ? "loaded" : ""}`}>
+            <span className={`source-icon ${selectedDataset ? "loaded" : ""}`}>
               <Icon name="data" />
             </span>
             <div>
-              {dataset ? (
+              {selectedDataset ? (
                 <>
                   <strong>{sourceLabel} · для нового расчёта</strong>
                   <span>
-                    {dataset.row_count ?? "—"} строк · {period}
+                    {selectedDataset.row_count ?? "—"} строк · {period}
                   </span>
-                  <small>{dataset.provenance}</small>
+                  <small>{selectedDataset.provenance}</small>
                 </>
               ) : (
                 <>
                   <strong>
-                    {plan
+                    {selectedPlan
                       ? "Набор для нового расчёта не выбран"
                       : "История продаж ещё не загружена"}
                   </strong>
                   <span>
-                    {plan
+                    {selectedPlan
                       ? "Открытый план использует свой сохранённый снимок данных."
                       : "Начните с CSV или безопасных демонстрационных данных."}
                   </span>
@@ -321,14 +415,17 @@ export function App() {
               className="text-button"
               onClick={() => changeView("import")}
             >
-              {dataset ? "Открыть данные" : "Загрузить данные"}
+              {selectedDataset ? "Открыть данные" : "Загрузить данные"}
               <Icon name="arrow" />
             </button>
           </div>
         )}
         <p className="safety-note">
           Прогноз — ориентир, а не гарантия спроса. Синтетические данные только
-          для демонстрации. Загрузку печи проверьте вручную.
+          для демонстрации.{" "}
+          {planningKind === "procurement"
+            ? "Проверьте остаток и условия поставки вручную."
+            : "Загрузку печи проверьте вручную."}
         </p>
         {error && (
           <div role="alert" className="error" tabIndex={-1} ref={errorBox}>
@@ -380,11 +477,11 @@ export function App() {
           />
         </div>
         <div id="panel-model" hidden={view !== "model"}>
-          {dataset ? (
+          {selectedDataset ? (
             <ModelSection
-              key={dataset.id}
+              key={selectedDataset.id}
               {...sectionProps}
-              dataset={dataset}
+              dataset={selectedDataset}
               active={view === "model"}
             />
           ) : (
@@ -407,12 +504,15 @@ export function App() {
               history={history}
               offset={historyOffset}
               loaded={historyLoaded}
-              busy={busy}
+              busy={busy || hiddenUnsaved}
               onPage={(offset) => void run(() => loadHistory(offset))}
               onLoad={(id) =>
                 void run(async () => {
                   const storedPlan = await api<Plan>(`/plans/${id}`);
-                  if (salesOnly || !dataset) {
+                  // A history plan may belong to another saved dataset. Keep
+                  // the current import selected; the plan holds its own
+                  // immutable catalog/assumptions for confirmation.
+                  if (!dataset) {
                     try {
                       setDataset(
                         savedDataset(

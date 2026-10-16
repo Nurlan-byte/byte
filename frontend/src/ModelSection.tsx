@@ -61,7 +61,11 @@ export function ModelSection({
       <div className="section-heading">
         <div>
           <p className="eyebrow">Дополнительная проверка</p>
-          <h2 id="model-heading">Модель и диагностический прогноз</h2>
+          <h2 id="model-heading">
+            {dataset.planning_kind === "procurement"
+              ? "Прогноз продаж для закупки"
+              : "Модель и диагностический прогноз"}
+          </h2>
         </div>
         <span className="badge">Необязательный шаг</span>
       </div>
@@ -73,15 +77,19 @@ export function ModelSection({
       {!salesOnly && (
         <p className="status-note">
           Для первого плана обучение не нужно. По умолчанию план использует B1;
-          после расчёта проверьте количества и подтвердите выпуск вручную.
+          после расчёта проверьте количества и подтвердите{" "}
+          {dataset.planning_kind === "procurement" ? "заказ" : "выпуск"}{" "}
+          вручную.
         </p>
       )}
       <p className="muted">
         {salesOnly
           ? "Только строки продаж: оцениваем их число, а не количество изделий. Производственные партии, рекомендации выпуска и подтверждение недоступны."
-          : "Диагностический прогноз не назначает выпуск. Производственный план требует отдельной ручной проверки."}{" "}
+          : dataset.planning_kind === "procurement"
+            ? "Прогноз продаж не является заказом. Проверьте доступный остаток, упаковку и лимит."
+            : "Диагностический прогноз не назначает выпуск. Производственный план требует отдельной ручной проверки."}{" "}
         Синтетические примеры проверяют работу программы. Превосходство ML,
-        точность на реальной пекарне и экономия не доказаны.
+        точность на реальных данных и экономия не доказаны.
       </p>
       <details>
         <summary>Как работает прогноз</summary>
@@ -269,6 +277,7 @@ export function ModelSection({
             ))}
           </ul>
           <ModelEvaluation
+            procurement={dataset.planning_kind === "procurement"}
             evaluation={model.evaluation}
             unitLabel={unitLabel}
           />
@@ -293,6 +302,7 @@ export function ModelSection({
       ))}
       {forecast && (
         <ForecastResult
+          procurement={dataset.planning_kind === "procurement"}
           snapshot={forecast}
           stale={forecastInputsChanged(forecast, {
             target,
@@ -309,7 +319,9 @@ export function ModelSection({
 export function ModelEvaluation({
   evaluation,
   unitLabel,
+  procurement = false,
 }: {
+  procurement?: boolean;
   evaluation: ModelSummary["evaluation"];
   unitLabel: string;
 }) {
@@ -347,7 +359,17 @@ export function ModelEvaluation({
 
   return (
     <div data-testid="model-evaluation">
-      <h4>Проверка на отложенных данных</h4>
+      <h4>
+        {procurement || evaluation.selection_performed
+          ? "Внутренняя валидация выбора ML/B1"
+          : "Проверка на отложенных данных"}
+      </h4>
+      {(procurement || evaluation.selection_performed) && (
+        <p className="status-note">
+          Эти данные использованы для выбора между ML и B1. Метрики описывают
+          внутреннюю валидацию и не являются независимой оценкой точности.
+        </p>
+      )}
       <p className="muted">
         MAE — средняя абсолютная ошибка прогноза. Чем ниже, тем лучше. Оба
         метода сравниваются на одних и тех же наблюдениях.

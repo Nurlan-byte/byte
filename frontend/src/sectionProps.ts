@@ -2,6 +2,7 @@ import type { Dispatch, SetStateAction, RefObject } from "react";
 import type { Dataset, DatasetTarget, Plan } from "./types";
 type Setter<T> = Dispatch<SetStateAction<T>>;
 export type SectionProps = {
+  planningKind?: "production" | "procurement";
   csv: string;
   setCsv: Setter<string>;
   source: string;
