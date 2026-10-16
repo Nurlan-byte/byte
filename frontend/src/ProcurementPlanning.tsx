@@ -15,6 +15,9 @@ export function ProcurementPlanning(p: Parameters<typeof PlanningSection>[0]) {
   const dataset = p.dataset?.planning_kind === "procurement" ? p.dataset : null;
   const [lead, setLead] = useState(String(plan?.lead_time_days ?? ""));
   const [stock, setStock] = useState<Record<string, string>>({});
+  const [alternateStock, setAlternateStock] = useState<Record<string, string>>(
+    {},
+  );
   useEffect(() => {
     setLead(String(plan?.lead_time_days ?? ""));
     setStock(
@@ -26,10 +29,14 @@ export function ProcurementPlanning(p: Parameters<typeof PlanningSection>[0]) {
       ),
     );
   }, [plan?.id, plan?.lead_time_days, plan?.usable_stock_assumption]);
+  useEffect(() => setAlternateStock({}), [dataset?.id, plan?.id]);
+  const selectedDatasetDiffers =
+    !!plan && !!dataset && dataset.id !== plan.dataset_id;
+  const workingStock = selectedDatasetDiffers ? alternateStock : stock;
   let assumptions: Record<string, number> = {},
     inputError = "";
   try {
-    assumptions = stockAssumptions(stock);
+    assumptions = stockAssumptions(workingStock);
   } catch (e) {
     inputError = (e as Error).message;
   }
@@ -46,9 +53,7 @@ export function ProcurementPlanning(p: Parameters<typeof PlanningSection>[0]) {
       p.cutoff !== plan.cutoff ||
       p.method !== plan.requested_method ||
       Number(lead) !== plan.lead_time_days ||
-      !sameStock ||
-      !!inputError ||
-      (!!dataset && dataset.id !== plan.dataset_id));
+      (!selectedDatasetDiffers && (!sameStock || !!inputError)));
   const invalid = plan?.items.some(
     (i) =>
       !validQuantity(
@@ -155,10 +160,15 @@ export function ProcurementPlanning(p: Parameters<typeof PlanningSection>[0]) {
               min={0}
               step={1}
               placeholder="Неизвестен"
-              value={stock[i.product_id] ?? ""}
+              value={workingStock[i.product_id] ?? ""}
               disabled={p.busy}
               onChange={(e) =>
-                setStock({ ...stock, [i.product_id]: e.target.value })
+                selectedDatasetDiffers
+                  ? setAlternateStock({
+                      ...alternateStock,
+                      [i.product_id]: e.target.value,
+                    })
+                  : setStock({ ...stock, [i.product_id]: e.target.value })
               }
             />
           </div>
@@ -189,7 +199,13 @@ export function ProcurementPlanning(p: Parameters<typeof PlanningSection>[0]) {
                 method: p.method,
                 mode: p.target <= businessDate() ? "replay" : "operational",
                 lead_time_days: Number(lead),
-                usable_stock_assumption: assumptions,
+                usable_stock_assumption: Object.fromEntries(
+                  Object.entries(assumptions).filter(([productId]) =>
+                    dataset?.catalog?.some(
+                      (item) => item.product_id === productId,
+                    ),
+                  ),
+                ),
               }),
             ),
           )
@@ -199,6 +215,16 @@ export function ProcurementPlanning(p: Parameters<typeof PlanningSection>[0]) {
       </button>
       {plan && (
         <>
+          {selectedDatasetDiffers && (
+            <p
+              className="status-note"
+              data-testid="saved-procurement-dataset-notice"
+            >
+              Сохранённый заказ относится к другому набору данных. Подтверждение
+              использует сохранённый снимок заказа; новый расчёт использует
+              выбранный сейчас набор данных.
+            </p>
+          )}
           <h3>
             Заказ от {plan.order_date} · продажи {plan.target_date}
           </h3>

@@ -59,6 +59,58 @@ test("real API preserves generic procurement import, order and export", async ({
   );
 });
 
+test("saved procurement order can be confirmed while another dataset is selected", async ({
+  page,
+}) => {
+  await page.goto("/");
+  await page.locator("#planning-kind").selectOption("procurement");
+  await page.locator("#proc-csv").fill(syntheticProcurementCsv());
+  await page.locator("#proc-catalog").fill(demoCatalog);
+  await page.locator("#proc-shop").fill("synthetic-shop-a");
+  await page.locator("#proc-provenance").fill("Synthetic source A");
+  await page.locator("#panel-import > section > button:last-child").click();
+  await expect(page.getByTestId("dataset-summary")).toContainText(
+    "Synthetic source A",
+  );
+  await page.locator("button[aria-controls='panel-planning']").click();
+  await page.locator("#proc-date").fill("2026-09-01");
+  await page.locator("#proc-cutoff").fill("2026-08-23");
+  await page.locator("#proc-lead").fill("2");
+  await page.locator("#stock-tea").fill("0");
+  const planResponse = page.waitForResponse(
+    (response) =>
+      response.url().endsWith("/api/plans") &&
+      response.request().method() === "POST",
+  );
+  await page.locator("#planning > button").click();
+  const savedPlan = await (await planResponse).json();
+  await expect(page.getByTestId("procurement-table")).toBeVisible();
+
+  await page.locator("button[aria-controls='panel-import']").click();
+  await page.locator("#proc-shop").fill("synthetic-shop-b");
+  await page.locator("#proc-provenance").fill("Synthetic source B");
+  await page.locator("#panel-import > section > button:last-child").click();
+  await expect(page.getByTestId("dataset-summary")).toContainText(
+    "Synthetic source B",
+  );
+  await page.locator("button[aria-controls='panel-history']").click();
+  await page.locator(`[data-plan-id='${savedPlan.id}'] button`).first().click();
+
+  await expect(
+    page.getByTestId("saved-procurement-dataset-notice"),
+  ).toBeVisible();
+  await expect(page.getByTestId("stale-plan")).toHaveCount(0);
+  await expect(page.locator("#stock-tea")).toHaveValue("");
+  await expect(page.locator("#order-tea")).toBeEnabled();
+  await expect(page.locator("#planning .actions button")).toBeEnabled();
+  await page.locator("#planning .actions button").click();
+  await expect(page.getByRole("status")).toBeVisible();
+  await page.locator("button[aria-controls='panel-import']").click();
+  await expect(page.getByTestId("dataset-summary")).toContainText(
+    "Synthetic source B",
+  );
+});
+
 test("procurement import error focuses alert and preserves editable draft", async ({
   page,
 }) => {
