@@ -226,9 +226,15 @@ def confirm_plan(ident: str, body: ConfirmRequest, today: date):
             raise ServiceError(422, "Требуются количества всех пяти продуктов")
         for item in plan["items"]:
             q = body.quantities[item["product_id"]]
+            target_date = plan["target_date"]
+            product_inactive = (
+                (item.get("active_from") and target_date < item["active_from"])
+                or (item.get("active_to") and target_date > item["active_to"])
+            )
             if (
                 q < 0
                 or (not item.get("target_is_open", True) and q != 0)
+                or (product_inactive and q != 0)
                 or q > item["max_daily_qty"] // item["batch_size"] * item["batch_size"]
                 or q % item["batch_size"]
             ):

@@ -21,6 +21,11 @@ def plan_item(
     method: str,
     target_is_open: bool,
 ) -> dict:
+    product_active = (
+        (not product.get("active_from") or str(target) >= product["active_from"])
+        and (not product.get("active_to") or str(target) <= product["active_to"])
+    )
+    target_available = target_is_open and product_active
     history_start = date.fromordinal(max(1, target.toordinal() - 56))
     history = [
         r
@@ -41,10 +46,10 @@ def plan_item(
         cutoff=cutoff,
         method=method,
     )
-    if not target_is_open:
+    if not target_available:
         forecast = {**forecast, "forecast_mean": None, "used_dates": [], "n": 0}
     automatic = (
-        target_is_open and not high_deficit and not carryover and forecast["n"] > 0
+        target_available and not high_deficit and not carryover and forecast["n"] > 0
     )
     warnings = [
         "Общую загрузку печи проверьте вручную. Денежная оптимизация недоступна."
@@ -56,6 +61,10 @@ def plan_item(
     if high_deficit:
         warnings.append(
             "Более 50% наблюдаемых открытых дней имеют дефицит или неизвестное наличие: нужен ручной план."
+        )
+    if not product_active:
+        warnings.append(
+            "Товар вне периода активности на целевую дату: выпуск 0, ручное увеличение запрещено."
         )
     if not target_is_open:
         warnings.append(

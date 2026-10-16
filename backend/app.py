@@ -28,6 +28,7 @@ from backend.services import (
     export_csv,
 )
 from backend.storage import (
+    MAX_SQLITE_INTEGER,
     NotFound,
     initialize_database,
     database_path,
@@ -144,7 +145,10 @@ def import_dataset(body: ImportRequest, response: Response):
 
 
 @app.get("/api/datasets")
-def datasets(limit: int = Query(20, ge=1, le=100), offset: int = Query(0, ge=0)):
+def datasets(
+    limit: int = Query(20, ge=1, le=100),
+    offset: int = Query(0, ge=0, le=MAX_SQLITE_INTEGER),
+):
     return list_datasets(limit, offset)
 
 
@@ -176,7 +180,10 @@ def create_plan(body: PlanRequest):
 
 
 @app.get("/api/plans")
-def plans(limit: int = Query(20, ge=1, le=100), offset: int = Query(0, ge=0)):
+def plans(
+    limit: int = Query(20, ge=1, le=100),
+    offset: int = Query(0, ge=0, le=MAX_SQLITE_INTEGER),
+):
     return list_plans(limit, offset)
 
 
