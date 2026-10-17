@@ -237,7 +237,6 @@ export function App() {
   const nav = [
     { id: "planning", label: "План", icon: "plan" },
     { id: "import", label: "Данные", icon: "data" },
-    { id: "model", label: "Модель", icon: "model" },
     { id: "history", label: "История", icon: "history" },
   ] as const;
   return (
@@ -276,14 +275,21 @@ export function App() {
             >
               <Icon name={item.icon} />
               <span>{item.label}</span>
-              {item.id === "model" && (
-                <span className="nav-hint" aria-hidden="true">
-                  Опыт
-                </span>
-              )}
             </button>
           ))}
         </nav>
+        <details className="secondary-nav">
+            <summary>Дополнительно</summary>
+            <button
+              type="button"
+              aria-current={view === "model" ? "page" : undefined}
+              aria-controls="panel-model"
+              onClick={() => changeView("model")}
+            >
+              <Icon name="model" />
+              <span>Качество прогноза</span>
+            </button>
+        </details>
         <div className="sidebar-note">
           <span className="status-dot" />
           Локальный прототип
@@ -487,10 +493,10 @@ export function App() {
           ) : (
             <section className="empty-state">
               <Icon name="model" />
-              <h2>Модель начинается с данных</h2>
+              <h2>Для проверки прогноза нужны данные</h2>
               <p>
-                Загрузите историю, чтобы обучить экспериментальную ML-модель и
-                сравнить её с B1. Для плана обучение необязательно.
+                Загрузите историю продаж. Подготовка экспериментального расчёта
+                необязательна для первого плана.
               </p>
               <button onClick={() => setView("import")}>
                 Перейти к данным

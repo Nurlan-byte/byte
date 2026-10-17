@@ -24,15 +24,23 @@ test('plan is the default workspace and all sections are keyboard accessible', a
   await expect(page.locator('#panel-import')).toBeHidden();
   await expect(page.getByLabel('Содержимое CSV', { exact: true })).toBeHidden();
   await planButton.focus();
-  for (const [name, panel] of [['Данные', 'import'], ['Модель', 'model'], ['История', 'history']] as const) {
+  for (const [name, panel] of [['Данные', 'import'], ['История', 'history']] as const) {
     await page.keyboard.press('Tab');
     const button = navigation.getByRole('button', { name, exact: true });
     await expect(button).toBeFocused();
-    await page.keyboard.press(name === 'Модель' ? 'Space' : 'Enter');
+    await page.keyboard.press('Enter');
     await expect(button).toHaveAttribute('aria-current', 'page');
     await expect(page.locator(`#panel-${panel}`)).toBeVisible();
     await expect(page.locator('#panel-planning')).toBeHidden();
   }
+  const advanced = page.getByText('Дополнительно', { exact: true });
+  await advanced.focus();
+  await page.keyboard.press('Enter');
+  const quality = page.getByRole('button', { name: 'Качество прогноза', exact: true });
+  await quality.focus();
+  await page.keyboard.press('Enter');
+  await expect(quality).toHaveAttribute('aria-current', 'page');
+  await expect(page.locator('#panel-model')).toBeVisible();
   await planButton.focus();
   await page.keyboard.press('Enter');
   await expect(page.locator('#panel-planning')).toBeVisible();
@@ -43,8 +51,8 @@ test('section navigation preserves the dataset, diagnostic forecast and unsaved 
   const quantity = page.getByTestId('plan-table').locator('tbody tr').first().getByRole('spinbutton');
   await quantity.fill('84');
   await navigate(page, 'Модель');
-  await page.getByLabel('Метод диагностики', { exact: true }).selectOption('B1');
-  await page.getByRole('button', { name: 'Получить прогноз', exact: true }).click();
+  await page.getByLabel('Способ прогноза', { exact: true }).selectOption('B1');
+  await page.getByRole('button', { name: 'Проверить прогноз', exact: true }).click();
   await expect(page.getByTestId('forecast-result')).toBeVisible();
   await expect(page.getByTestId('forecast-table').locator('tbody tr').first()).toContainText('65.0');
   await navigate(page, 'Данные');
@@ -63,7 +71,7 @@ test('section navigation preserves the dataset, diagnostic forecast and unsaved 
   await navigate(page, 'История');
   await expect(page.locator('#history')).toBeVisible();
   await navigate(page, 'Модель');
-  await expect(page.getByLabel('Метод диагностики', { exact: true })).toHaveValue('B1');
+  await expect(page.getByLabel('Способ прогноза', { exact: true })).toHaveValue('B1');
   await expect(page.getByTestId('forecast-result')).toBeVisible();
   await expect(page.getByTestId('stale-forecast')).toHaveCount(0);
   await navigate(page, 'План');
@@ -84,16 +92,15 @@ for (const width of [360, 768, 1440]) {
     await page.setViewportSize({ width, height: 1000 });
     await preparePlan(page);
     await navigate(page, 'Модель');
-    await page.getByRole('button', { name: 'Обучить модель', exact: true }).click();
-    await expect(page.getByTestId('model-summary')).toContainText('Модель готова', { timeout: 65_000 });
-    await page.getByTestId('model-summary').getByText('Технические данные модели', { exact: true }).click();
-    await page.getByTestId('model-summary').getByText('Диагностика оценки модели', { exact: true }).click();
-    await page.getByRole('button', { name: 'Получить прогноз', exact: true }).click();
-    await expect(page.getByTestId('forecast-table').locator('tbody tr').first()).toContainText('ML');
+    await page.getByRole('button', { name: 'Подготовить экспериментальный расчёт', exact: true }).click();
+    await expect(page.getByTestId('model-summary')).toContainText('Расчёт готов', { timeout: 65_000 });
+    await expect(page.getByTestId('model-summary')).not.toContainText('MAE');
+    await page.getByRole('button', { name: 'Проверить прогноз', exact: true }).click();
+    await expect(page.getByTestId('forecast-table').locator('tbody tr').first()).toContainText('Экспериментальный расчёт');
     await navigate(page, 'История');
     await page.getByRole('button', { name: 'Обновить историю', exact: true }).click();
     await expect(page.locator('.history-card').first()).toBeVisible();
-    await page.locator('.history-card').first().getByText('Данные сохранённого плана', { exact: true }).click();
+    await expect(page.locator('.history-card').first()).toContainText('Синтетические данные');
     for (const section of ['План', 'Данные', 'Модель', 'История'] as const) {
       await navigate(page, section);
       const dimensions = await page.evaluate(() => ({ width: document.documentElement.scrollWidth, viewport: window.innerWidth }));

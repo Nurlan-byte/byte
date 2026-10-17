@@ -7,6 +7,32 @@ import {
   syntheticProcurementCsv,
 } from "./procurement";
 import { PlanningSection } from "./PlanningSection";
+import { methodText, procurementNotes } from "./explanations";
+
+test("procurement explains an unconfirmed manual order and ML fallback in owner language", () => {
+  const notes = procurementNotes({
+    product_id: "tea",
+    name: "Чай",
+    batch_size: 1,
+    max_daily_qty: 100,
+    forecast_mean: 12,
+    recommended_qty: 6,
+    confirmed_qty: null,
+    method: "manual",
+    target_is_open: true,
+    usable_stock_assumption: null,
+    unknown_open_n: 9,
+    unknown_stockout_n: 4,
+    max_constraint_active: true,
+    fallback_reason: "not_better_than_b1_validation",
+    warnings: ["ML fallback: not_better_than_b1_validation"],
+  });
+  expect(methodText("manual")).toBe("Нужно указать количество вручную");
+  expect(notes.join(" ")).toContain("режим работы неизвестен в 9 строках");
+  expect(notes.join(" ")).toContain("Максимум поставщика");
+  expect(notes.join(" ")).toContain("не показала улучшения");
+  expect(notes.join(" ")).not.toContain("not_better_than_b1_validation");
+});
 
 test("unknown stock is omitted while explicit zero is retained", () => {
   expect(stockAssumptions({ tea: "", juice: "0" })).toEqual({ juice: 0 });
@@ -103,6 +129,7 @@ test("procurement model selection metrics are explicitly internal validation", a
       unitLabel="шт."
     />,
   );
-  expect(html).toContain("Внутренняя валидация выбора ML/B1");
-  expect(html).toContain("не являются независимой оценкой точности");
+  expect(html).toContain("Качество прогноза");
+  expect(html).toContain("не является независимой оценкой точности");
+  expect(html).not.toContain("MAE");
 });

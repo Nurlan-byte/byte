@@ -1,6 +1,6 @@
 import { test, expect, type Page } from '@playwright/test';
 import fs from 'node:fs/promises';
-import { navigate, openHistoryPlan, prepareImport } from './helpers';
+import { navigate, openDetails, openHistoryPlan, prepareImport } from './helpers';
 
 const base = 'http://127.0.0.1:18000/api';
 
@@ -18,21 +18,23 @@ async function prepare(page: Page) {
 test('diagnostic result retains original parameters and marks each changed input as stale', async ({ page }) => {
   await prepare(page);
   await navigate(page, 'Модель');
-  await page.getByRole('button', { name: 'Получить прогноз', exact: true }).click();
+  await page.getByRole('button', { name: 'Проверить прогноз', exact: true }).click();
   await expect(page.getByTestId('forecast-result')).toBeVisible();
   await expect(page.getByTestId('stale-forecast')).toHaveCount(0);
   await page.getByLabel('Дата прогноза', { exact: true }).fill('2026-10-13');
-  await expect(page.getByTestId('stale-forecast')).toContainText('прежний прогноз на 2026-10-12');
+  await expect(page.getByTestId('stale-forecast')).toContainText('Параметры изменились');
+  await expect(page.getByTestId('forecast-result')).toContainText('Прогноз по истории продаж на 2026-10-12');
   await page.getByLabel('Дата прогноза', { exact: true }).fill('2026-10-12');
   await expect(page.getByTestId('stale-forecast')).toHaveCount(0);
   await page.getByLabel('Срез обучения и прогноза', { exact: true }).fill('2026-10-10');
-  await expect(page.getByTestId('stale-forecast')).toContainText('срез 2026-10-11');
+  await expect(page.getByTestId('stale-forecast')).toContainText('Параметры изменились');
+  await expect(page.getByTestId('forecast-result')).toContainText('Продажи учтены по 2026-10-11');
   await page.getByLabel('Срез обучения и прогноза', { exact: true }).fill('2026-10-11');
-  await page.getByLabel('Метод диагностики', { exact: true }).selectOption('B1');
-  await expect(page.getByTestId('stale-forecast')).toContainText('выбранный метод ML');
-  await page.getByRole('button', { name: 'Получить прогноз', exact: true }).click();
+  await page.getByLabel('Способ прогноза', { exact: true }).selectOption('B1');
+  await expect(page.getByTestId('stale-forecast')).toContainText('Параметры изменились');
+  await page.getByRole('button', { name: 'Проверить прогноз', exact: true }).click();
   await expect(page.getByTestId('stale-forecast')).toHaveCount(0);
-  await expect(page.getByTestId('forecast-result')).toContainText('выбранный метод: B1');
+  await expect(page.getByTestId('forecast-table')).toContainText('По похожим дням недели');
 });
 
 test('old plan cannot be confirmed under changed date, cutoff, method or calendar', async ({ page }) => {
@@ -53,6 +55,7 @@ test('old plan cannot be confirmed under changed date, cutoff, method or calenda
     await page.getByLabel(label, { exact: true }).fill(original);
     await expect(confirm).toBeEnabled();
   }
+  await page.getByText('Настройки прогноза', { exact: true }).click();
   await page.getByLabel('Способ расчёта', { exact: true }).selectOption('B0');
   await expect(confirm).toBeDisabled();
   await page.getByLabel('Способ расчёта', { exact: true }).selectOption('B1');
@@ -119,11 +122,11 @@ test('mobile page keeps all quantity fields visible in cards without horizontal 
   await page.setViewportSize({ width: 375, height: 812 });
   await prepare(page);
   await navigate(page, 'Данные');
-  await page.getByTestId('dataset-summary').getByText('Технические данные набора', { exact: true }).click();
+  await expect(page.getByTestId('dataset-summary')).not.toContainText('Технические данные набора');
   await navigate(page, 'План');
   await page.getByRole('button', { name: 'Рассчитать план', exact: true }).click();
   await expect(page.getByTestId('plan-table')).toBeVisible();
-  await page.getByText('Технические данные плана', { exact: true }).click();
+  await expect(page.getByTestId('plan-table')).not.toContainText('Технические данные плана');
   const widths = await page.evaluate(() => ({ body: document.documentElement.scrollWidth, viewport: window.innerWidth }));
   expect(widths.body).toBeLessThanOrEqual(widths.viewport);
   const table = page.getByTestId('plan-table').locator('..');
@@ -142,7 +145,7 @@ test('history restores its own planning parameters while the current imported da
   await page.getByRole('button', { name: 'Рассчитать план', exact: true }).click();
   const original = await (await created).json();
   await prepareImport(page, true);
-  await page.getByLabel('ID пекарни', { exact: true }).fill('e2e-history-current');
+  await page.getByLabel('Код точки', { exact: true }).fill('e2e-history-current');
   const imported = page.waitForResponse(response => response.url().endsWith('/api/datasets') && response.request().method() === 'POST');
   await page.getByRole('button', { name: 'Проверить и импортировать', exact: true }).click();
   const current = await (await imported).json();
@@ -151,6 +154,7 @@ test('history restores its own planning parameters while the current imported da
   await navigate(page, 'План');
   await page.getByLabel('Дата плана', { exact: true }).fill('2026-10-13');
   await page.getByLabel('Данные доступны до', { exact: true }).fill('2026-10-10');
+  await page.getByText('Настройки прогноза', { exact: true }).click();
   await page.getByLabel('Способ расчёта', { exact: true }).selectOption('B0');
   await page.getByLabel('Целевой день открыт', { exact: true }).uncheck();
   await page.route('**/api/plans?*', route => route.fulfill({ json: [{
@@ -167,7 +171,8 @@ test('history restores its own planning parameters while the current imported da
   await expect(page.getByTestId('stale-plan')).toHaveCount(0);
   await expect(page.getByText('Открыт план другого сохранённого набора.', { exact: false })).toBeVisible();
   await navigate(page, 'Данные');
-  await expect(page.getByTestId('dataset-summary')).toContainText('e2e-history-current');
+  await openDetails(page, 'Продолжить работу с сохранённым набором');
+  await expect(page.getByLabel('Сохранённый набор', { exact: true })).toHaveValue(current.id);
   await navigate(page, 'План');
   const quantity = page.getByTestId('plan-table').locator('tbody tr').first().getByRole('spinbutton');
   await quantity.fill('84');
@@ -177,6 +182,6 @@ test('history restores its own planning parameters while the current imported da
   expect(stored.dataset_id).toBe(original.dataset_id);
   expect(stored.items[0].confirmed_qty).toBe(84);
   await navigate(page, 'Данные');
-  await expect(page.getByTestId('dataset-summary')).toContainText('e2e-history-current');
+  await expect(page.getByLabel('Сохранённый набор', { exact: true })).toHaveValue(current.id);
   await navigate(page, 'План');
 });

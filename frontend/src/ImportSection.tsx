@@ -175,7 +175,7 @@ function ProductionImport({
     : !csv.trim()
       ? "Выберите CSV-файл, загрузите демо или вставьте CSV ниже."
       : !bakeryId.trim()
-        ? "Укажите ID пекарни в разделе «Параметры набора»."
+        ? "Укажите код точки в разделе «Параметры набора»."
         : !provenance.trim()
           ? "Укажите происхождение данных: название источника и описание набора."
           : "";
@@ -241,7 +241,7 @@ function ProductionImport({
           )}
           {dataset.metadata_declared === false && (
             <p className="status-note">
-              Старый набор доступен для B0/B1. Для обучения модели повторно
+              Старый набор доступен для расчёта по истории. Для экспериментального расчёта повторно
               импортируйте исходный CSV с явным происхождением и единицей.
             </p>
           )}
@@ -283,25 +283,9 @@ function ProductionImport({
             <span className="muted">
               {savedSalesOnly
                 ? "Прогноз наблюдаемых строк продаж"
-                : "Расчёт по дням недели доступен без обучения"}
+                : "Прогноз по истории продаж доступен без подготовки"}
             </span>
           </div>
-          <details>
-            <summary>Технические данные набора</summary>
-            <p>Набор: {dataset.id}</p>
-            <p>
-              Пекарня: {dataset.bakery_id} · источник: {dataset.source}
-            </p>
-            <p>
-              Цель: {dataset.target} · единица: {dataset.unit} · схема:{" "}
-              {dataset.schema_version}
-            </p>
-            <p>
-              Версия данных:{" "}
-              {dataset.dataset_version ?? dataset.version ?? "не указана"}
-            </p>
-            {dataset.created_at && <p>Сохранён: {dataset.created_at}</p>}
-          </details>
         </div>
       )}
 
@@ -459,6 +443,11 @@ function ProductionImport({
               }
               setCsv(text);
               setFileName(file.name);
+              if (source === "synthetic") {
+                setSource("local");
+                setProvenance(file.name);
+              }
+              if (bakeryId === "demo") setBakeryId("");
               setNotice(
                 "Файл прочитан, но ещё не импортирован. Проверьте источник и нажмите «Проверить и импортировать».",
               );
@@ -572,7 +561,7 @@ function ProductionImport({
         <summary>Параметры набора</summary>
         <div className="controls">
           <div className="control-field">
-            <label htmlFor="import-bakery">ID пекарни</label>
+            <label htmlFor="import-bakery">Код точки</label>
             <input
               id="import-bakery"
               disabled={busy}
@@ -583,10 +572,7 @@ function ProductionImport({
           </div>
         </div>
         <p className="muted">
-          {salesOnly
-            ? "Схема sales-1 · единица item_line."
-            : "Схема history-1 · единица physical_unit."}{" "}
-          Наборы и модели разделяются по ID пекарни и единице измерения.
+          Данные разных точек и единиц измерения хранятся отдельно.
         </p>
       </details>
       <details>

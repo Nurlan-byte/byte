@@ -6,6 +6,7 @@ import { businessDate } from "./dates";
 import { stockAssumptions } from "./procurement";
 import { validQuantity } from "./quantities";
 import { hasQuantityChanges } from "./workspace";
+import { methodText, procurementNotes } from "./explanations";
 
 export function ProcurementPlanning(p: Parameters<typeof PlanningSection>[0]) {
   useEffect(() => {
@@ -112,7 +113,8 @@ export function ProcurementPlanning(p: Parameters<typeof PlanningSection>[0]) {
             onChange={(e) => setLead(e.target.value)}
           />
         </div>
-        <div className="control-field">
+        <details className="control-field">
+          <summary>Настройки прогноза</summary>
           <label htmlFor="proc-method">Способ расчёта закупки</label>
           <select
             id="proc-method"
@@ -120,10 +122,10 @@ export function ProcurementPlanning(p: Parameters<typeof PlanningSection>[0]) {
             disabled={p.busy}
             onChange={(e) => p.setMethod(e.target.value)}
           >
-            <option value="B1">По дням недели (B1)</option>
-            <option value="ML">Экспериментальная модель (ML)</option>
+            <option value="B1">По похожим дням недели</option>
+            <option value="ML">Экспериментальный расчёт</option>
           </select>
-        </div>
+        </details>
       </div>
       <div className="data-guide">
         <h3>Допущение о доступном остатке</h3>
@@ -138,11 +140,9 @@ export function ProcurementPlanning(p: Parameters<typeof PlanningSection>[0]) {
           пригодного остатка.
         </p>
         <p>
-          Заказ = max(0, прогноз продаж − доступный остаток), округление вверх
-          до упаковки с учётом лимита заказа. Дата заказа — сегодня; для
-          исторического воспроизведения — следующий день после среза данных.
-          Дата продаж должна учитывать срок поставки. Прогноз не суммируется за
-          срок поставки.
+          Предложенный заказ учитывает прогноз продаж, указанный остаток,
+          упаковку и лимит. Проверьте, что товар успеет поступить к дате
+          продаж. Прогноз относится к одному дню, а не ко всему сроку поставки.
         </p>
         <p>
           Историческая доступность товара и дефицит могут быть неизвестны.
@@ -229,13 +229,9 @@ export function ProcurementPlanning(p: Parameters<typeof PlanningSection>[0]) {
             Заказ от {plan.order_date} · продажи {plan.target_date}
           </h3>
           <p>
-            Источник: {plan.source} · набор: {plan.dataset_id} · редакция{" "}
-            {plan.revision} ·{" "}
+            Источник: {plan.provenance || plan.source} ·{" "}
             {plan.status === "confirmed" ? "Подтверждён" : "Черновик"}
           </p>
-          {plan.provenance && (
-            <p>Происхождение сохранённого плана: {plan.provenance}</p>
-          )}
           <p>
             Сохранённый срок поставки: {plan.lead_time_days} дней. Срез:{" "}
             {plan.cutoff}.
@@ -279,11 +275,11 @@ export function ProcurementPlanning(p: Parameters<typeof PlanningSection>[0]) {
                       {i.forecast_mean == null
                         ? "Нет оценки"
                         : i.forecast_mean.toFixed(1)}
-                      <small>Метод: {i.method}</small>
+                      <small>Основа: {methodText(i.method)}</small>
                     </td>
                     <td data-label="Предложенный заказ, шт.">
                       {i.recommended_qty}
-                      {i.warnings.map((w, n) => (
+                      {procurementNotes(i).map((w, n) => (
                         <small key={n}>{w}</small>
                       ))}
                     </td>

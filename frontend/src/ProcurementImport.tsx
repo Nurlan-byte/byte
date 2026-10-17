@@ -1,15 +1,49 @@
 import { useEffect, useRef, useState } from "react";
 import type { ImportProps } from "./ImportSection";
-import type { Dataset } from "./types";
+import type { CatalogItem, Dataset } from "./types";
 import { api } from "./api";
+import { datasetSourceLabel } from "./datasetSummary";
 import {
   demoCatalog,
   parseCatalog,
   syntheticProcurementCsv,
 } from "./procurement";
 
+type ProductDraft = {
+  product_id: string;
+  name: string;
+  pack_size: string;
+  max_order_qty: string;
+};
+const emptyProduct = (): ProductDraft => ({
+  product_id: "",
+  name: "",
+  pack_size: "",
+  max_order_qty: "",
+});
+const editableCatalog = (items: CatalogItem[]): ProductDraft[] =>
+  items.map((item) => ({
+    product_id: item.product_id,
+    name: item.name,
+    pack_size: String(item.pack_size),
+    max_order_qty: item.max_order_qty == null ? "" : String(item.max_order_qty),
+  }));
+
 export function ProcurementImport(p: ImportProps) {
-  const [catalog, setCatalog] = useState(demoCatalog);
+  const [catalog, setCatalog] = useState<ProductDraft[]>([emptyProduct()]);
+  const [fileName, setFileName] = useState("");
+  const fileInput = useRef<HTMLInputElement>(null);
+  function updateProduct(
+    index: number,
+    field: keyof ProductDraft,
+    value: string,
+  ) {
+    setCatalog((previous) =>
+      previous.map((item, n) =>
+        n === index ? { ...item, [field]: value } : item,
+      ),
+    );
+  }
   const [signature, setSignature] = useState("");
   const [saved, setSaved] = useState<Dataset[]>([]);
   const [savedId, setSavedId] = useState("");
@@ -42,8 +76,8 @@ export function ProcurementImport(p: ImportProps) {
           <h3>Набор сохранён</h3>
           <p>Происхождение: {dataset.provenance}</p>
           <p>
-            Источник: {dataset.source} · строк: {dataset.row_count ?? "—"} ·
-            схема procurement-1
+            Источник: {datasetSourceLabel(dataset.source)} · строк:{" "}
+            {dataset.row_count ?? "—"}
           </p>
           {signature !== draft && (
             <p className="status-note">
@@ -104,19 +138,22 @@ export function ProcurementImport(p: ImportProps) {
           <p>Список пуст. Обновите наборы или импортируйте CSV.</p>
         )}
       </details>
-      <div className="data-guide">
+      <details className="data-guide">
+        <summary>Формат файла и проверка остатков</summary>
         <p>CSV: date,product_id,opening,received,sold,waste,closing</p>
         <p>
           Баланс: остаток утром + поступило = продано + списано + остаток
           вечером. Каталог должен содержать ровно товары CSV.
         </p>
-      </div>
+      </details>
       <button
         className="secondary"
         disabled={p.busy}
         onClick={() => {
           p.setCsv(syntheticProcurementCsv());
-          setCatalog(demoCatalog);
+          setCatalog(editableCatalog(parseCatalog(demoCatalog)));
+          setFileName("");
+          if (fileInput.current) fileInput.current.value = "";
           p.setSource("synthetic");
           p.setBakeryId("procurement-demo");
           p.setProvenance("Синтетический пример закупки чая и сока");
@@ -128,6 +165,7 @@ export function ProcurementImport(p: ImportProps) {
         <label htmlFor="proc-file">CSV-файл закупки</label>
         <input
           id="proc-file"
+          ref={fileInput}
           type="file"
           accept=".csv,text/csv"
           disabled={p.busy}
@@ -138,37 +176,131 @@ export function ProcurementImport(p: ImportProps) {
                 if (file.size > 2_000_000)
                   throw new Error("Файл превышает 2 МБ.");
                 p.setCsv(await file.text());
+                setFileName(file.name);
+                if (p.source === "synthetic") {
+                  p.setSource("local");
+                  p.setProvenance(file.name);
+                }
+                if (p.bakeryId === "demo" || p.bakeryId === "procurement-demo")
+                  p.setBakeryId("");
+                p.setNotice(
+                  "Файл прочитан. Заполните товары и проверьте источник перед импортом.",
+                );
               });
           }}
         />
       </div>
-      <div className="control-field">
-        <label htmlFor="proc-csv">Содержимое CSV закупки</label>
-        <textarea
-          id="proc-csv"
-          rows={6}
+      {fileName && (
+        <p role="status">Файл: {fileName}. Данные ещё не импортированы.</p>
+      )}
+      <details id="proc-manual-csv">
+        <summary>Вставить или исправить текст файла</summary>
+        <div className="control-field">
+          <label htmlFor="proc-csv">Содержимое CSV закупки</label>
+          <textarea
+            id="proc-csv"
+            rows={6}
+            disabled={p.busy}
+            value={p.csv}
+            onChange={(e) => {
+              p.setCsv(e.target.value);
+              setFileName("");
+            }}
+          />
+        </div>
+      </details>
+      <h3>Товары и условия поставщика</h3>
+      <p id="catalog-help">
+        Добавьте каждый товар из файла. Код должен совпадать с кодом в файле.
+        Упаковку укажите по условиям поставщика. Пустой максимум означает, что
+        ограничение не задано.
+      </p>
+      {catalog.map((item, index) => (
+        <fieldset
+          key={index}
           disabled={p.busy}
-          value={p.csv}
-          onChange={(e) => p.setCsv(e.target.value)}
-        />
-      </div>
-      <div className="control-field">
-        <label htmlFor="proc-catalog">Каталог товаров (JSON)</label>
-        <p id="catalog-help">
-          Упаковку и лимит задаёт поставщик. Значения ниже — синтетический
-          пример; замените их для своего каталога. product_id — код; name —
-          название; pack_size — штук в упаковке; max_order_qty — лимит штук или
-          null без лимита.
-        </p>
-        <textarea
-          id="proc-catalog"
           aria-describedby="catalog-help"
-          rows={8}
-          disabled={p.busy}
-          value={catalog}
-          onChange={(e) => setCatalog(e.target.value)}
-        />
-      </div>
+          style={{ minInlineSize: 0 }}
+        >
+          <legend>Товар {index + 1}</legend>
+          <div className="controls">
+            <div className="control-field">
+              <label htmlFor={`proc-product-${index}`}>
+                Код товара {index + 1}
+              </label>
+              <input
+                id={`proc-product-${index}`}
+                value={item.product_id}
+                maxLength={64}
+                onChange={(e) =>
+                  updateProduct(index, "product_id", e.target.value)
+                }
+              />
+            </div>
+            <div className="control-field">
+              <label htmlFor={`proc-name-${index}`}>
+                Название товара {index + 1}
+              </label>
+              <input
+                id={`proc-name-${index}`}
+                value={item.name}
+                maxLength={100}
+                onChange={(e) => updateProduct(index, "name", e.target.value)}
+              />
+            </div>
+            <div className="control-field">
+              <label htmlFor={`proc-pack-${index}`}>
+                Штук в упаковке {index + 1}
+              </label>
+              <input
+                id={`proc-pack-${index}`}
+                type="number"
+                min={1}
+                max={1000000000}
+                step={1}
+                value={item.pack_size}
+                onChange={(e) =>
+                  updateProduct(index, "pack_size", e.target.value)
+                }
+              />
+            </div>
+            <div className="control-field">
+              <label htmlFor={`proc-max-${index}`}>
+                Максимум заказа {index + 1} (необязательно)
+              </label>
+              <input
+                id={`proc-max-${index}`}
+                type="number"
+                min={0}
+                max={1000000000}
+                step={1}
+                value={item.max_order_qty}
+                placeholder="Не задан"
+                onChange={(e) =>
+                  updateProduct(index, "max_order_qty", e.target.value)
+                }
+              />
+            </div>
+          </div>
+          <button
+            type="button"
+            disabled={p.busy || catalog.length === 1}
+            onClick={() =>
+              setCatalog((previous) => previous.filter((_, n) => n !== index))
+            }
+          >
+            Удалить товар {index + 1}
+          </button>
+        </fieldset>
+      ))}
+      <button
+        type="button"
+        className="secondary"
+        disabled={p.busy || catalog.length >= 50}
+        onClick={() => setCatalog((previous) => [...previous, emptyProduct()])}
+      >
+        Добавить товар
+      </button>
       <div className="controls">
         <div className="control-field">
           <label htmlFor="proc-source">Источник закупки</label>
@@ -184,7 +316,7 @@ export function ProcurementImport(p: ImportProps) {
           </select>
         </div>
         <div className="control-field">
-          <label htmlFor="proc-shop">ID торговой точки</label>
+          <label htmlFor="proc-shop">Код точки</label>
           <input
             id="proc-shop"
             value={p.bakeryId}
@@ -208,7 +340,44 @@ export function ProcurementImport(p: ImportProps) {
         }
         onClick={() =>
           void p.run(async () => {
-            const products = parseCatalog(catalog);
+            const products = parseCatalog(
+              JSON.stringify(
+                catalog.map((item, index) => {
+                  if (
+                    !/^[a-zA-Z0-9_-]+$/.test(item.product_id) ||
+                    !item.name.trim()
+                  )
+                    throw new Error(
+                      `Товар ${index + 1}: укажите название и код латинскими буквами, цифрами, дефисом или подчёркиванием.`,
+                    );
+                  if (
+                    !/^\d+$/.test(item.pack_size) ||
+                    Number(item.pack_size) < 1 ||
+                    Number(item.pack_size) > 1000000000
+                  )
+                    throw new Error(
+                      `Товар ${index + 1}: укажите целое количество в упаковке от 1 до 1000000000.`,
+                    );
+                  if (
+                    item.max_order_qty !== "" &&
+                    (!/^\d+$/.test(item.max_order_qty) ||
+                      Number(item.max_order_qty) > 1000000000)
+                  )
+                    throw new Error(
+                      `Товар ${index + 1}: максимум должен быть целым неотрицательным числом или пустым.`,
+                    );
+                  return {
+                    product_id: item.product_id,
+                    name: item.name.trim(),
+                    pack_size: Number(item.pack_size),
+                    max_order_qty:
+                      item.max_order_qty === ""
+                        ? null
+                        : Number(item.max_order_qty),
+                  };
+                }),
+              ),
+            );
             const result = await api<Dataset>("/datasets", {
               schema_version: "procurement-1",
               source: p.source,

@@ -1,18 +1,11 @@
 import { test, expect } from "@playwright/test";
-import {
-  demoCatalog,
-  syntheticProcurementCsv,
-} from "../frontend/src/procurement";
 
 test("real API preserves generic procurement import, order and export", async ({
   page,
 }) => {
   await page.goto("/");
   await page.getByLabel("Как пополняем товары").selectOption("procurement");
-  await page
-    .getByLabel("Содержимое CSV закупки")
-    .fill(syntheticProcurementCsv());
-  await page.getByLabel("Каталог товаров (JSON)").fill(demoCatalog);
+  await page.getByRole("button", { name: "Демо закупки", exact: true }).click();
   await page
     .getByLabel("Происхождение данных закупки")
     .fill("Synthetic procurement integration fixture");
@@ -64,8 +57,7 @@ test("saved procurement order can be confirmed while another dataset is selected
 }) => {
   await page.goto("/");
   await page.locator("#planning-kind").selectOption("procurement");
-  await page.locator("#proc-csv").fill(syntheticProcurementCsv());
-  await page.locator("#proc-catalog").fill(demoCatalog);
+  await page.getByRole("button", { name: "Демо закупки", exact: true }).click();
   await page.locator("#proc-shop").fill("synthetic-shop-a");
   await page.locator("#proc-provenance").fill("Synthetic source A");
   await page.locator("#panel-import > section > button:last-child").click();
@@ -114,15 +106,15 @@ test("saved procurement order can be confirmed while another dataset is selected
 test("procurement import error focuses alert and preserves editable draft", async ({
   page,
 }) => {
-  await page.route("**/api/**", async (route) => {
-    if (route.request().method() === "POST")
-      await route.fulfill({
-        status: 422,
-        json: { detail: "Invalid inventory balance" },
-      });
-    else await route.fulfill({ json: [] });
-  });
   await page.goto("/");
+  await expect(page.locator("#planning-kind")).toBeVisible();
+  await page.route("**/api/datasets", async (route) => {
+    if (route.request().method() !== "POST") return route.continue();
+    await route.fulfill({
+      status: 422,
+      json: { detail: "Invalid inventory balance" },
+    });
+  });
   await page.getByLabel("Как пополняем товары").selectOption("procurement");
   await page.getByRole("button", { name: "Демо закупки", exact: true }).click();
   await page
@@ -228,7 +220,7 @@ for (const width of [360, 768, 1440]) {
       .getByRole("button", { name: "Рассчитать заказ", exact: true })
       .click();
     await expect(page.getByTestId("procurement-table")).toContainText(
-      "Остаток неизвестен",
+      "Для автоматического расчёта укажите доступный остаток",
     );
     expect(lastRequest.usable_stock_assumption).toEqual({});
     await page
@@ -261,9 +253,10 @@ for (const width of [360, 768, 1440]) {
     await expect(
       page.getByRole("button", { name: "Рассчитать план", exact: true }),
     ).toHaveCount(0);
-    await page.getByRole("button", { name: "Модель", exact: true }).click();
+    await page.getByText("Дополнительно", { exact: true }).click();
+    await page.getByRole("button", { name: "Качество прогноза", exact: true }).click();
     await expect(
-      page.getByRole("heading", { name: "Модель начинается с данных" }),
+      page.getByRole("heading", { name: "Для проверки прогноза нужны данные" }),
     ).toBeVisible();
     await page
       .getByRole("button", { name: "Вернуться к несохранённому плану" })
