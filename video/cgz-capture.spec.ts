@@ -62,7 +62,8 @@ test('record a real synthetic Cloud Game Zone procurement demonstration', async 
   const catalog = JSON.parse(await fs.readFile('fixtures/cloud_game_zone_synthetic_catalog.json', 'utf8')) as {
     product_id: string; name: string; pack_size: number; max_order_qty: number;
   }[];
-  expect(sha256(csv)).toBe('a0ecee1cf940d16372d7e1f2a0fde07daf4d88792a14db95f714c8cb967f2944');
+  const csvCanonicalSha = sha256(csv.toString('utf8').replace(/\r\n/g, '\n'));
+  expect(csvCanonicalSha).toBe('a0ecee1cf940d16372d7e1f2a0fde07daf4d88792a14db95f714c8cb967f2944');
   const sourceSha = execFileSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8' }).trim();
   const sourceDirty = !!execFileSync('git', ['status', '--porcelain'], { encoding: 'utf8' }).trim();
   if (process.env.GITHUB_SHA) expect(sourceSha).toBe(process.env.GITHUB_SHA);
@@ -183,7 +184,8 @@ test('record a real synthetic Cloud Game Zone procurement demonstration', async 
       await fs.writeFile(path.join(evidenceDir, 'manifest.json'), JSON.stringify({
         capture_status: 'complete', source_sha: sourceSha, source_dirty: sourceDirty,
         provenance: 'Uncut silent Chromium recording of real Vite/FastAPI UI using only fully synthetic, provisional Cloud Game Zone fixtures; separate temporary SQLite; no mocked responses or private source data.',
-        csv_sha256: sha256(csv), plan_id: planId, export_sha256: exportHash,
+        csv_raw_sha256: sha256(csv), csv_canonical_lf_sha256: csvCanonicalSha,
+        plan_id: planId, export_sha256: exportHash,
         video_sha256: sha256(bytes), video_duration_seconds: duration,
         viewport: { width: 1440, height: 1000 }, scenes,
       }, null, 2) + '\n');
