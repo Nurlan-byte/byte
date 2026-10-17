@@ -34,6 +34,7 @@ test("real API preserves generic procurement import, order and export", async ({
   await expect(
     page.getByLabel("Заказ: Чай в бутылке", { exact: true }),
   ).toHaveValue("24");
+  await expect(page.getByText("Сохранённый срок поставки: 2 дня.", { exact: false })).toBeVisible();
   await expect(page.getByLabel("Заказ: Сок", { exact: true })).toHaveValue("0");
   await page
     .getByRole("button", { name: "Подтвердить заказ", exact: true })

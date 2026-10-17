@@ -30,6 +30,12 @@ try {
   if (!(await page.locator('.s8').evaluate(el => el.classList.contains('active')))) throw new Error('End navigation overflowed');
   await page.keyboard.press('ArrowLeft');
   if (!(await page.locator('.s7').evaluate(el => el.classList.contains('active')))) throw new Error('Back navigation failed');
+  await page.setViewportSize({ width: 1366, height: 768 });
+  await page.reload();
+  for (let i = 0; i < 8; i++) {
+    await page.screenshot({ path: path.join(dir, 'qa', `slide-${String(i+1).padStart(2,'0')}-1366.png`) });
+    if (i < 7) await page.keyboard.press('ArrowRight');
+  }
   await page.emulateMedia({ media: 'print' });
   await page.pdf({ path: path.join(dir, 'BakePlan_pitch.pdf'), printBackground: true, preferCSSPageSize: true });
   if (failures.length) throw new Error(failures.join('\n'));

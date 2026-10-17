@@ -9,7 +9,7 @@ assets = {
     "__LOGO_DATA_URI__": ("image/svg+xml", ROOT / "assets/BakePlan-v2-logo.svg"),
     "__CONFIRMED_SHOT_URI__": (
         "image/png",
-        ROOT / "screenshots/cgz-confirmed-1920x1080.png",
+        ROOT / "screenshots/cgz-six-compact.png",
     ),
 }
 for placeholder, (mime, path) in assets.items():
