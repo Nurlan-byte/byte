@@ -1,0 +1,22 @@
+{
+  "status": "provisional_synthetic_assumptions_pending_owner_interview",
+  "location_note": "Taraz was supplied by the team; pending owner interview confirmation",
+  "site_id": "cgz_synthetic_demo",
+  "seed": 20261017,
+  "start_date": "2026-07-16",
+  "days": 91,
+  "friday_multiplier": 1.5,
+  "weekend_multiplier": 1.3,
+  "peak_every_days": 21,
+  "peak_multiplier": 1.25,
+  "noise_units": 2,
+  "waste_probability": 0.1,
+  "products": [
+    {"product_id": "water", "name": "Вода в бутылке", "pack_size": 12, "max_order_qty": 120, "base_daily_sales": 14, "target_stock": 48, "reorder_point": 20, "stockout_day_indices": [17]},
+    {"product_id": "cola", "name": "Кола в банке", "pack_size": 12, "max_order_qty": 96, "base_daily_sales": 11, "target_stock": 40, "reorder_point": 16, "stockout_day_indices": [49]},
+    {"product_id": "iced_tea", "name": "Холодный чай", "pack_size": 12, "max_order_qty": 96, "base_daily_sales": 8, "target_stock": 32, "reorder_point": 12, "stockout_day_indices": []},
+    {"product_id": "energy_drink", "name": "Энергетик", "pack_size": 6, "max_order_qty": 72, "base_daily_sales": 10, "target_stock": 40, "reorder_point": 15, "stockout_day_indices": [77]},
+    {"product_id": "chips", "name": "Чипсы", "pack_size": 20, "max_order_qty": 100, "base_daily_sales": 9, "target_stock": 36, "reorder_point": 13, "stockout_day_indices": []},
+    {"product_id": "chocolate", "name": "Шоколадный батончик", "pack_size": 24, "max_order_qty": 120, "base_daily_sales": 7, "target_stock": 30, "reorder_point": 11, "stockout_day_indices": []}
+  ]
+}

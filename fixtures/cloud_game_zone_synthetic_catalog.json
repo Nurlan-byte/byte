@@ -1,0 +1,38 @@
+[
+  {
+    "product_id": "water",
+    "name": "Вода в бутылке",
+    "pack_size": 12,
+    "max_order_qty": 120
+  },
+  {
+    "product_id": "cola",
+    "name": "Кола в банке",
+    "pack_size": 12,
+    "max_order_qty": 96
+  },
+  {
+    "product_id": "iced_tea",
+    "name": "Холодный чай",
+    "pack_size": 12,
+    "max_order_qty": 96
+  },
+  {
+    "product_id": "energy_drink",
+    "name": "Энергетик",
+    "pack_size": 6,
+    "max_order_qty": 72
+  },
+  {
+    "product_id": "chips",
+    "name": "Чипсы",
+    "pack_size": 20,
+    "max_order_qty": 100
+  },
+  {
+    "product_id": "chocolate",
+    "name": "Шоколадный батончик",
+    "pack_size": 24,
+    "max_order_qty": 120
+  }
+]
