@@ -30,11 +30,12 @@
     .s3 .capabilities div { border-top:2px solid var(--line); padding-top:29px; font-size:40px; line-height:1.2; font-weight:600; letter-spacing:-.025em; }
     .s3 .bottom { font-size:34px; }
     .s4 h2 { margin-top:104px; font-size:68px; }
-    .s4 .crop { position:absolute; top:336px; left:120px; width:1680px; height:430px; overflow:hidden; outline:2px solid var(--line); }
-    .s4 .crop img { position:absolute; width:2580px; height:1451px; max-width:none; left:-602px; top:-70px; }
-    .s4 .change { position:absolute; top:795px; left:120px; font-size:92px; line-height:1; font-weight:600; color:var(--red); letter-spacing:-.055em; }
-    .s4 .change span { display:inline-block; margin-left:38px; font-size:37px; font-weight:400; letter-spacing:-.02em; color:var(--ink); }
-    .s4 .bottom { font-size:29px; }
+    .s4 .legend { position:absolute; top:334px; left:120px; font-size:27px; color:var(--muted); }
+    .s4 .crop { position:absolute; top:386px; left:120px; width:1680px; height:425px; overflow:hidden; outline:2px solid var(--line); }
+    .s4 .crop img { display:block; width:1680px; height:auto; max-width:none; }
+    .s4 .change { position:absolute; top:842px; left:120px; font-size:74px; line-height:1; font-weight:600; color:var(--red); letter-spacing:-.055em; }
+    .s4 .change span { display:inline-block; margin-left:30px; font-size:31px; font-weight:400; letter-spacing:-.02em; color:var(--ink); }
+    .s4 .bottom { font-size:25px; bottom:92px; }
     .s5 .hero-number { margin-top:185px; font-size:218px; line-height:1; font-weight:600; letter-spacing:-.065em; color:var(--red); }
     .s5 h2 { margin-top:45px; }
     .s5 .bottom { font-size:35px; max-width:1540px; }
@@ -47,9 +48,9 @@
     .s7 .cols div { padding-top:35px; border-top:2px solid var(--line); font-size:48px; font-weight:600; letter-spacing:-.03em; }
     .s7 .cols div:first-child { border-top-color:var(--red); }
     .s7 .bottom { font-size:33px; }
-    .s8 .team { margin-top:162px; font-size:110px; }
+    .s8 .team { margin-top:162px; font-size:84px; }
     .s8 .roles { margin-top:56px; font-size:39px; line-height:1.45; }
-    .s8 .plan { margin-top:112px; font-size:48px; line-height:1.3; font-weight:600; letter-spacing:-.025em; }
+    .s8 .plan { margin-top:168px; font-size:54px; line-height:1.3; font-weight:600; letter-spacing:-.025em; }
     .s8 .plan span { color:var(--red); }
     .s8 .bottom { font-size:31px; }
     @media print {
@@ -65,12 +66,12 @@
 <main id="stage" aria-label="Презентация BakePlan">
   <section class="slide s1 active" aria-label="Слайд 1">
     <div class="brand">BakePlan</div><div class="number">01 / 08</div>
-    <div class="hero"><img class="logo" src="__LOGO_DATA_URI__" alt="BakePlan — утверждённый логотип v2"><h1>Сколько подготовить завтра?</h1><p class="sub">Пекарни — выпуск. Клубы — закупка.<br>Владелец утверждает решение.</p></div>
+    <div class="hero"><img class="logo" src="__LOGO_DATA_URI__" alt="BakePlan — утверждённый логотип v2"><h1>Сколько подготовить завтра?</h1><p class="sub">AI подсказывает, сколько подготовить. Владелец утверждает.</p></div>
     <p class="bottom">Команда Byte · Zhambyl Hub</p>
   </section>
   <section class="slide s2" aria-label="Слайд 2">
     <div class="brand">BakePlan</div><div class="number">02 / 08</div>
-    <blockquote class="quote">«до этого закупали админстраторы как чувствуют … посмотрим на результаты»</blockquote>
+    <blockquote class="quote">«до этого закупали администраторы как чувствуют»</blockquote>
     <p class="attrib">Руководитель Cloud Game Zone · Шымкент</p>
     <p class="bottom">4 филиала используют BakePlan · со слов руководителя</p>
   </section>
@@ -83,9 +84,10 @@
   <section class="slide s4" aria-label="Слайд 4">
     <div class="brand">BakePlan</div><div class="number">04 / 08</div>
     <h2>Пятница: от рекомендации к решению</h2>
-    <div class="crop"><img src="__CONFIRMED_SHOT_URI__" alt="Реальный экран BakePlan: заказ на пятницу 16 октября 2026 года; предложено 24 бутылки воды, сохранено 36"></div>
+    <p class="legend">Товар и упаковка · прогноз и метод · предложено · утверждено</p>
+    <div class="crop"><img src="__CONFIRMED_SHOT_URI__" alt="Реальный экран BakePlan: шесть товаров, упаковки, методы прогноза и подтверждённые количества на пятницу 16 октября 2026 года"></div>
     <div class="change">24 → 36 <span>вода, шт. · владелец исправил и подтвердил</span></div>
-    <p class="bottom">Демо на смоделированных данных бара · 91 день · 6 товаров</p>
+    <p class="bottom">Реальный экран на синтетических данных: 91 день, 6 товаров. Повторяющиеся пояснения обрезаны.</p>
   </section>
   <section class="slide s5" aria-label="Слайд 5">
     <div class="brand">BakePlan</div><div class="number">05 / 08</div>
@@ -102,14 +104,13 @@
     <div class="brand">BakePlan</div><div class="number">07 / 08</div>
     <h2>Пользу замерим в пилоте</h2>
     <div class="cols"><div>Остатки</div><div>Дефициты</div><div>Время администратора</div></div>
-    <p class="bottom">Сумму экономии пока не заявляем: нужны цены и фактические наблюдения.</p>
+    <p class="bottom">Первая цифра в тенге — через 2 недели пилота.</p>
   </section>
   <section class="slide s8" aria-label="Слайд 8">
     <div class="brand">BakePlan</div><div class="number">08 / 08</div>
-    <h2 class="team">Нурлан + Асыл</h2>
-    <p class="roles">Команда Byte · Нурлан — продукт и код.<br>Асыл — интервью и презентация.</p>
-    <p class="plan">Дальше: реальные продажи <span>→</span> двухнедельный пилот → Тараз</p>
-    <p class="bottom">Из Шымкента — к проверке решения в Таразе</p>
+    <h2 class="team">Меньше интуиции — больше выручки.</h2>
+    <p class="plan">Реальные продажи <span>→</span> 2 недели пилота <span>→</span> Тараз</p>
+    <p class="bottom">Команда Byte · Нурлан — продукт и код · Асыл — клиент и презентация</p>
   </section>
 </main>
 <script>

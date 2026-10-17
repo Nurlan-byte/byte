@@ -3,6 +3,7 @@ import type { PlanningSection } from "./PlanningSection";
 import type { Plan } from "./types";
 import { api } from "./api";
 import { businessDate } from "./dates";
+import { dayWord } from "./dayWord";
 import { stockAssumptions } from "./procurement";
 import { validQuantity } from "./quantities";
 import { hasQuantityChanges } from "./workspace";
@@ -233,7 +234,7 @@ export function ProcurementPlanning(p: Parameters<typeof PlanningSection>[0]) {
             {plan.status === "confirmed" ? "Подтверждён" : "Черновик"}
           </p>
           <p>
-            Сохранённый срок поставки: {plan.lead_time_days} дней. Срез:{" "}
+            Сохранённый срок поставки: {plan.lead_time_days} {dayWord(plan.lead_time_days ?? 0)}. Срез:{" "}
             {plan.cutoff}.
           </p>
           {stale && (
