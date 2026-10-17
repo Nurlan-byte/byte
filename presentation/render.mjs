@@ -8,10 +8,12 @@ const browser = await chromium.launch({ headless: true });
 try {
   const page = await browser.newPage({ viewport: { width: 1920, height: 1080 }, deviceScaleFactor: 1 });
   const failures = [];
-  page.on('request', request => { if (!request.url().startsWith('file:')) failures.push(`External request: ${request.url()}`); });
+  const pageUrl = pathToFileURL(path.join(dir, 'index.html')).href;
+  page.on('request', request => { if (request.url() !== pageUrl) failures.push(`Extra request: ${request.url()}`); });
   page.on('requestfailed', request => failures.push(`Failed request: ${request.url()}`));
-  await page.goto(pathToFileURL(path.join(dir, 'index.html')).href);
-  await page.locator('.shot').evaluate(image => image.decode());
+  await page.goto(pageUrl);
+  if (!(await page.locator('img').evaluateAll(images => images.every(image => image.src.startsWith('data:'))))) throw new Error('Presentation images must be embedded');
+  await page.locator('img').evaluateAll(images => Promise.all(images.map(image => image.decode())));
   if (await page.locator('.slide').count() !== 8) throw new Error('Expected exactly 8 slides');
   await fs.mkdir(path.join(dir, 'qa'), { recursive: true });
   for (let i = 0; i < 8; i++) {

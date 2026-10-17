@@ -1,0 +1,131 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>BakePlan — Byte</title>
+  <style>
+    :root { color-scheme:light; --ink:#111111; --muted:#6B6B6B; --red:#8F1408; --line:#D9D9D9; }
+    * { box-sizing:border-box; }
+    html, body { margin:0; width:100%; height:100%; overflow:hidden; background:#fff; color:var(--ink); font-family:-apple-system,'Segoe UI',Roboto,Arial,sans-serif; }
+    #stage { position:absolute; left:50%; top:50%; width:1920px; height:1080px; transform:translate(-50%,-50%) scale(var(--scale,1)); transform-origin:center; }
+    .slide { position:absolute; inset:0; display:none; width:1920px; height:1080px; padding:120px; background:#fff; overflow:hidden; }
+    .slide.active { display:block; }
+    .brand, .number { position:absolute; top:120px; font-size:29px; font-weight:600; letter-spacing:-.02em; }
+    .brand { left:120px; } .number { right:120px; color:var(--muted); }
+    h1, h2, p, blockquote { margin:0; }
+    h1, h2 { font-weight:600; letter-spacing:-.045em; line-height:1.08; }
+    h1 { font-size:80px; } h2 { font-size:74px; }
+    .accent { color:var(--red); }
+    .bottom { position:absolute; left:120px; right:120px; bottom:120px; font-size:32px; color:var(--muted); }
+    .s1 .hero { position:absolute; top:274px; left:120px; right:120px; }
+    .s1 .logo { display:block; width:700px; height:auto; margin-left:-43px; margin-bottom:48px; }
+    .s1 h1 { font-size:82px; }
+    .s1 .sub { margin-top:40px; font-size:43px; line-height:1.25; color:var(--muted); }
+    .s2 .quote { margin-top:205px; padding-left:46px; border-left:10px solid var(--red); font-size:76px; font-weight:600; letter-spacing:-.04em; line-height:1.14; max-width:1530px; }
+    .s2 .attrib { margin-top:55px; padding-left:56px; font-size:32px; color:var(--muted); }
+    .s2 .bottom { font-size:36px; color:var(--ink); font-weight:600; }
+    .s3 h2 { margin-top:112px; }
+    .s3 .capabilities { position:absolute; top:430px; left:120px; right:120px; display:grid; grid-template-columns:repeat(3,1fr); gap:62px 42px; }
+    .s3 .capabilities div { border-top:2px solid var(--line); padding-top:29px; font-size:40px; line-height:1.2; font-weight:600; letter-spacing:-.025em; }
+    .s3 .bottom { font-size:34px; }
+    .s4 h2 { margin-top:104px; font-size:68px; }
+    .s4 .crop { position:absolute; top:336px; left:120px; width:1680px; height:430px; overflow:hidden; outline:2px solid var(--line); }
+    .s4 .crop img { position:absolute; width:2580px; height:1451px; max-width:none; left:-602px; top:-70px; }
+    .s4 .change { position:absolute; top:795px; left:120px; font-size:92px; line-height:1; font-weight:600; color:var(--red); letter-spacing:-.055em; }
+    .s4 .change span { display:inline-block; margin-left:38px; font-size:37px; font-weight:400; letter-spacing:-.02em; color:var(--ink); }
+    .s4 .bottom { font-size:29px; }
+    .s5 .hero-number { margin-top:185px; font-size:218px; line-height:1; font-weight:600; letter-spacing:-.065em; color:var(--red); }
+    .s5 h2 { margin-top:45px; }
+    .s5 .bottom { font-size:35px; max-width:1540px; }
+    .s6 h2 { margin-top:116px; }
+    .s6 .checks { position:absolute; top:430px; left:120px; right:120px; display:grid; grid-template-columns:1fr 1fr; gap:64px 100px; }
+    .s6 .checks div { border-top:2px solid var(--line); padding-top:28px; font-size:44px; font-weight:600; letter-spacing:-.025em; }
+    .s6 .checks div:first-child { border-top-color:var(--red); }
+    .s7 h2 { margin-top:157px; }
+    .s7 .cols { display:grid; grid-template-columns:repeat(3,1fr); gap:50px; margin-top:160px; }
+    .s7 .cols div { padding-top:35px; border-top:2px solid var(--line); font-size:48px; font-weight:600; letter-spacing:-.03em; }
+    .s7 .cols div:first-child { border-top-color:var(--red); }
+    .s7 .bottom { font-size:33px; }
+    .s8 .team { margin-top:162px; font-size:110px; }
+    .s8 .roles { margin-top:56px; font-size:39px; line-height:1.45; }
+    .s8 .plan { margin-top:112px; font-size:48px; line-height:1.3; font-weight:600; letter-spacing:-.025em; }
+    .s8 .plan span { color:var(--red); }
+    .s8 .bottom { font-size:31px; }
+    @media print {
+      @page { size:20in 11.25in; margin:0; }
+      html, body { width:1920px; height:auto; overflow:visible; }
+      #stage { position:static; transform:none; width:1920px; height:auto; }
+      .slide, .slide.active { position:relative; display:block; break-after:page; page-break-after:always; }
+      .slide:last-child { break-after:auto; page-break-after:auto; }
+    }
+  </style>
+</head>
+<body>
+<main id="stage" aria-label="Презентация BakePlan">
+  <section class="slide s1 active" aria-label="Слайд 1">
+    <div class="brand">BakePlan</div><div class="number">01 / 08</div>
+    <div class="hero"><img class="logo" src="__LOGO_DATA_URI__" alt="BakePlan — утверждённый логотип v2"><h1>Сколько подготовить завтра?</h1><p class="sub">Пекарни — выпуск. Клубы — закупка.<br>Владелец утверждает решение.</p></div>
+    <p class="bottom">Команда Byte · Zhambyl Hub</p>
+  </section>
+  <section class="slide s2" aria-label="Слайд 2">
+    <div class="brand">BakePlan</div><div class="number">02 / 08</div>
+    <blockquote class="quote">«до этого закупали админстраторы как чувствуют … посмотрим на результаты»</blockquote>
+    <p class="attrib">Руководитель Cloud Game Zone · Шымкент</p>
+    <p class="bottom">4 филиала используют BakePlan · со слов руководителя</p>
+  </section>
+  <section class="slide s3" aria-label="Слайд 3">
+    <div class="brand">BakePlan</div><div class="number">03 / 08</div>
+    <h2>Рабочий <span class="accent">MVP</span>: от данных до заказа</h2>
+    <div class="capabilities"><div>Выпуск и закупка</div><div>Упаковки поставщика</div><div>Ограничения заказа</div><div>Ручная правка</div><div>История решений</div><div>Экспорт CSV</div></div>
+    <p class="bottom">Один расчёт для двух задач. Последнее слово — за владельцем.</p>
+  </section>
+  <section class="slide s4" aria-label="Слайд 4">
+    <div class="brand">BakePlan</div><div class="number">04 / 08</div>
+    <h2>Пятница: от рекомендации к решению</h2>
+    <div class="crop"><img src="__CONFIRMED_SHOT_URI__" alt="Реальный экран BakePlan: заказ на пятницу 16 октября 2026 года; предложено 24 бутылки воды, сохранено 36"></div>
+    <div class="change">24 → 36 <span>вода, шт. · владелец исправил и подтвердил</span></div>
+    <p class="bottom">Демо на смоделированных данных бара · 91 день · 6 товаров</p>
+  </section>
+  <section class="slide s5" aria-label="Слайд 5">
+    <div class="brand">BakePlan</div><div class="number">05 / 08</div>
+    <div class="hero-number">3 из 6</div>
+    <h2>товаров в демо — с AI-прогнозом</h2>
+    <p class="bottom">Для остальных — простой расчёт. Методы сравниваются по каждому товару на прошлых датах, без утечки будущего.</p>
+  </section>
+  <section class="slide s6" aria-label="Слайд 6">
+    <div class="brand">BakePlan</div><div class="number">06 / 08</div>
+    <h2>Решение можно проверить и восстановить</h2>
+    <div class="checks"><div>CSV: баланс остатков</div><div>Решения сохраняются</div><div>Backup и restore</div><div>Тесты и зелёный CI</div></div>
+  </section>
+  <section class="slide s7" aria-label="Слайд 7">
+    <div class="brand">BakePlan</div><div class="number">07 / 08</div>
+    <h2>Пользу замерим в пилоте</h2>
+    <div class="cols"><div>Остатки</div><div>Дефициты</div><div>Время администратора</div></div>
+    <p class="bottom">Сумму экономии пока не заявляем: нужны цены и фактические наблюдения.</p>
+  </section>
+  <section class="slide s8" aria-label="Слайд 8">
+    <div class="brand">BakePlan</div><div class="number">08 / 08</div>
+    <h2 class="team">Нурлан + Асыл</h2>
+    <p class="roles">Команда Byte · Нурлан — продукт и код.<br>Асыл — интервью и презентация.</p>
+    <p class="plan">Дальше: реальные продажи <span>→</span> двухнедельный пилот → Тараз</p>
+    <p class="bottom">Из Шымкента — к проверке решения в Таразе</p>
+  </section>
+</main>
+<script>
+  const slides = [...document.querySelectorAll('.slide')];
+  let current = 0;
+  function fit() { document.documentElement.style.setProperty('--scale', Math.min(innerWidth / 1920, innerHeight / 1080)); }
+  function show(index) {
+    current = Math.max(0, Math.min(slides.length - 1, index));
+    slides.forEach((slide, i) => slide.classList.toggle('active', i === current));
+  }
+  addEventListener('resize', fit);
+  addEventListener('keydown', event => {
+    if (['ArrowRight',' ','PageDown'].includes(event.key)) { event.preventDefault(); show(current + 1); }
+    if (['ArrowLeft','PageUp'].includes(event.key)) { event.preventDefault(); show(current - 1); }
+  });
+  fit();
+</script>
+</body>
+</html>
