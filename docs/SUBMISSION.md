@@ -6,7 +6,7 @@ BakePlan помогает владельцу небольшой точки вы�
 
 ## Код и показ
 
-- Репозиторий: https://github.com/Nurlan-byte/byte. Локальный SHA проверенного кода `e7c4932ae557ea3feacb3b9b2fadfb31e19d5d07`; детали в [VERIFICATION](../VERIFICATION.md). Опубликованного SHA для этих изменений пока нет.
+- Репозиторий: https://github.com/Nurlan-byte/byte, ветка `feature/bakeplan-scaffold`. Публичный CI проверил SHA `b258b3024f977d05bc0f17d70e4e2fc5f4d388a4`: [успешный запуск](https://github.com/Nurlan-byte/byte/actions/runs/39037626897). Для актуального состояния перед показом сравните `git rev-parse HEAD` с SHA последнего успешного CI; история локальных проверок — в [VERIFICATION](../VERIFICATION.md).
 - [README](../README.md) — установка и запуск; [демо](DEMO.md) — основной сценарий и короткий рассказ; [7 слайдов](SLIDES.md) — план выступления.
 - [Синтетический сценарий клуба](CLOUD_GAME_ZONE.md) содержит генератор, CSV, каталог и команды локального replay. Он не содержит предоставленный владельцем исходный файл.
 - Локальная беззвучная запись синтетической закупки создаётся командой `npx playwright test video/cgz-capture.spec.ts --config=playwright.video.config.ts` (Windows: `npx.cmd`). Путь: `test-results/video/**/evidence/cgz-synthetic-demo.webm`; рядом `manifest.json` и скачанный CSV. Перед показом проверьте `capture_status: complete`, `source_dirty: false`, SHA текущего checkout и длительность 90–120 секунд. Запись не опубликована в репозитории.
