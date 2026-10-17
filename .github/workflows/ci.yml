@@ -63,9 +63,9 @@ jobs:
           New-Item -ItemType Directory -Force -Path $before | Out-Null
           Copy-Item -Path (Join-Path $baseline 'test-results/screenshots/*') -Destination $before -Recurse
       - name: Capture real synthetic UI evidence
-        run: npx.cmd playwright test --config=playwright.screenshots.config.ts
-      - name: Record real 105-second synthetic UI demonstration
-        run: npx.cmd playwright test --config=playwright.video.config.ts
+        run: npx.cmd playwright test screenshots/owner-ux.spec.ts --config=playwright.screenshots.config.ts
+      - name: Record real synthetic procurement UI demonstration
+        run: npx.cmd playwright test video/cgz-capture.spec.ts --config=playwright.video.config.ts
       - name: Produce matching synthetic API replay evidence
         run: |
           $PSNativeCommandUseErrorActionPreference = $true
