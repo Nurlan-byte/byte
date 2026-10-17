@@ -179,6 +179,21 @@ textarea {
   color: white;
   box-shadow: 0 4px 10px #284d3015;
 }
+.secondary-nav {
+  margin: 12px 8px;
+  color: #59675e;
+}
+.secondary-nav summary {
+  cursor: pointer;
+  min-height: 44px;
+  padding: 11px 6px;
+  font-weight: 600;
+}
+.secondary-nav button {
+  width: 100%;
+  margin: 4px 0;
+  text-align: left;
+}
 .nav-hint {
   margin-left: auto;
   border: 1px solid currentColor;

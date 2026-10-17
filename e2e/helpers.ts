@@ -3,6 +3,11 @@ import { expect, type Page } from '@playwright/test';
 export type Section = 'План' | 'Данные' | 'Модель' | 'История';
 
 export async function navigate(page: Page, section: Section) {
+  if (section === 'Модель') {
+    await openDetails(page, 'Дополнительно');
+    await page.getByRole('button', { name: 'Качество прогноза', exact: true }).click();
+    return;
+  }
   await page.getByRole('navigation', { name: 'Разделы BakePlan', exact: true })
     .getByRole('button', { name: section, exact: true }).click();
 }

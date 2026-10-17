@@ -11,31 +11,22 @@ const evaluation = {
   coverage_denominator_n: 60,
   coverage: 1,
 };
-test("model comparison exposes exact synthetic evidence without implying real accuracy", () => {
+test("owner summary explains the comparison without technical metrics", () => {
   const html = renderToStaticMarkup(
     <ModelEvaluation evaluation={evaluation} unitLabel="шт." />,
   );
-  for (const text of [
-    "MAE B1",
-    "MAE ML",
-    "0,416667",
-    "1,058562",
-    "Парное N",
-    "60/60",
-    "Чем ниже, тем лучше",
-    "ML хуже B1",
-    "не доказательство",
-  ])
-    expect(html).toContain(text);
-  expect(html.indexOf("ML хуже B1")).toBeLessThan(html.indexOf("<details>"));
+  expect(html).toContain("Экспериментальный расчёт на проверке оказался менее точным");
+  expect(html).toContain("проверьте количество");
+  for (const technical of ["MAE", "0,416667", "1,058562", "60/60"])
+    expect(html).not.toContain(technical);
 });
 test("model comparison handles better, equal, missing and zero-pair evidence honestly", () => {
   for (const [values, expected] of [
-    [{ ...evaluation, ml_mae: 0.2 }, "ошибка ML ниже"],
-    [{ ...evaluation, ml_mae: evaluation.b1_mae }, "ошибка ML и B1 одинакова"],
-    [{ ...evaluation, ml_mae: null }, "Недостаточно сопоставимых данных"],
-    [{ ...evaluation, paired_n: 0 }, "Недостаточно сопоставимых данных"],
-    [undefined, "Оценка качества не предоставлена"],
+    [{ ...evaluation, ml_mae: 0.2 }, "прошёл проверку"],
+    [{ ...evaluation, ml_mae: evaluation.b1_mae }, "прошёл проверку"],
+    [{ ...evaluation, ml_mae: null }, "Недостаточно данных"],
+    [{ ...evaluation, paired_n: 0 }, "Недостаточно данных"],
+    [undefined, "Качество прогноза пока не проверено"],
   ] as const)
     expect(
       renderToStaticMarkup(
@@ -86,7 +77,8 @@ test("home offers one primary start action and accessible navigation without pre
   expect(html).toContain('id="panel-model" hidden=""');
   expect(html).toContain('id="panel-history" hidden=""');
   expect(html).toContain('aria-label="Разделы BakePlan"');
-  expect(html).toContain('aria-hidden="true">Опыт</span>');
+  expect(html).toContain("Дополнительно");
+  expect(html).toContain("Качество прогноза");
   expect(html).not.toContain('for="plan-date"');
   expect(html).not.toContain('for="plan-cutoff"');
   expect(html).not.toContain('for="plan-open"');

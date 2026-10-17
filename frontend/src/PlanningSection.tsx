@@ -175,7 +175,8 @@ function ProductionPlanning({
             onChange={(e) => setCutoff(e.target.value)}
           />
         </div>
-        <div className="control-field">
+        <details className="control-field">
+          <summary>Настройки прогноза</summary>
           <label htmlFor="planning-method">Способ расчёта</label>
           <select
             id="planning-method"
@@ -183,11 +184,11 @@ function ProductionPlanning({
             value={method}
             onChange={(e) => setMethod(e.target.value)}
           >
-            <option value="B1">По похожим дням недели (B1)</option>
-            <option value="ML">Экспериментальная модель (ML)</option>
-            <option value="B0">По прошлой неделе (B0)</option>
+            <option value="B1">По похожим дням недели</option>
+            <option value="ML">Экспериментальный расчёт</option>
+            <option value="B0">По прошлой неделе</option>
           </select>
-        </div>
+        </details>
         <div className="control-field calendar-field">
           <label htmlFor="plan-open">Целевой день открыт</label>
           <div className="checkbox-line">
@@ -203,9 +204,8 @@ function ProductionPlanning({
         </div>
       </div>
       <p className="control-hint">
-        Обычно планируем завтра по данным до вчера включительно: разрыв — два
-        дня (t−2). Базовый расчёт по дням недели работает без обучения. При
-        задержке учёта выберите более раннюю дату данных.
+        План использует продажи из выбранной истории. Если последние продажи
+        ещё не внесены, укажите более раннюю дату данных.
       </p>
       {dataset && (
         <p className="control-hint">
@@ -213,15 +213,10 @@ function ProductionPlanning({
           после этой истории не добавляются автоматически.
         </p>
       )}
-      <details>
-        <summary>Подробнее о способах расчёта</summary>
-        <p>
-          B1 — среднее до четырёх таких же дней недели за 56 дней. B0 — тот же
-          день неделю назад. ML — экспериментальная поправка к B1; если модель
-          недоступна, используется B1 с явной причиной. Отсутствие подходящей
-          истории означает отсутствие оценки, а не нулевой спрос.
-        </p>
-      </details>
+      <p className="control-hint">
+        История показывает продажи, но не показывает, хватало ли товара всем
+        покупателям. Отсутствие прогноза не означает нулевые продажи.
+      </p>
       {dirty && (
         <p className="status-note">
           Новый расчёт заменит несохранённые поля ниже. Сначала подтвердите
@@ -347,7 +342,7 @@ function ProductionPlanning({
                   <th scope="col">Прогноз, шт.</th>
                   <th scope="col">Рекомендация, шт.</th>
                   <th scope="col">Ваш выпуск, шт.</th>
-                  <th scope="col">Метод и ограничения</th>
+                  <th scope="col">Что учесть</th>
                 </tr>
               </thead>
               <tbody>
@@ -491,68 +486,26 @@ function ProductionPlanning({
                       </strong>
                       {i.diagnostic_method &&
                         i.diagnostic_method !== i.method && (
-                          <small>
-                            Метод диагностического прогноза:{" "}
-                            {i.diagnostic_method}. Автоматический выпуск
-                            отключён.
-                          </small>
+                          <small>Автоматический выпуск отключён. Проверьте количество вручную.</small>
                         )}
                       {i.fallback_reason && (
                         <small>
-                          Причина перехода: {reasonText(i.fallback_reason)}
+                          Использован упрощённый прогноз. {reasonText(i.fallback_reason)}
                         </small>
                       )}
                       {i.warnings?.map((w, n) => (
                         <small key={n}>{w}</small>
                       ))}
-                      <details className="item-details">
-                        <summary>Источники и модель</summary>
-                        <small>
-                          Код изделия: {i.product_id} · метод: {i.method}
-                        </small>
-                        {i.model_id && (
-                          <small>Снимок модели: {i.model_id}</small>
+                      {i.evaluation_applicability &&
+                        !i.evaluation_applicability.applicable && (
+                          <EvaluationNotice value={i.evaluation_applicability} />
                         )}
-                        <small>
-                          Подходящих наблюдений:{" "}
-                          {i.n ?? i.used_dates?.length ?? 0}
-                        </small>
-                        {!!i.used_dates?.length && (
-                          <small>Даты: {i.used_dates.join(", ")}</small>
-                        )}
-                        {i.fallback_reason && (
-                          <small>
-                            Код или исходная причина: {i.fallback_reason}
-                          </small>
-                        )}
-                        {i.evaluation_applicability && (
-                          <EvaluationNotice
-                            value={i.evaluation_applicability}
-                          />
-                        )}
-                      </details>
                     </td>
                   </tr>
                 ))}
               </tbody>
             </table>
           </div>
-          <details>
-            <summary>Технические данные плана</summary>
-            <p>
-              План: {plan.id} · набор плана: {plan.dataset_id}
-            </p>
-            <p>
-              Версия данных: {plan.dataset_version ?? "не указана"} ·{" "}
-              {plan.target ?? "sold_units"} / {plan.unit ?? "physical_unit"}
-            </p>
-            {plan.model_id && (
-              <p>
-                Снимок модели: {plan.model_id} · протокол:{" "}
-                {plan.protocol_version ?? "не указан"}
-              </p>
-            )}
-          </details>
           <div className="confirm-bar">
             <div>
               <strong>

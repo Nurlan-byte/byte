@@ -30,6 +30,10 @@ export type Item = {
   active_from?: string | null;
   active_to?: string | null;
   automatic_eligible?: boolean;
+  usable_stock_assumption?: number | null;
+  unknown_open_n?: number;
+  unknown_stockout_n?: number;
+  max_constraint_active?: boolean;
   model_id?: string | null;
   fallback_reason?: string | null;
   warnings: string[];

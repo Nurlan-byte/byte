@@ -8,6 +8,9 @@ import { navigate, openDetails } from './helpers';
 async function importFile(page: Page) {
   await navigate(page, 'Данные');
   await page.getByLabel('CSV-файл', { exact: true }).setInputFiles('fixtures/synthetic_demo.csv');
+  await page.getByLabel('Источник', { exact: true }).selectOption('synthetic');
+  await openDetails(page, 'Параметры набора');
+  await page.getByLabel('Код точки', { exact: true }).fill('synthetic-demo');
   await page.getByRole('button', { name: 'Проверить и импортировать', exact: true }).click();
   await expect(page.getByTestId('dataset-summary')).toBeVisible();
 }
@@ -25,6 +28,9 @@ test('first visit, file selection and successful import are distinct and keyboar
   const posts: string[] = [];
   page.on('request', request => { if (request.method() === 'POST') posts.push(request.url()); });
   await page.getByLabel('CSV-файл', { exact: true }).setInputFiles('fixtures/synthetic_demo.csv');
+  await page.getByLabel('Источник', { exact: true }).selectOption('synthetic');
+  await openDetails(page, 'Параметры набора');
+  await page.getByLabel('Код точки', { exact: true }).fill('synthetic-demo');
   await expect(page.getByTestId('import-stage')).toContainText('ещё не импортирован');
   await expect(page.getByTestId('dataset-summary')).toHaveCount(0);
   expect(posts).toEqual([]);
@@ -74,6 +80,8 @@ test('missing weekday history stays unknown, manual fields explain batches and e
   expect(await page.getByTestId('plan-table').evaluate(el => el.scrollWidth <= el.clientWidth)).toBe(true);
   await navigate(page, 'Данные');
   await page.getByLabel('CSV-файл', { exact: true }).setInputFiles('fixtures/invalid_balance.csv');
+  await openDetails(page, 'Параметры набора');
+  await page.getByLabel('Код точки', { exact: true }).fill('synthetic-invalid');
   await page.getByRole('button', { name: 'Проверить и импортировать' }).click();
   await expect(page.getByRole('alert')).toBeFocused();
   await expect(page.getByRole('alert').locator('.error-message')).toContainText('Строка 2: Нарушен баланс');
@@ -127,17 +135,20 @@ test('owner UI import → train → forecast → edit → confirm → export →
     await page.goto(uiBase);
     await importFile(page);
     await navigate(page, 'План');
+    await openDetails(page, 'Настройки прогноза');
     await expect(page.getByLabel('Способ расчёта', { exact: true })).toHaveValue('B1');
     await page.getByLabel('Дата плана', { exact: true }).fill('2026-10-13');
     await page.getByLabel('Данные доступны до', { exact: true }).fill('2026-10-11');
     await navigate(page, 'Модель');
-    await page.getByRole('button', { name: 'Обучить модель', exact: true }).click();
-    await expect(page.getByTestId('model-summary')).toContainText('Модель готова', { timeout: 65000 });
+    await page.getByRole('button', { name: 'Подготовить экспериментальный расчёт', exact: true }).click();
+    await expect(page.getByTestId('model-summary')).toContainText('Расчёт готов', { timeout: 65000 });
     const evaluation = page.getByTestId('model-evaluation');
-    for (const value of ['0,416667', '1,058562', '60/60', 'ML хуже B1']) await expect(evaluation).toContainText(value);
-    await page.getByRole('button', { name: 'Получить прогноз' }).click();
+    await expect(evaluation).toContainText('менее точным');
+    await expect(evaluation).not.toContainText('MAE');
+    await page.getByRole('button', { name: 'Проверить прогноз' }).click();
     await expect(page.getByTestId('forecast-table').locator('tbody tr').first()).toContainText('27.6');
     await navigate(page, 'План');
+    await openDetails(page, 'Настройки прогноза');
     await page.getByLabel('Способ расчёта', { exact: true }).selectOption('ML');
     const created = page.waitForResponse(r => r.url().endsWith('/api/plans') && r.request().method() === 'POST');
     await page.getByRole('button', { name: 'Рассчитать план' }).click();
@@ -173,7 +184,7 @@ test('owner UI import → train → forecast → edit → confirm → export →
     await expect(row.getByRole('spinbutton')).toHaveValue('84');
     await expect(page.getByTestId('workspace-source')).toContainText('17.08.2026 — 11.10.2026');
     await navigate(page, 'Модель');
-    await expect(page.getByTestId('model-evaluation')).toContainText('1,058562');
+    await expect(page.getByTestId('model-evaluation')).toContainText('менее точным');
     expect(await (await request.get(`${apiBase}/api/plans/${plan.id}`)).json()).toEqual(saved);
     expect(await (await request.get(`${apiBase}/api/plans/${plan.id}/export`)).text()).toBe(bytes.toString('utf8'));
   } finally {

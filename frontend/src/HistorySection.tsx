@@ -137,17 +137,7 @@ export function HistorySection({
                     Экспорт CSV
                   </a>
                 </div>
-                <details>
-                  <summary>Данные сохранённого плана</summary>
-                  <p>
-                    ID плана: {p.id} · набор: {p.dataset_id}
-                  </p>
-                  <p>
-                    Дата плана: {p.target_date} · источник: {p.source} · статус:{" "}
-                    {p.status} · редакция: {p.revision}
-                  </p>
-                  {p.created_at && <p>Создан: {p.created_at}</p>}
-                </details>
+                {p.created_at && <p className="muted">Создан: {new Date(p.created_at).toLocaleString("ru-RU")}</p>}
               </li>
             ))}
           </ul>

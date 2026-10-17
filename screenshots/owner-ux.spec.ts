@@ -2,7 +2,7 @@ import { test, expect } from '@playwright/test';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { execFileSync } from 'node:child_process';
-import { navigate } from '../e2e/helpers';
+import { navigate, openDetails } from '../e2e/helpers';
 
 test('owner journey real browser evidence', async ({ page, browser }, testInfo) => {
   const variant = process.env.BAKEPLAN_CAPTURE_BASELINE === '1' ? 'before' : 'after';
@@ -23,6 +23,10 @@ test('owner journey real browser evidence', async ({ page, browser }, testInfo) 
   await capture('start');
   await navigate(page, 'Данные');
   await page.getByLabel('CSV-файл', { exact: true }).setInputFiles('fixtures/synthetic_demo.csv');
+  await expect(page.getByTestId('import-stage')).toContainText('Файл подготовлен');
+  await page.getByLabel('Источник', { exact: true }).selectOption('synthetic');
+  await openDetails(page, 'Параметры набора');
+  await page.getByLabel('Код точки', { exact: true }).fill('synthetic-demo');
   await expect(page.getByRole('button', { name: 'Проверить и импортировать', exact: true })).toBeEnabled();
   await capture('file-selected');
   await page.getByRole('button', { name: 'Проверить и импортировать', exact: true }).click();

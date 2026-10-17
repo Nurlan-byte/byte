@@ -92,16 +92,16 @@ test("sales-only target or item-line unit hides production even with a previous 
   }
 });
 
-test("units plan keeps batch constraints and actual fallback/model lineage", () => {
+test("units plan keeps batch constraints and explains fallback without model IDs", () => {
   const html = renderToStaticMarkup(
     <PlanningSection {...planningProps(units)} />,
   );
   expect(html).toContain('value="ML"');
   expect(html).toContain('step="12"');
   expect(html).toContain('max="96"');
-  expect(html).toContain("model-1");
-  expect(html).toContain("experimental-test");
-  expect(html).toContain("Недостаточно данных модели");
+  expect(html).not.toContain("model-1");
+  expect(html).toContain("Использован упрощённый прогноз");
+  expect(html).toContain("Что учесть");
   expect(html).toContain("Подтвердить и сохранить");
 });
 
@@ -149,8 +149,8 @@ test("legacy metadata visibly disables training until explicit reimport", () => 
     <ModelSection {...props} dataset={props.dataset!} />,
   );
   expect(html).toContain("повторно импортируйте исходный CSV");
-  expect(html).toMatch(/<button disabled="">Обучить модель<\/button>/);
-  expect(html).toContain("Получить прогноз");
+  expect(html).toMatch(/<button disabled="">Подготовить экспериментальный расчёт<\/button>/);
+  expect(html).toContain("Проверить прогноз");
   expect(html).not.toContain('type="number"');
 });
 
@@ -270,11 +270,11 @@ test("stale diagnostic snapshot retains its own dates and method with an actiona
     />,
   );
   expect(html).toContain('data-testid="stale-forecast"');
-  expect(html).toContain("Нажмите «Получить прогноз» для новых параметров");
-  expect(html).toContain("срез 2026-10-10, выбранный метод ML");
-  expect(html).toContain("Нет подходящей истории даже для B1");
+  expect(html).toContain("Пересчитайте прогноз перед использованием");
+  expect(html).toContain("Продажи учтены по 2026-10-10");
+  expect(html).toContain("Недостаточно истории продаж");
   expect(html).toContain("Нет оценки");
-  expect(html).toContain("Технические данные прогноза");
+  expect(html).not.toContain("model-1");
   expect(html).not.toContain('type="number"');
 });
 
@@ -289,8 +289,8 @@ test("horizon compatibility is explained without claiming forecast accuracy", ()
       }}
     />,
   );
-  expect(matched).toContain("Горизонт совпадает с оценкой: 2 дн.");
-  expect(matched).toContain("не гарантия точности");
+  expect(matched).toContain("такому же сроку прогноза");
+  expect(matched).toContain("не гарантирует точность");
   const mismatch = renderToStaticMarkup(
     <EvaluationNotice
       value={{
@@ -301,10 +301,10 @@ test("horizon compatibility is explained without claiming forecast accuracy", ()
       }}
     />,
   );
-  expect(mismatch).toContain("оценка 2 дн., прогноз 1 дн.");
-  expect(mismatch).toContain("качество на этом горизонте здесь не измерено");
+  expect(mismatch).toContain("относится к другому сроку");
+  expect(mismatch).toContain("Проверьте предложенное количество вручную");
   const legacy = renderToStaticMarkup(<EvaluationNotice />);
-  expect(legacy).toContain("Применимость оценки к этому прогнозу не указана");
+  expect(legacy).toContain("Качество прогноза для этих данных не проверено");
 });
 
 test("method and import selects have exact option-independent labels and retain values and busy locks", () => {
@@ -334,7 +334,7 @@ test("method and import selects have exact option-independent labels and retain 
     );
     for (const [html, id, label, selected, options] of [
       [planning, "planning-method", "Способ расчёта", "ML", ["B1", "ML", "B0"]],
-      [model, "diagnostic-method", "Метод диагностики", "ML", ["ML", "B1"]],
+      [model, "diagnostic-method", "Способ прогноза", "ML", ["ML", "B1"]],
       [
         imported,
         "import-source",
