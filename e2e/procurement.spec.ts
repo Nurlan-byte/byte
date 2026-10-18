@@ -5,7 +5,7 @@ test("real API preserves generic procurement import, order and export", async ({
 }) => {
   await page.goto("/");
   await page.getByLabel("Как пополняем товары").selectOption("procurement");
-  await page.getByRole("button", { name: "Демо закупки", exact: true }).click();
+  await page.getByRole("button", { name: "Простой пример — 2 товара", exact: true }).click();
   await page
     .getByLabel("Происхождение данных закупки")
     .fill("Synthetic procurement integration fixture");
@@ -58,7 +58,7 @@ test("saved procurement order can be confirmed while another dataset is selected
 }) => {
   await page.goto("/");
   await page.locator("#planning-kind").selectOption("procurement");
-  await page.getByRole("button", { name: "Демо закупки", exact: true }).click();
+  await page.getByRole("button", { name: "Простой пример — 2 товара", exact: true }).click();
   await page.locator("#proc-shop").fill("synthetic-shop-a");
   await page.locator("#proc-provenance").fill("Synthetic source A");
   await page.locator("#panel-import > section > button:last-child").click();
@@ -117,7 +117,7 @@ test("procurement import error focuses alert and preserves editable draft", asyn
     });
   });
   await page.getByLabel("Как пополняем товары").selectOption("procurement");
-  await page.getByRole("button", { name: "Демо закупки", exact: true }).click();
+  await page.getByRole("button", { name: "Простой пример — 2 товара", exact: true }).click();
   await page
     .getByRole("button", { name: "Проверить и импортировать закупку" })
     .click();
@@ -201,7 +201,7 @@ for (const width of [360, 768, 1440]) {
     await page.goto("/");
     await page.getByLabel("Как пополняем товары").selectOption("procurement");
     await page
-      .getByRole("button", { name: "Демо закупки", exact: true })
+      .getByRole("button", { name: "Простой пример — 2 товара", exact: true })
       .click();
     await page
       .getByRole("button", { name: "Проверить и импортировать закупку" })

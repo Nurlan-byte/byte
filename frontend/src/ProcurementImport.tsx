@@ -3,11 +3,8 @@ import type { ImportProps } from "./ImportSection";
 import type { CatalogItem, Dataset } from "./types";
 import { api } from "./api";
 import { datasetSourceLabel } from "./datasetSummary";
-import {
-  demoCatalog,
-  parseCatalog,
-  syntheticProcurementCsv,
-} from "./procurement";
+import { parseCatalog } from "./procurement";
+import { procurementDemos } from "./procurementDemos";
 
 type ProductDraft = {
   product_id: string;
@@ -146,21 +143,32 @@ export function ProcurementImport(p: ImportProps) {
           вечером. Каталог должен содержать ровно товары CSV.
         </p>
       </details>
-      <button
-        className="secondary"
-        disabled={p.busy}
-        onClick={() => {
-          p.setCsv(syntheticProcurementCsv());
-          setCatalog(editableCatalog(parseCatalog(demoCatalog)));
-          setFileName("");
-          if (fileInput.current) fileInput.current.value = "";
-          p.setSource("synthetic");
-          p.setBakeryId("procurement-demo");
-          p.setProvenance("Синтетический пример закупки чая и сока");
-        }}
-      >
-        Демо закупки
-      </button>
+      <p id="proc-demo-help">
+        Оба примера синтетические. Выбор заменит CSV, каталог и источник в
+        форме. Сохранённый набор продолжит использоваться до нового импорта.
+      </p>
+      <div className="controls">
+        {procurementDemos.map((demo) => (
+          <button
+            key={demo.id}
+            type="button"
+            className="secondary"
+            aria-describedby="proc-demo-help"
+            disabled={p.busy}
+            onClick={() => {
+              p.setCsv(demo.csv);
+              setCatalog(editableCatalog(demo.catalog));
+              setFileName("");
+              if (fileInput.current) fileInput.current.value = "";
+              p.setSource("synthetic");
+              p.setBakeryId(demo.id);
+              p.setProvenance(demo.provenance);
+            }}
+          >
+            {demo.label}
+          </button>
+        ))}
+      </div>
       <div className="control-field">
         <label htmlFor="proc-file">CSV-файл закупки</label>
         <input
@@ -181,7 +189,10 @@ export function ProcurementImport(p: ImportProps) {
                   p.setSource("local");
                   p.setProvenance(file.name);
                 }
-                if (p.bakeryId === "demo" || p.bakeryId === "procurement-demo")
+                if (
+                  p.bakeryId === "demo" ||
+                  procurementDemos.some((demo) => demo.id === p.bakeryId)
+                )
                   p.setBakeryId("");
                 p.setNotice(
                   "Файл прочитан. Заполните товары и проверьте источник перед импортом.",
