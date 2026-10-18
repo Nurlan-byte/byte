@@ -84,7 +84,7 @@
 
 ## Воспроизведение процедуры на синтетике
 
-После чистой установки из README, из корня:
+После чистой установки из [руководства разработчика](DEVELOPMENT.md), из корня:
 
 ```sh
 .venv/bin/python tools/evaluate_forward.py fixtures/synthetic_demo.csv \
