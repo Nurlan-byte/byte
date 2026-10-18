@@ -339,7 +339,7 @@ test('record a real 105-second synthetic BakePlan demonstration', async ({ brows
     } finally {
       if (!closed) await context.close().catch(() => {});
       await fs.writeFile(path.join(evidenceDir, 'manifest.json'), JSON.stringify(manifest, null, 2) + '\n');
-      await fs.copyFile('docs/DEMO.md', path.join(evidenceDir, 'DEMO.md'));
+      await fs.copyFile('README.md', path.join(evidenceDir, 'README.md'));
     }
   }
 });

@@ -250,6 +250,6 @@ test('capture real synthetic desktop, laptop and mobile planning evidence', asyn
     manifest.capture_status = 'complete';
   } finally {
     await fs.writeFile(path.join(evidenceDir, 'manifest.json'), JSON.stringify(manifest, null, 2) + '\n');
-    await fs.copyFile(path.join(sourceRoot, 'docs/SCREENSHOTS.md'), path.join(evidenceDir, 'SCREENSHOTS.md'));
+    await fs.copyFile(path.join(sourceRoot, 'README.md'), path.join(evidenceDir, 'README.md'));
   }
 });
