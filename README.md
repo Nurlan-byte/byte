@@ -233,20 +233,10 @@ npm.cmd --prefix frontend run dev
 
 Демо-сценарий бара Cloud Game Zone построен на смоделированных данных: коммерческие данные клиента остаются у клиента. Повторить его можно одной командой: [инструкция](docs/CLOUD_GAME_ZONE.md).
 
-## Документация
-
-| Тема | Документ |
-|---|---|
-| Показ и выступление | [DEMO](docs/DEMO.md) · [SLIDES](docs/SLIDES.md) · [SUBMISSION](docs/SUBMISSION.md) |
-| Данные | [DATA_CONTRACT](docs/DATA_CONTRACT.md) · [PROCUREMENT](docs/PROCUREMENT.md) |
-| AI | [ML_INTEGRATION](docs/ML_INTEGRATION.md) · [EVALUATION](docs/EVALUATION.md) |
-| Запуск и размещение | [DEVELOPMENT](docs/DEVELOPMENT.md) · [LOCAL_WINDOWS](docs/LOCAL_WINDOWS.md) · [DEPLOYMENT](docs/DEPLOYMENT.md) |
-| Качество | [VERIFICATION](VERIFICATION.md) · [manual QA](docs/manual-qa.md) |
-
 ## Команда
 
 - **Нурлан** — продукт, AI, код
-- **Асыл** — клиенты, данные, презентация
+- **Асылжан** — клиенты, данные, презентация
 
 Как устроена работа команды: [CONTRIBUTING](CONTRIBUTING.md).
 
