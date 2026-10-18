@@ -65,7 +65,10 @@ jobs:
       - name: Capture real synthetic UI evidence
         run: npx.cmd playwright test screenshots/capture.spec.ts screenshots/owner-ux.spec.ts --config=playwright.screenshots.config.ts
       - name: Record real synthetic procurement UI demonstration
-        run: npx.cmd playwright test video/capture.spec.ts video/cgz-capture.spec.ts --config=playwright.video.config.ts
+        run: |
+          $PSNativeCommandUseErrorActionPreference = $true
+          npx.cmd playwright test video/capture.spec.ts --config=playwright.video.config.ts --output=test-results/video-production
+          npx.cmd playwright test video/cgz-capture.spec.ts --config=playwright.video.config.ts
       - name: Produce matching synthetic API replay evidence
         run: |
           $PSNativeCommandUseErrorActionPreference = $true
@@ -88,7 +91,9 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: bakeplan-demo-video-${{ github.sha }}-${{ github.run_attempt }}
-          path: test-results/video/**/evidence/
+          path: |
+            test-results/video/**/evidence/
+            test-results/video-production/**/evidence/
           retention-days: 14
           if-no-files-found: warn
   controlled-demo:
