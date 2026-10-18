@@ -66,7 +66,7 @@ metrics use the name `conditional_mean`, replacing the misleading `oracle` label
   historical selection evidence byte-for-byte. They are archived outputs, not
   application inputs or a fresh independent confirmation.
 - [Integrated corrected audit](confirm_audit.json) remains tracked at its original
-  path because [EVALUATION](../../docs/EVALUATION.md) cites it.
+  path.
 - The frozen `reference_v2.py` and its provenance are required by the audit and
   integrity tests; they are not redundant application code.
 

@@ -6,7 +6,7 @@ import { createHash } from 'node:crypto';
 import { execFileSync } from 'node:child_process';
 import { performance } from 'node:perf_hooks';
 import type { Dataset, Forecast, ModelSummary, Plan } from '../frontend/src/types';
-import { navigate } from '../e2e/helpers';
+import { navigate, openDetails } from '../e2e/helpers';
 
 const apiBase = 'http://127.0.0.1:18003/api';
 const targetDate = '2026-10-13';
@@ -172,6 +172,9 @@ test('record a real 105-second synthetic BakePlan demonstration', async ({ brows
     await navigate(page, 'Данные');
     await page.getByLabel('CSV-файл', { exact: true }).setInputFiles(path.resolve(fixturePath));
     await expect(page.getByRole('status')).toContainText('Файл прочитан');
+    await page.getByLabel('Источник', { exact: true }).selectOption('synthetic');
+    await openDetails(page, 'Параметры набора');
+    await page.getByLabel('Код точки', { exact: true }).fill('synthetic-video-capture');
     await expect(page.getByLabel('Источник', { exact: true })).toHaveValue('synthetic');
     await expect(page.getByLabel('Измеряемая величина', { exact: true })).toHaveValue('sold_units');
     await show(page.getByRole('button', { name: 'Проверить и импортировать', exact: true }));
@@ -187,6 +190,7 @@ test('record a real 105-second synthetic BakePlan demonstration', async ({ brows
     await navigate(page, 'План');
     await page.getByLabel('Дата плана', { exact: true }).fill(targetDate);
     await page.getByLabel('Данные доступны до', { exact: true }).fill(cutoff);
+    await openDetails(page, 'Настройки прогноза');
     await expect(page.getByLabel('Способ расчёта', { exact: true })).toHaveValue('B1');
     await show(page.locator('.planning-controls'));
     await expect(page.locator('#planning')).toContainText('Историческое воспроизведение');
@@ -198,7 +202,7 @@ test('record a real 105-second synthetic BakePlan demonstration', async ({ brows
     await expect(page.getByLabel('Срез обучения и прогноза', { exact: true })).toHaveValue(cutoff);
     await expect(page.getByLabel('Дата прогноза', { exact: true })).toHaveValue(targetDate);
     const trainingStarted = elapsed();
-    const model = await postFromUi<ModelSummary>('Обучить модель', `/datasets/${dataset.id}/train`);
+    const model = await postFromUi<ModelSummary>('Подготовить экспериментальный расчёт', `/datasets/${dataset.id}/train`);
     manifest.training_elapsed_seconds = elapsed() - trainingStarted;
     expect(model).toMatchObject({ status: 'ready', dataset_id: dataset.id, training_cutoff: cutoff, protocol_version: 'pooled-relative-ridge-200-v3-horizon-2-experimental' });
     expect(Object.keys(model.products)).toEqual(['p1', 'p2', 'p3', 'p4', 'p5']);
@@ -208,21 +212,22 @@ test('record a real 105-second synthetic BakePlan demonstration', async ({ brows
     expect(model.evaluation!.ml_mae).toBeCloseTo(1.058562, 6);
     expect(model.evaluation!.ml_mae!).toBeGreaterThan(model.evaluation!.b1_mae!);
     states.model = model;
-    await show(page.getByTestId('model-summary').getByRole('heading', { name: 'Модель готова', exact: true }));
+    await show(page.getByTestId('model-summary').getByRole('heading', { name: 'Расчёт готов', exact: true }));
     await holdUntil(33);
 
     scene('Read the honest paired holdout evaluation: ML is worse than B1');
     const evaluation = page.getByTestId('model-evaluation');
     await show(evaluation);
-    await expect(evaluation).toContainText('0,416667');
-    await expect(evaluation).toContainText('1,058562');
-    await expect(evaluation).toContainText('60/60');
-    await expect(evaluation).toContainText('На этой проверке ML хуже B1');
-    await expect(evaluation.locator('.metric-grid')).toBeInViewport({ ratio: 1 });
+    // Exact MAE and coverage are asserted on the real model response above.
+    // The owner UI now renders the conclusion instead of the old metric grid.
+    await expect(evaluation).toContainText('Качество прогноза');
+    await expect(evaluation).toContainText('Экспериментальный расчёт на проверке оказался менее точным');
+    await expect(evaluation).toContainText('Предпочтите расчёт по похожим дням');
+    await expect(evaluation).toBeInViewport({ ratio: 1 });
     await holdUntil(47);
 
     scene('Calculate and inspect the real diagnostic ML forecast');
-    const forecast = await postFromUi<Forecast>('Получить прогноз', '/forecasts');
+    const forecast = await postFromUi<Forecast>('Проверить прогноз', '/forecasts');
     expect(forecast.model_id).toBe(model.id);
     expect(forecast.evaluation_applicability).toMatchObject({ applicable: true, requested_horizon_days: 2 });
     expect(forecast.items).toHaveLength(5);
@@ -237,6 +242,7 @@ test('record a real 105-second synthetic BakePlan demonstration', async ({ brows
 
     scene('Choose ML explicitly for this demonstration and calculate a plan');
     await navigate(page, 'План');
+    await openDetails(page, 'Настройки прогноза');
     await expect(page.getByLabel('Способ расчёта', { exact: true })).toHaveValue('B1');
     await page.getByLabel('Способ расчёта', { exact: true }).selectOption('ML');
     await holdUntil(61);
@@ -339,7 +345,7 @@ test('record a real 105-second synthetic BakePlan demonstration', async ({ brows
     } finally {
       if (!closed) await context.close().catch(() => {});
       await fs.writeFile(path.join(evidenceDir, 'manifest.json'), JSON.stringify(manifest, null, 2) + '\n');
-      await fs.copyFile('docs/DEMO.md', path.join(evidenceDir, 'DEMO.md'));
+      await fs.copyFile('README.md', path.join(evidenceDir, 'README.md'));
     }
   }
 });

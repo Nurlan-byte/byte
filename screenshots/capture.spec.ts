@@ -3,6 +3,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { createHash } from 'node:crypto';
 import { execFileSync } from 'node:child_process';
+import { navigate as navigateCurrent, openDetails } from '../e2e/helpers';
 
 const targetDate = '2026-10-13';
 const cutoff = '2026-10-11';
@@ -15,8 +16,7 @@ const sha256 = (bytes: Buffer | string) => createHash('sha256').update(bytes).di
 
 async function navigate(page: Page, section: 'План' | 'Данные' | 'Модель' | 'История') {
   if (!baseline) {
-    await page.getByRole('navigation', { name: 'Разделы BakePlan', exact: true })
-      .getByRole('button', { name: section, exact: true }).click();
+    await navigateCurrent(page, section);
   }
 }
 
@@ -106,7 +106,7 @@ test('capture real synthetic desktop, laptop and mobile planning evidence', asyn
     expect(await initialDatasets.json()).toEqual([]);
     await page.goto('/');
     await openImport(page);
-    await page.getByLabel('ID пекарни', { exact: true }).fill('synthetic-defense-capture');
+    await page.getByLabel(baseline ? 'ID пекарни' : 'Код точки', { exact: true }).fill('synthetic-defense-capture');
     await page.getByLabel('Источник', { exact: true }).selectOption('synthetic');
     await page.getByLabel('Происхождение данных', { exact: true }).fill('Committed synthetic BakePlan fixture; automated CI screenshots, not real bakery results');
     await page.getByLabel('Содержимое CSV', { exact: true }).fill(csv);
@@ -121,30 +121,36 @@ test('capture real synthetic desktop, laptop and mobile planning evidence', asyn
     await capture('01-desktop-import.png', 'Desktop viewport: real imported synthetic history and the available workflow.');
 
     await navigate(page, 'Модель');
-    const fallback = await postFromUi(page, 'Получить прогноз', '/forecasts');
+    const fallback = await postFromUi(page, baseline ? 'Получить прогноз' : 'Проверить прогноз', '/forecasts');
     expect(fallback.model_id).toBeNull();
     expect(fallback.items.every((item: { method: string; fallback_reason: string | null }) => item.method === 'B1' && !!item.fallback_reason)).toBe(true);
-    await expect(page.getByTestId('forecast-table').locator('tbody tr').first()).toContainText('Причина перехода');
+    await expect(page.getByTestId('forecast-table').locator('tbody tr').first()).toContainText(baseline ? 'Причина перехода' : 'Использован упрощённый прогноз');
     await capture('02-desktop-explicit-fallback.png', 'Requested ML before training: actual B1 and explicit missing-model fallback for each product.', page.getByTestId('forecast-result'));
 
-    const model = await postFromUi(page, 'Обучить модель', `/datasets/${dataset.id}/train`);
+    const model = await postFromUi(page, baseline ? 'Обучить модель' : 'Подготовить экспериментальный расчёт', `/datasets/${dataset.id}/train`);
     expect(model.status).toBe('ready');
     expect(model.evaluation).toMatchObject({ horizon_days: 2, paired_n: 60, coverage: 1 });
-    await expect(page.getByTestId('model-summary')).toContainText('Модель готова');
-    await page.getByTestId('model-summary').getByText('Диагностика оценки модели', { exact: true }).click();
-    await expect(page.getByTestId('model-summary').getByText(/Горизонт оценки: 2 дн./)).toBeVisible();
-    await capture('03-desktop-model-evaluation.png', 'Technical readiness and synthetic t−2 evaluation, including paired coverage. These metrics do not establish real accuracy.', page.getByTestId('model-summary'));
+    await expect(page.getByTestId('model-summary')).toContainText(baseline ? 'Модель готова' : 'Расчёт готов');
+    if (baseline) {
+      await page.getByTestId('model-summary').getByText('Диагностика оценки модели', { exact: true }).click();
+      await expect(page.getByTestId('model-summary').getByText(/Горизонт оценки: 2 дн./)).toBeVisible();
+    } else {
+      await expect(page.getByTestId('model-evaluation')).toContainText('Экспериментальный расчёт на проверке оказался менее точным');
+      expect(model.evaluation.ml_mae).toBeGreaterThan(model.evaluation.b1_mae);
+    }
+    await capture('03-desktop-model-evaluation.png', 'Technical readiness and honest synthetic evaluation; exact t−2 coverage is retained in the API manifest, not claimed as visible UI text.', page.getByTestId('model-summary'));
 
-    const forecast = await postFromUi(page, 'Получить прогноз', '/forecasts');
+    const forecast = await postFromUi(page, baseline ? 'Получить прогноз' : 'Проверить прогноз', '/forecasts');
     expect(forecast.model_id).toBe(model.id);
     expect(forecast.evaluation_applicability.applicable).toBe(true);
     expect(forecast.items.every((item: { method: string; forecast_mean: number }) => item.method === 'ML' && Number.isFinite(item.forecast_mean) && item.forecast_mean >= 0)).toBe(true);
-    await expect(page.getByTestId('forecast-table').locator('tbody tr').first()).toContainText('ML');
+    await expect(page.getByTestId('forecast-table').locator('tbody tr').first()).toContainText(baseline ? 'ML' : 'Экспериментальный расчёт');
     await expect(page.getByTestId('stale-forecast')).toHaveCount(0);
     await capture('04-desktop-ml-forecast.png', 'Actual ML forecast compared with B1 at the evaluated two-day horizon; diagnostic only.', page.getByTestId('forecast-result'));
 
     await page.setViewportSize({ width: 1366, height: 900 });
     await navigate(page, 'План');
+    if (!baseline) await openDetails(page, 'Настройки прогноза');
     await page.getByLabel('Способ расчёта', { exact: true }).selectOption('ML');
     const plan = await postFromUi(page, 'Рассчитать план', '/plans');
     expect(plan.items[0]).toMatchObject({ product_id: 'p1', recommended_qty: 24, confirmed_qty: null, method: 'ML' });
@@ -211,7 +217,7 @@ test('capture real synthetic desktop, laptop and mobile planning evidence', asyn
     });
     await expect(quantity).toBeInViewport({ ratio: 1 });
     await capture('09-mobile-saved-quantity.png', 'Mobile viewport: saved 84-unit quantity, separate from forecast and recommendation; owner UX uses cards without horizontal scrolling.');
-    await firstRow.getByText('Источники и модель', { exact: true }).click();
+    if (baseline) await firstRow.getByText('Источники и модель', { exact: true }).click();
     await tableContainer.evaluate(element => {
       const methodCell = element.querySelector('tbody tr td:last-child')!;
       const firstCell = element.querySelector('tbody tr td')!;
@@ -219,14 +225,19 @@ test('capture real synthetic desktop, laptop and mobile planning evidence', asyn
       element.scrollLeft += methodCell.getBoundingClientRect().left - element.getBoundingClientRect().left - stickyWidth;
     });
     await page.getByTestId('plan-table').evaluate(element => element.scrollIntoView({ block: 'start' }));
-    await expect(firstRow.getByText('Подходящих наблюдений: 4', { exact: true })).toBeVisible();
+    if (baseline) {
+      await expect(firstRow.getByText('Подходящих наблюдений: 4', { exact: true })).toBeVisible();
+    } else {
+      expect(plan.items[0].n).toBe(4);
+      await expect(firstRow.locator('.actual-method')).toHaveText('Экспериментальный расчёт');
+    }
     await expect(firstRow.locator('td').last().locator('strong')).toBeInViewport({ ratio: 1 });
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
-    await capture('10-mobile-method-details.png', 'Mobile viewport: actual method and source dates remain readable within page width.');
+    await capture('10-mobile-method-details.png', 'Mobile viewport: actual method remains readable within page width; source observation count is verified in the API.');
 
     // Same real persisted state, collapsed details and plan-section scroll origin.
     // These are raw browser captures, not image-diff snapshots or composed mockups.
-    await firstRow.getByText('Источники и модель', { exact: true }).click();
+    if (baseline) await firstRow.getByText('Источники и модель', { exact: true }).click();
     for (const [index, viewport] of [
       { width: 360, height: 844 },
       { width: 768, height: 1000 },
@@ -250,6 +261,6 @@ test('capture real synthetic desktop, laptop and mobile planning evidence', asyn
     manifest.capture_status = 'complete';
   } finally {
     await fs.writeFile(path.join(evidenceDir, 'manifest.json'), JSON.stringify(manifest, null, 2) + '\n');
-    await fs.copyFile(path.join(sourceRoot, 'docs/SCREENSHOTS.md'), path.join(evidenceDir, 'SCREENSHOTS.md'));
+    await fs.copyFile(path.join(sourceRoot, 'README.md'), path.join(evidenceDir, 'README.md'));
   }
 });
