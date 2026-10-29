@@ -221,7 +221,7 @@ export function ModelSection({
         </p>
       )}
       {!models.length && (
-        <div className="status-note">
+        <div className="empty-note">
           <strong>
             {loaded
               ? "Сохранённых моделей пока нет"

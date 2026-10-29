@@ -6,7 +6,7 @@ import {
   hasQuantityChanges,
   productActiveOnTarget,
 } from "./workspace";
-import { Icon } from "./Icon";
+import { BrandMark, Icon } from "./Icon";
 import { formatDatasetPeriod, datasetSourceLabel } from "./datasetSummary";
 import { api } from "./api";
 import type { Dataset, DatasetTarget, Plan, PlanSummary } from "./types";
@@ -46,6 +46,7 @@ export function App() {
   const [historyLoaded, setHistoryLoaded] = useState(false);
   const [restored, setRestored] = useState(false);
   const errorBox = useRef<HTMLDivElement>(null);
+  const moreMenu = useRef<HTMLDetailsElement>(null);
   useEffect(() => {
     if (error) errorBox.current?.focus();
   }, [error]);
@@ -252,7 +253,7 @@ export function App() {
           aria-label="BakePlan"
         >
           <span className="brand-mark">
-            <Icon name="bread" />
+            <BrandMark />
           </span>
           <span>
             BakePlan
@@ -278,17 +279,28 @@ export function App() {
             </button>
           ))}
         </nav>
-        <details className="secondary-nav">
-            <summary>Дополнительно</summary>
-            <button
-              type="button"
-              aria-current={view === "model" ? "page" : undefined}
-              aria-controls="panel-model"
-              onClick={() => changeView("model")}
-            >
-              <Icon name="model" />
-              <span>Качество прогноза</span>
-            </button>
+        <details
+          ref={moreMenu}
+          className={`secondary-nav${view === "model" ? " has-current" : ""}`}
+        >
+          <summary>Дополнительно</summary>
+          <button
+            type="button"
+            aria-current={view === "model" ? "page" : undefined}
+            aria-controls="panel-model"
+            onClick={() => {
+              changeView("model");
+              // On phones the menu is an overlay; close it once a section is chosen.
+              if (
+                moreMenu.current &&
+                window.matchMedia?.("(max-width: 820px)").matches
+              )
+                moreMenu.current.open = false;
+            }}
+          >
+            <Icon name="model" />
+            <span>Качество прогноза</span>
+          </button>
         </details>
         <div className="sidebar-note">
           <span className="status-dot" />
@@ -320,22 +332,63 @@ export function App() {
             </span>
           </div>
         </header>
-        <div className="control-field mode-switch">
-          <label htmlFor="planning-kind">Как пополняем товары</label>
-          <select
-            id="planning-kind"
-            value={planningKind}
-            disabled={busy}
-            onChange={(event) => {
-              setPlanningKind(
-                event.target.value as "production" | "procurement",
-              );
-              setView("import");
-            }}
-          >
-            <option value="production">Производим сами</option>
-            <option value="procurement">Закупаем готовое</option>
-          </select>
+        <div className="workspace-toolbar">
+          <div className="control-field mode-switch">
+            <label htmlFor="planning-kind">Как пополняем товары</label>
+            <select
+              id="planning-kind"
+              value={planningKind}
+              disabled={busy}
+              onChange={(event) => {
+                setPlanningKind(
+                  event.target.value as "production" | "procurement",
+                );
+                setView("import");
+              }}
+            >
+              <option value="production">Производим сами</option>
+              <option value="procurement">Закупаем готовое</option>
+            </select>
+          </div>
+          <ol className="journey" aria-label="Шаги подготовки плана">
+            {[
+              {
+                label: "Данные",
+                state: !selectedDataset ? "current" : "done",
+              },
+              {
+                label: "Расчёт",
+                state:
+                  selectedDataset && !selectedPlan
+                    ? "current"
+                    : selectedPlan
+                      ? "done"
+                      : "",
+              },
+              {
+                label: "Проверка и сохранение",
+                state:
+                  selectedPlan &&
+                  (selectedPlan.status !== "confirmed" || unsaved)
+                    ? "current"
+                    : selectedPlan && selectedPlan.status === "confirmed"
+                      ? "done"
+                      : "",
+              },
+            ].map((step, index) => (
+              <li
+                key={step.label}
+                className={step.state}
+                aria-current={step.state === "current" ? "step" : undefined}
+              >
+                <span className="step-index" aria-hidden="true">
+                  {step.state === "done" ? <Icon name="check" /> : index + 1}
+                </span>
+                <span className="sr-only">{index + 1}. </span>
+                {step.label}
+              </li>
+            ))}
+          </ol>
         </div>
         {((dataset && !selectedDataset) || (plan && !selectedPlan)) && (
           <aside className="status-note" data-testid="mode-selection-notice">
@@ -365,29 +418,6 @@ export function App() {
             )}
           </aside>
         )}
-        <ol className="journey" aria-label="Шаги подготовки плана">
-          <li className={!selectedDataset ? "current" : "done"}>1. Данные</li>
-          <li
-            className={
-              selectedDataset && !selectedPlan
-                ? "current"
-                : selectedPlan
-                  ? "done"
-                  : ""
-            }
-          >
-            2. Расчёт
-          </li>
-          <li
-            className={
-              selectedPlan && (selectedPlan.status !== "confirmed" || unsaved)
-                ? "current"
-                : ""
-            }
-          >
-            3. Проверка и сохранение
-          </li>
-        </ol>
         {(selectedDataset || selectedPlan) && (
           <div className="provenance-strip" data-testid="workspace-source">
             <span className={`source-icon ${selectedDataset ? "loaded" : ""}`}>
@@ -427,6 +457,7 @@ export function App() {
           </div>
         )}
         <p className="safety-note">
+          <Icon name="info" />
           Прогноз — ориентир, а не гарантия спроса. Синтетические данные только
           для демонстрации.{" "}
           {planningKind === "procurement"
@@ -435,7 +466,10 @@ export function App() {
         </p>
         {error && (
           <div role="alert" className="error" tabIndex={-1} ref={errorBox}>
-            <strong>Не удалось выполнить действие</strong>
+            <strong className="notice-title">
+              <Icon name="alert" />
+              Не удалось выполнить действие
+            </strong>
             <p className="error-message">{error.split("\n")[0]}</p>
             {error.includes("\n") && (
               <details>
@@ -457,15 +491,18 @@ export function App() {
           </div>
         )}
         {notice && !busy && (
-          <div role="status" className="success">
-            {notice}
+          <div role="status" className="success notice-banner">
+            <Icon name="check" />
+            <span>{notice}</span>
           </div>
         )}
         {busy && (
           <p role="status" className="pending">
-            <span className="spinner" /> Выполняется запрос… Поля временно
-            заблокированы.
-            {view === "model" && " Обучение может занять до 60 секунд."}
+            <span className="spinner" />
+            <span>
+              Выполняется запрос… Поля временно заблокированы.
+              {view === "model" && " Обучение может занять до 60 секунд."}
+            </span>
           </p>
         )}
         <div id="panel-planning" hidden={view !== "planning"}>

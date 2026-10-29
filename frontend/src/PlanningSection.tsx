@@ -108,7 +108,7 @@ function ProductionPlanning({
           Добавьте историю продаж. BakePlan предложит количество для каждого
           изделия, а вы проверите и сохраните свой выпуск.
         </p>
-        <button disabled={busy} onClick={onImport}>
+        <button className="cta" disabled={busy} onClick={onImport}>
           Перейти к данным <Icon name="arrow" />
         </button>
         <p className="muted">
@@ -137,7 +137,9 @@ function ProductionPlanning({
             Рассчитайте ориентир, проверьте партии и подтвердите свой выпуск.
           </p>
         </div>
-        <span className="badge badge-neutral">
+        <span
+          className={`badge ${plan?.status === "confirmed" ? "badge-success" : "badge-neutral"}`}
+        >
           {plan
             ? plan.status === "confirmed"
               ? "Сохранён"
@@ -203,20 +205,6 @@ function ProductionPlanning({
           </div>
         </div>
       </div>
-      <p className="control-hint">
-        План использует продажи из выбранной истории. Если последние продажи
-        ещё не внесены, укажите более раннюю дату данных.
-      </p>
-      {dataset && (
-        <p className="control-hint">
-          Период выбранной истории: {formatDatasetPeriod(dataset)}. Новые дни
-          после этой истории не добавляются автоматически.
-        </p>
-      )}
-      <p className="control-hint">
-        История показывает продажи, но не показывает, хватало ли товара всем
-        покупателям. Отсутствие прогноза не означает нулевые продажи.
-      </p>
       {dirty && (
         <p className="status-note">
           Новый расчёт заменит несохранённые поля ниже. Сначала подтвердите
@@ -224,6 +212,7 @@ function ProductionPlanning({
         </p>
       )}
       <button
+        className="cta"
         disabled={busy || !dataset || !target || !cutoff}
         onClick={() =>
           void run(async () =>
@@ -242,6 +231,22 @@ function ProductionPlanning({
       >
         Рассчитать план
       </button>
+      <div className="hint-block">
+        <p className="control-hint">
+          План использует продажи из выбранной истории. Если последние продажи
+          ещё не внесены, укажите более раннюю дату данных.
+        </p>
+        {dataset && (
+          <p className="control-hint">
+            Период выбранной истории: {formatDatasetPeriod(dataset)}. Новые дни
+            после этой истории не добавляются автоматически.
+          </p>
+        )}
+        <p className="control-hint">
+          История показывает продажи, но не показывает, хватало ли товара всем
+          покупателям. Отсутствие прогноза не означает нулевые продажи.
+        </p>
+      </div>
       {!dataset && plan && (
         <p className="muted">
           Открыт сохранённый план. Для нового расчёта сначала загрузите набор
@@ -472,7 +477,7 @@ function ProductionPlanning({
                         i.batch_size,
                         i.max_daily_qty,
                       ) && (
-                        <small className="error">
+                        <small className="field-error">
                           Введите 0 или кратное {i.batch_size}, не больше{" "}
                           {Math.floor(i.max_daily_qty / i.batch_size) *
                             i.batch_size}{" "}
@@ -486,11 +491,15 @@ function ProductionPlanning({
                       </strong>
                       {i.diagnostic_method &&
                         i.diagnostic_method !== i.method && (
-                          <small>Автоматический выпуск отключён. Проверьте количество вручную.</small>
+                          <small>
+                            Автоматический выпуск отключён. Проверьте количество
+                            вручную.
+                          </small>
                         )}
                       {i.fallback_reason && (
                         <small>
-                          Использован упрощённый прогноз. {reasonText(i.fallback_reason)}
+                          Использован упрощённый прогноз.{" "}
+                          {reasonText(i.fallback_reason)}
                         </small>
                       )}
                       {i.warnings?.map((w, n) => (
@@ -498,7 +507,9 @@ function ProductionPlanning({
                       ))}
                       {i.evaluation_applicability &&
                         !i.evaluation_applicability.applicable && (
-                          <EvaluationNotice value={i.evaluation_applicability} />
+                          <EvaluationNotice
+                            value={i.evaluation_applicability}
+                          />
                         )}
                     </td>
                   </tr>
@@ -569,6 +580,7 @@ function ProductionPlanning({
                 aria-disabled={busy || undefined}
                 download
               >
+                <Icon name="download" />
                 Экспорт CSV
               </a>
               {plan.status === "confirmed" && (

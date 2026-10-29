@@ -1,3 +1,4 @@
+import { Icon } from "./Icon";
 import type { PlanSummary } from "./types";
 export const HISTORY_PAGE_SIZE = 20;
 type Props = {
@@ -56,7 +57,7 @@ export function HistorySection({
         не попадут.
       </p>
       {!history.length ? (
-        <div className="status-note">
+        <div className="empty-note">
           <strong>
             {!loaded
               ? "Загрузите сохранённые планы"
@@ -134,10 +135,15 @@ export function HistorySection({
                     }
                     aria-disabled={busy || undefined}
                   >
+                    <Icon name="download" />
                     Экспорт CSV
                   </a>
                 </div>
-                {p.created_at && <p className="muted">Создан: {new Date(p.created_at).toLocaleString("ru-RU")}</p>}
+                {p.created_at && (
+                  <p className="muted">
+                    Создан: {new Date(p.created_at).toLocaleString("ru-RU")}
+                  </p>
+                )}
               </li>
             ))}
           </ul>
