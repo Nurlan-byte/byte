@@ -1,4 +1,5 @@
 import { ProcurementImport } from "./ProcurementImport";
+import { Icon } from "./Icon";
 import { useMemo, useRef, useState, useEffect } from "react";
 import { forPlanningKind, savedDataset } from "./workspace";
 import { api } from "./api";
@@ -204,7 +205,10 @@ function ProductionImport({
           tabIndex={-1}
         >
           <div className="section-heading">
-            <h3>Текущий сохранённый набор для расчёта</h3>
+            <h3 className="notice-title">
+              <Icon name="check" />
+              Текущий сохранённый набор для расчёта
+            </h3>
             <span
               className={`badge ${dataset.source === "synthetic" || savedSalesOnly ? "badge-warning" : "badge-success"}`}
             >
@@ -241,8 +245,9 @@ function ProductionImport({
           )}
           {dataset.metadata_declared === false && (
             <p className="status-note">
-              Старый набор доступен для расчёта по истории. Для экспериментального расчёта повторно
-              импортируйте исходный CSV с явным происхождением и единицей.
+              Старый набор доступен для расчёта по истории. Для
+              экспериментального расчёта повторно импортируйте исходный CSV с
+              явным происхождением и единицей.
             </p>
           )}
           {!!dataset.missing_calendar_days && (
@@ -277,8 +282,9 @@ function ProductionImport({
             </p>
           )}
           <div className="actions">
-            <button disabled={busy} onClick={onContinue}>
+            <button className="cta" disabled={busy} onClick={onContinue}>
               {savedSalesOnly ? "Перейти к диагностике" : "Перейти к плану"}
+              <Icon name="arrow" />
             </button>
             <span className="muted">
               {savedSalesOnly
@@ -456,7 +462,7 @@ function ProductionImport({
         />
         {fileName && <p className="muted">Выбран файл: {fileName}</p>}
       </div>
-      <div className="actions">
+      <div className="actions demo-actions">
         <button
           className="secondary"
           disabled={busy}
@@ -485,7 +491,7 @@ function ProductionImport({
           Загрузить демо CSV
         </button>
         <button
-          className="button-link"
+          className="secondary"
           disabled={busy}
           onClick={() => {
             setCsv(syntheticSalesCsv());
@@ -599,8 +605,9 @@ function ProductionImport({
           }
         />
       </details>
-      <div className="actions">
+      <div className="actions submit-row">
         <button
+          className="cta"
           disabled={busy || !!missingImportFields}
           aria-describedby="import-readiness"
           onClick={() =>

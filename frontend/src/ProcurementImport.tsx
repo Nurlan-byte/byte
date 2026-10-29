@@ -5,6 +5,7 @@ import { api } from "./api";
 import { datasetSourceLabel } from "./datasetSummary";
 import { parseCatalog } from "./procurement";
 import { procurementDemos } from "./procurementDemos";
+import { Icon } from "./Icon";
 
 type ProductDraft = {
   product_id: string;
@@ -58,11 +59,19 @@ export function ProcurementImport(p: ImportProps) {
   }, [dataset, p.active]);
   return (
     <section aria-labelledby="import-heading" id="import">
-      <h2 id="import-heading">Данные закупаемых товаров</h2>
-      <p>
-        Продажи и движение готового товара в физических штуках. Пропуски
-        означают неизвестные данные.
-      </p>
+      <div className="section-heading">
+        <div>
+          <p className="eyebrow">История продаж и поставок</p>
+          <h2 id="import-heading">Данные закупаемых товаров</h2>
+          <p className="section-copy">
+            Продажи и движение готового товара в физических штуках. Пропуски
+            означают неизвестные данные.
+          </p>
+        </div>
+        <span className={`badge ${dataset ? "badge-success" : ""}`}>
+          {dataset ? "Проверено и сохранено" : "Начните с импорта"}
+        </span>
+      </div>
       {dataset && (
         <div
           className="success"
@@ -70,7 +79,10 @@ export function ProcurementImport(p: ImportProps) {
           tabIndex={-1}
           ref={summary}
         >
-          <h3>Набор сохранён</h3>
+          <h3 className="notice-title">
+            <Icon name="check" />
+            Набор сохранён
+          </h3>
           <p>Происхождение: {dataset.provenance}</p>
           <p>
             Источник: {datasetSourceLabel(dataset.source)} · строк:{" "}
@@ -82,14 +94,17 @@ export function ProcurementImport(p: ImportProps) {
               набор.
             </p>
           )}
-          <button disabled={p.busy} onClick={p.onContinue}>
-            Перейти к плану
-          </button>
+          <div className="actions">
+            <button className="cta" disabled={p.busy} onClick={p.onContinue}>
+              Перейти к плану <Icon name="arrow" />
+            </button>
+          </div>
         </div>
       )}
-      <details>
+      <details className="saved-datasets">
         <summary>Открыть сохранённые данные закупки</summary>
         <button
+          className="secondary"
           disabled={p.busy}
           onClick={() =>
             void p.run(async () =>
@@ -117,6 +132,7 @@ export function ProcurementImport(p: ImportProps) {
           ))}
         </select>
         <button
+          className="secondary"
           disabled={p.busy || !savedId}
           onClick={() =>
             void p.run(async () => {
@@ -132,7 +148,9 @@ export function ProcurementImport(p: ImportProps) {
           Открыть набор закупки
         </button>
         {!saved.length && (
-          <p>Список пуст. Обновите наборы или импортируйте CSV.</p>
+          <p className="muted">
+            Список пуст. Обновите наборы или импортируйте CSV.
+          </p>
         )}
       </details>
       <details className="data-guide">
@@ -143,33 +161,36 @@ export function ProcurementImport(p: ImportProps) {
           вечером. Каталог должен содержать ровно товары CSV.
         </p>
       </details>
-      <p id="proc-demo-help">
-        Оба примера синтетические. Выбор заменит CSV, каталог и источник в
-        форме. Сохранённый набор продолжит использоваться до нового импорта.
-      </p>
-      <div className="controls">
-        {procurementDemos.map((demo) => (
-          <button
-            key={demo.id}
-            type="button"
-            className="secondary"
-            aria-describedby="proc-demo-help"
-            disabled={p.busy}
-            onClick={() => {
-              p.setCsv(demo.csv);
-              setCatalog(editableCatalog(demo.catalog));
-              setFileName("");
-              if (fileInput.current) fileInput.current.value = "";
-              p.setSource("synthetic");
-              p.setBakeryId(demo.id);
-              p.setProvenance(demo.provenance);
-            }}
-          >
-            {demo.label}
-          </button>
-        ))}
+      <h3>{dataset ? "Загрузить другой набор" : "Загрузить историю"}</h3>
+      <div className="demo-picker">
+        <p id="proc-demo-help">
+          Оба примера синтетические. Выбор заменит CSV, каталог и источник в
+          форме. Сохранённый набор продолжит использоваться до нового импорта.
+        </p>
+        <div className="actions">
+          {procurementDemos.map((demo) => (
+            <button
+              key={demo.id}
+              type="button"
+              className="secondary"
+              aria-describedby="proc-demo-help"
+              disabled={p.busy}
+              onClick={() => {
+                p.setCsv(demo.csv);
+                setCatalog(editableCatalog(demo.catalog));
+                setFileName("");
+                if (fileInput.current) fileInput.current.value = "";
+                p.setSource("synthetic");
+                p.setBakeryId(demo.id);
+                p.setProvenance(demo.provenance);
+              }}
+            >
+              {demo.label}
+            </button>
+          ))}
+        </div>
       </div>
-      <div className="control-field">
+      <div className="control-field file-drop">
         <label htmlFor="proc-file">CSV-файл закупки</label>
         <input
           id="proc-file"
@@ -221,7 +242,7 @@ export function ProcurementImport(p: ImportProps) {
         </div>
       </details>
       <h3>Товары и условия поставщика</h3>
-      <p id="catalog-help">
+      <p id="catalog-help" className="section-copy">
         Добавьте каждый товар из файла. Код должен совпадать с кодом в файле.
         Упаковку укажите по условиям поставщика. Пустой максимум означает, что
         ограничение не задано.
@@ -231,7 +252,7 @@ export function ProcurementImport(p: ImportProps) {
           key={index}
           disabled={p.busy}
           aria-describedby="catalog-help"
-          style={{ minInlineSize: 0 }}
+          className="catalog-item"
         >
           <legend>Товар {index + 1}</legend>
           <div className="controls">
@@ -295,6 +316,7 @@ export function ProcurementImport(p: ImportProps) {
           </div>
           <button
             type="button"
+            className="secondary danger"
             disabled={p.busy || catalog.length === 1}
             onClick={() =>
               setCatalog((previous) => previous.filter((_, n) => n !== index))
@@ -346,6 +368,7 @@ export function ProcurementImport(p: ImportProps) {
         />
       </div>
       <button
+        className="cta"
         disabled={
           p.busy || !p.csv.trim() || !p.provenance.trim() || !p.bakeryId.trim()
         }

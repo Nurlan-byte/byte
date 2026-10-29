@@ -8,6 +8,7 @@ import { stockAssumptions } from "./procurement";
 import { validQuantity } from "./quantities";
 import { hasQuantityChanges } from "./workspace";
 import { methodText, procurementNotes } from "./explanations";
+import { Icon } from "./Icon";
 
 export function ProcurementPlanning(p: Parameters<typeof PlanningSection>[0]) {
   useEffect(() => {
@@ -65,13 +66,30 @@ export function ProcurementPlanning(p: Parameters<typeof PlanningSection>[0]) {
       ),
   );
   const dirty = hasQuantityChanges(plan, p.quantities);
+  const generalNotes = plan?.items.length
+    ? procurementNotes(plan.items[0]).slice(0, 2)
+    : [];
   return (
     <section id="planning" aria-labelledby="planning-heading">
-      <h2 id="planning-heading">Сколько заказываем?</h2>
-      <p>
-        Закупаем готовое · прогноз продаж на целевую дату и отдельное решение о
-        заказе.
-      </p>
+      <div className="section-heading">
+        <div>
+          <p className="eyebrow">ЗАКАЗ НА ДЕНЬ</p>
+          <h2 id="planning-heading">Сколько заказываем?</h2>
+          <p className="section-copy">
+            Закупаем готовое · прогноз продаж на целевую дату и отдельное
+            решение о заказе.
+          </p>
+        </div>
+        <span
+          className={`badge ${plan?.status === "confirmed" ? "badge-success" : "badge-neutral"}`}
+        >
+          {plan
+            ? plan.status === "confirmed"
+              ? "Сохранён"
+              : "Черновик"
+            : "Новый заказ"}
+        </span>
+      </div>
       {!dataset && (
         <div className="status-note">
           <p>Выберите историю закупки для нового расчёта.</p>
@@ -80,7 +98,7 @@ export function ProcurementPlanning(p: Parameters<typeof PlanningSection>[0]) {
           </button>
         </div>
       )}
-      <div className="controls">
+      <div className="controls planning-controls">
         <div className="control-field">
           <label htmlFor="proc-date">Дата продаж</label>
           <input
@@ -128,60 +146,73 @@ export function ProcurementPlanning(p: Parameters<typeof PlanningSection>[0]) {
           </select>
         </details>
       </div>
-      <div className="data-guide">
+      <div className="data-guide stock-guide">
         <h3>Допущение о доступном остатке</h3>
         <p>
           Укажите пригодный к продаже остаток на целевую дату, учитывая
           ожидаемые поступления и выбытия. Исторический остаток не переносится
           автоматически.
         </p>
-        <p>
+        <p className="stock-rule">
           Пустое поле = остаток неизвестен: автоматический заказ отключён,
           рекомендация 0 означает ручное решение. Явный 0 означает отсутствие
           пригодного остатка.
         </p>
-        <p>
-          Предложенный заказ учитывает прогноз продаж, указанный остаток,
-          упаковку и лимит. Проверьте, что товар успеет поступить к дате
-          продаж. Прогноз относится к одному дню, а не ко всему сроку поставки.
-        </p>
-        <p>
-          Историческая доступность товара и дефицит могут быть неизвестны.
-          Прогноз описывает наблюдавшиеся продажи и не оценивает весь
-          неудовлетворённый спрос.
-        </p>
-        {(dataset?.catalog ?? []).map((i) => (
-          <div className="control-field" key={i.product_id}>
-            <label htmlFor={`stock-${i.product_id}`}>
-              Доступный остаток: {i.name}
-            </label>
-            <input
-              id={`stock-${i.product_id}`}
-              type="number"
-              min={0}
-              step={1}
-              placeholder="Неизвестен"
-              value={workingStock[i.product_id] ?? ""}
-              disabled={p.busy}
-              onChange={(e) =>
-                selectedDatasetDiffers
-                  ? setAlternateStock({
-                      ...alternateStock,
-                      [i.product_id]: e.target.value,
-                    })
-                  : setStock({ ...stock, [i.product_id]: e.target.value })
-              }
-            />
+        <details>
+          <summary>Как остаток влияет на заказ</summary>
+          <p>
+            Предложенный заказ учитывает прогноз продаж, указанный остаток,
+            упаковку и лимит. Проверьте, что товар успеет поступить к дате
+            продаж. Прогноз относится к одному дню, а не ко всему сроку
+            поставки.
+          </p>
+          <p>
+            Историческая доступность товара и дефицит могут быть неизвестны.
+            Прогноз описывает наблюдавшиеся продажи и не оценивает весь
+            неудовлетворённый спрос.
+          </p>
+        </details>
+        {!!dataset?.catalog?.length && (
+          <div className="stock-grid">
+            {dataset.catalog.map((i) => (
+              <div className="control-field" key={i.product_id}>
+                <label htmlFor={`stock-${i.product_id}`}>
+                  Доступный остаток: {i.name}
+                </label>
+                <input
+                  id={`stock-${i.product_id}`}
+                  type="number"
+                  min={0}
+                  step={1}
+                  placeholder="Неизвестен"
+                  value={workingStock[i.product_id] ?? ""}
+                  disabled={p.busy}
+                  onChange={(e) =>
+                    selectedDatasetDiffers
+                      ? setAlternateStock({
+                          ...alternateStock,
+                          [i.product_id]: e.target.value,
+                        })
+                      : setStock({ ...stock, [i.product_id]: e.target.value })
+                  }
+                />
+              </div>
+            ))}
           </div>
-        ))}
+        )}
       </div>
-      {inputError && <p role="alert">{inputError}</p>}
+      {inputError && (
+        <p role="alert" className="field-error">
+          {inputError}
+        </p>
+      )}
       {dirty && (
         <p className="status-note">
           Есть несохранённые изменения заказа. Новый расчёт заменит их.
         </p>
       )}
       <button
+        className="cta"
         disabled={
           p.busy ||
           !dataset ||
@@ -216,6 +247,33 @@ export function ProcurementPlanning(p: Parameters<typeof PlanningSection>[0]) {
       </button>
       {plan && (
         <>
+          <div className="plan-heading">
+            <div className="section-heading">
+              <div>
+                <p className="eyebrow">ПРОВЕРКА ЗАКАЗА</p>
+                <h3>
+                  Заказ от {plan.order_date} · продажи {plan.target_date}
+                </h3>
+              </div>
+              <span
+                className={`badge ${dirty ? "badge-warning" : plan.status === "confirmed" ? "badge-success" : "badge-neutral"}`}
+              >
+                {dirty
+                  ? "Есть несохранённые изменения"
+                  : plan.status === "confirmed"
+                    ? "Подтверждён"
+                    : "Ожидает проверки"}
+              </span>
+            </div>
+            <p>
+              Источник: {plan.provenance || plan.source} ·{" "}
+              {plan.status === "confirmed" ? "Подтверждён" : "Черновик"}
+            </p>
+            <p>
+              Сохранённый срок поставки: {plan.lead_time_days}{" "}
+              {dayWord(plan.lead_time_days ?? 0)}. Срез: {plan.cutoff}.
+            </p>
+          </div>
           {selectedDatasetDiffers && (
             <p
               className="status-note"
@@ -226,22 +284,33 @@ export function ProcurementPlanning(p: Parameters<typeof PlanningSection>[0]) {
               выбранный сейчас набор данных.
             </p>
           )}
-          <h3>
-            Заказ от {plan.order_date} · продажи {plan.target_date}
-          </h3>
-          <p>
-            Источник: {plan.provenance || plan.source} ·{" "}
-            {plan.status === "confirmed" ? "Подтверждён" : "Черновик"}
-          </p>
-          <p>
-            Сохранённый срок поставки: {plan.lead_time_days} {dayWord(plan.lead_time_days ?? 0)}. Срез:{" "}
-            {plan.cutoff}.
-          </p>
           {stale && (
             <p className="stale-result" data-testid="stale-plan">
               Параметры изменены. Пересчитайте заказ перед подтверждением.
             </p>
           )}
+          <details className="quantity-help">
+            <summary>Как читать заказ</summary>
+            <div className="quantity-guide">
+              <p>
+                <strong>Прогноз продаж</strong> — ожидаемые продажи за один
+                день, без округления к упаковке.
+              </p>
+              <p>
+                <strong>Предложенный заказ</strong> — прогноз за вычетом
+                указанного остатка, кратно упаковке и не выше лимита.
+              </p>
+              <p>
+                <strong>Подтверждённый заказ</strong> — ваше решение. Оно
+                сохраняется только после кнопки «Подтвердить заказ».
+              </p>
+            </div>
+            {generalNotes.map((note) => (
+              <p className="muted" key={note}>
+                {note}
+              </p>
+            ))}
+          </details>
           <div
             className="table plan-table-scroll"
             role="region"
@@ -251,133 +320,187 @@ export function ProcurementPlanning(p: Parameters<typeof PlanningSection>[0]) {
             <table data-testid="procurement-table">
               <thead>
                 <tr>
-                  <th>Товар</th>
-                  <th>Прогноз продаж, шт.</th>
-                  <th>Предложенный заказ, шт.</th>
-                  <th>Подтверждённый заказ, шт.</th>
+                  <th scope="col">Товар</th>
+                  <th scope="col">Прогноз продаж, шт.</th>
+                  <th scope="col">Предложенный заказ, шт.</th>
+                  <th scope="col">Подтверждённый заказ, шт.</th>
+                  <th scope="col">Что учесть</th>
                 </tr>
               </thead>
               <tbody>
-                {plan.items.map((i) => (
-                  <tr key={i.product_id}>
-                    <td>
-                      <strong>{i.name}</strong>
-                      <small>
-                        Упаковка {i.pack_size ?? 1} · лимит{" "}
-                        {i.max_order_qty ?? "не задан"}
-                      </small>
-                      <small>
-                        Допущение об остатке:{" "}
-                        {plan.usable_stock_assumption?.[i.product_id] ??
-                          "неизвестен — ручное решение"}
-                      </small>
-                    </td>
-                    <td data-label="Прогноз продаж, шт.">
-                      {i.forecast_mean == null
-                        ? "Нет оценки"
-                        : i.forecast_mean.toFixed(1)}
-                      <small>Основа: {methodText(i.method)}</small>
-                    </td>
-                    <td data-label="Предложенный заказ, шт.">
-                      {i.recommended_qty}
-                      {procurementNotes(i).map((w, n) => (
-                        <small key={n}>{w}</small>
-                      ))}
-                    </td>
-                    <td data-label="Подтверждённый заказ, шт.">
-                      <label htmlFor={`order-${i.product_id}`}>
-                        Заказ: {i.name}
-                      </label>
-                      <input
-                        id={`order-${i.product_id}`}
-                        type="number"
-                        min={0}
-                        step={i.pack_size ?? 1}
-                        max={i.max_order_qty ?? undefined}
-                        disabled={p.busy || stale}
-                        aria-invalid={
-                          !validQuantity(
-                            p.quantities[i.product_id] ?? "",
-                            i.pack_size ?? 1,
-                            i.max_order_qty ?? Number.MAX_SAFE_INTEGER,
-                          )
-                        }
-                        value={p.quantities[i.product_id] ?? ""}
-                        onChange={(e) =>
-                          p.setQuantities({
-                            ...p.quantities,
-                            [i.product_id]: e.target.value,
-                          })
-                        }
-                      />
-                      <small>
-                        {i.confirmed_qty == null
-                          ? "Ещё не подтверждён"
-                          : `Сохранено: ${i.confirmed_qty}`}
-                      </small>
-                      <small>
-                        Целое количество, кратное упаковке и не выше лимита.
-                      </small>
-                    </td>
-                  </tr>
-                ))}
+                {plan.items.map((i) => {
+                  const itemNotes = procurementNotes(i).slice(2);
+                  const pack = i.pack_size ?? 1;
+                  const value = p.quantities[i.product_id] ?? "";
+                  const valid = validQuantity(
+                    value,
+                    pack,
+                    i.max_order_qty ?? Number.MAX_SAFE_INTEGER,
+                  );
+                  return (
+                    <tr key={i.product_id}>
+                      <td>
+                        <strong>{i.name}</strong>
+                        <small>
+                          Упаковка {pack} · лимит{" "}
+                          {i.max_order_qty ?? "не задан"}
+                        </small>
+                        <small>
+                          Допущение об остатке:{" "}
+                          {plan.usable_stock_assumption?.[i.product_id] ??
+                            "неизвестен — ручное решение"}
+                        </small>
+                      </td>
+                      <td
+                        className="numeric-cell forecast-cell"
+                        data-label="Прогноз продаж, шт."
+                      >
+                        {i.forecast_mean == null
+                          ? "Нет оценки"
+                          : i.forecast_mean.toFixed(1)}
+                      </td>
+                      <td
+                        className="numeric-cell recommendation-cell"
+                        data-label="Предложенный заказ, шт."
+                      >
+                        {i.recommended_qty}
+                      </td>
+                      <td
+                        className="confirmation-cell"
+                        data-label="Подтверждённый заказ, шт."
+                      >
+                        <label
+                          className="sr-only"
+                          htmlFor={`order-${i.product_id}`}
+                        >
+                          Заказ: {i.name}
+                        </label>
+                        <input
+                          id={`order-${i.product_id}`}
+                          type="number"
+                          min={0}
+                          step={pack}
+                          max={i.max_order_qty ?? undefined}
+                          disabled={p.busy || stale}
+                          aria-invalid={!valid}
+                          aria-describedby={`order-help-${i.product_id}`}
+                          value={value}
+                          onChange={(e) =>
+                            p.setQuantities({
+                              ...p.quantities,
+                              [i.product_id]: e.target.value,
+                            })
+                          }
+                        />
+                        <small id={`order-help-${i.product_id}`}>
+                          Целое количество, кратное упаковке и не выше лимита.
+                        </small>
+                        <small>
+                          {i.confirmed_qty == null
+                            ? "Ещё не подтверждён"
+                            : `Сохранено: ${i.confirmed_qty}`}
+                        </small>
+                        {i.confirmed_qty != null &&
+                          value !== String(i.confirmed_qty) && (
+                            <small className="unsaved">
+                              Есть несохранённое изменение
+                            </small>
+                          )}
+                        {!valid && (
+                          <small className="field-error">
+                            Введите 0 или кратное {pack}
+                            {i.max_order_qty != null &&
+                              `, не больше ${i.max_order_qty}`}{" "}
+                            шт.
+                          </small>
+                        )}
+                      </td>
+                      <td>
+                        <strong className="actual-method">
+                          Основа: {methodText(i.method)}
+                        </strong>
+                        {itemNotes.map((w, n) => (
+                          <small key={n}>{w}</small>
+                        ))}
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
           {invalid && (
-            <p role="alert">
+            <p role="alert" className="field-error">
               Исправьте количества заказа: соблюдайте упаковку и лимит.
             </p>
           )}
-          <div className="actions">
-            <button
-              disabled={p.busy || stale || invalid}
-              onClick={() =>
-                void p.run(async () => {
-                  const signature = JSON.stringify([
-                    plan.id,
-                    plan.revision,
-                    p.quantities,
-                  ]);
-                  if (p.confirmation.current?.signature !== signature)
-                    p.confirmation.current = {
-                      signature,
-                      key: crypto.randomUUID(),
-                    };
-                  p.show(
-                    await api<Plan>(`/plans/${plan.id}/confirm`, {
-                      revision: plan.revision,
-                      idempotency_key: p.confirmation.current.key,
-                      quantities: Object.fromEntries(
-                        Object.entries(p.quantities).map(([k, v]) => [
-                          k,
-                          Number(v),
-                        ]),
-                      ),
-                    }),
-                  );
-                  p.setNotice("Заказ подтверждён и сохранён.");
-                  try {
-                    await p.refreshHistory();
-                  } catch {
-                    p.setNotice(
-                      "Заказ сохранён. Обновите историю, чтобы увидеть его в списке.",
+          <div className="confirm-bar">
+            <div>
+              <strong>
+                {stale
+                  ? "Сначала обновите расчёт"
+                  : invalid
+                    ? "Проверьте введённые количества"
+                    : dirty
+                      ? "Сохраните проверенные изменения"
+                      : plan.status === "confirmed"
+                        ? "Заказ сохранён. Можно отправлять поставщику"
+                        : "Подтвердите заказ"}
+              </strong>
+              <p>Проверьте остаток, упаковки и срок поставки.</p>
+            </div>
+            <div className="actions">
+              <button
+                disabled={p.busy || stale || invalid}
+                onClick={() =>
+                  void p.run(async () => {
+                    const signature = JSON.stringify([
+                      plan.id,
+                      plan.revision,
+                      p.quantities,
+                    ]);
+                    if (p.confirmation.current?.signature !== signature)
+                      p.confirmation.current = {
+                        signature,
+                        key: crypto.randomUUID(),
+                      };
+                    p.show(
+                      await api<Plan>(`/plans/${plan.id}/confirm`, {
+                        revision: plan.revision,
+                        idempotency_key: p.confirmation.current.key,
+                        quantities: Object.fromEntries(
+                          Object.entries(p.quantities).map(([k, v]) => [
+                            k,
+                            Number(v),
+                          ]),
+                        ),
+                      }),
                     );
-                  }
-                })
-              }
-            >
-              Подтвердить заказ
-            </button>
-            <a
-              className="button-link secondary"
-              href={p.busy ? undefined : `/api/plans/${plan.id}/export`}
-              download
-            >
-              Экспорт заказа CSV
-            </a>
+                    p.setNotice("Заказ подтверждён и сохранён.");
+                    try {
+                      await p.refreshHistory();
+                    } catch {
+                      p.setNotice(
+                        "Заказ сохранён. Обновите историю, чтобы увидеть его в списке.",
+                      );
+                    }
+                  })
+                }
+              >
+                Подтвердить заказ
+              </button>
+              <a
+                className="button-link secondary"
+                href={p.busy ? undefined : `/api/plans/${plan.id}/export`}
+                aria-disabled={p.busy || undefined}
+                download
+              >
+                <Icon name="download" />
+                Экспорт заказа CSV
+              </a>
+            </div>
           </div>
-          <p>
+          <p className="muted">
             CSV содержит только сохранённые значения. Несохранённые изменения не
             попадут в экспорт.
           </p>
