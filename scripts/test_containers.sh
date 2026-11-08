@@ -46,8 +46,9 @@ chmod 644 "$BAKEPLAN_AUTH_FILE"
 "${compose[@]}" -f deploy/compose.https.yaml run --rm --no-deps gateway caddy validate --config /etc/caddy/Caddyfile.https --adapter caddyfile
 
 "${compose[@]}" up -d --wait --wait-timeout 90
-# No API bypass may be published to the host.
-if [ -n "$("${compose[@]}" port api 8000 2>/dev/null || true)" ]; then
+# No API bypass may be published to the host. Compose v5 prints ":0" for an unpublished port.
+published=$("${compose[@]}" port api 8000 2>/dev/null || true)
+if [ -n "$published" ] && [ "${published##*:}" != "0" ]; then
     echo 'Backend port must not be host-published' >&2
     exit 1
 fi
