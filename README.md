@@ -4,10 +4,15 @@
 
 <h1 align="center">BakePlan</h1>
 
+> **In English.** BakePlan is AI demand forecasting and purchase planning for small businesses: bakeries, cafés, clubs and mini-markets. It turns a CSV of sales history into tomorrow's production plan or supplier order, and it is used by all 4 branches of the Cloud Game Zone computer-club chain. The forecast is hybrid: a same-weekday baseline, a Ridge regression written in NumPy, and a per-product arbiter that turns the model on only where backtesting shows it beats the baseline. 370+ automated tests, CI on Windows and Linux; Digital Taraz top-10 finalist.
+>
+> **[Live demo](https://bakeplan.spotlightdesk.xyz/)** (login `demo`, password `bakeplan-demo`; data resets nightly) · **[Demo video](presentation/BakePlan_CGZ_demo.mp4)**\
+> The interface and the rest of this README are in Russian: in the demo, open «Данные» and press «Загрузить демо CSV».
+
 <p align="center"><b>AI-планирование выпуска и закупок для малого бизнеса — от истории продаж до утверждённого заказа</b></p>
 
 <p align="center">
-  <a href="https://sorted-carries-seems-maker.trycloudflare.com/">Открыть BakePlan</a> ·
+  <a href="https://bakeplan.spotlightdesk.xyz/">Открыть BakePlan</a> (логин <code>demo</code>, пароль <code>bakeplan-demo</code>) ·
   <a href="presentation/BakePlan_CGZ_demo.mp4">Смотреть видеодемонстрацию</a> ·
   <a href="presentation/BakePlan_pitch.pdf">Презентация для жюри</a> ·
   <a href="#интерфейс">Интерфейс</a> ·
