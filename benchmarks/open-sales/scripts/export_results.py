@@ -8,9 +8,38 @@ from collections import defaultdict
 from pathlib import Path
 
 
+FORMATS = {
+    "bakery": ("bakery_forecasts.csv", "observed_net_units", "French bakery"),
+    "cafe": ("cafe_predictions.csv", "actual", None),
+    "vending": ("vending_forecasts.csv", "observed_units", "GuttenPlans x1367"),
+    "grocery": ("completejourney_predictions.csv", "actual", None),
+}
+
+
 def load_rows(folder, filename):
     with (folder / filename).open(encoding="utf-8-sig", newline="") as stream:
         return list(csv.DictReader(stream))
+
+
+def replay_rows(sample, folder):
+    filename, actual, site = FORMATS[sample]
+    if sample == "grocery":
+        info = json.loads((folder / "completejourney_results.json").read_text(encoding="utf-8"))
+        site = str(info["store_id"])
+    rows = []
+    for source in load_rows(folder, filename):
+        rows.append({
+            "date": source["date"], "site": site or source["outlet"],
+            "product": source.get("product") or source["product_id"],
+            "cutoff": source.get("data_cutoff") or source["cutoff"],
+            "training_cutoff": info["training_cutoff"] if sample == "grocery" else source["training_cutoff"],
+            "method": source["method"], "b1": source.get("b1_forecast", source.get("b1")),
+            "bakeplan": source.get("bakeplan_forecast", source.get("bakeplan")),
+            "actual": int(source[actual]),
+        })
+    if not rows:
+        raise ValueError(f"No forecasts for {sample}")
+    return rows
 
 
 def write_csv(path, rows):
@@ -42,7 +71,7 @@ def summary(site, product, rows):
     return out
 
 
-def export(sample, rows, root):
+def grouped_metrics(rows):
     groups = defaultdict(list)
     sites = defaultdict(list)
     for row in rows:
@@ -57,48 +86,24 @@ def export(sample, rows, root):
         summary(site, product, group)
         for (site, product), group in sorted(groups.items())
     )
+    return metrics
+
+
+def export(sample, rows, root):
     folder = root / sample
     folder.mkdir(parents=True, exist_ok=True)
-    write_csv(folder / "metrics.csv", metrics)
+    write_csv(folder / "metrics.csv", grouped_metrics(rows))
     public = [{k: v for k, v in row.items() if k != "actual"} for row in rows]
     write_csv(folder / "forecasts.csv", public)
 
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    for name in ("bakery", "cafe", "vending", "grocery", "out"):
+    for name in (*FORMATS, "out"):
         parser.add_argument(f"--{name}", required=True, type=Path)
     args = parser.parse_args()
-    formats = [
-        ("bakery", "bakery_forecasts.csv", "observed_net_units", "French bakery"),
-        ("cafe", "cafe_predictions.csv", "actual", None),
-        ("vending", "vending_forecasts.csv", "observed_units", "GuttenPlans x1367"),
-        ("grocery", "completejourney_predictions.csv", "actual", None),
-    ]
-    grocery_info = json.loads(
-        (args.grocery / "completejourney_results.json").read_text(encoding="utf-8")
-    )
-    for sample, filename, actual, site in formats:
-        rows = []
-        for source in load_rows(getattr(args, sample), filename):
-            record = {
-                "date": source["date"],
-                "site": grocery_info["store_id"]
-                if sample == "grocery"
-                else site or source["outlet"],
-                "product": source.get("product") or source["product_id"],
-                "cutoff": source.get("data_cutoff") or source["cutoff"],
-                "training_cutoff": source.get("training_cutoff")
-                or grocery_info["training_cutoff"],
-                "method": source["method"],
-                "b1": source.get("b1_forecast", source.get("b1")),
-                "bakeplan": source.get("bakeplan_forecast", source.get("bakeplan")),
-                "actual": int(source[actual]),
-            }
-            rows.append(record)
-        if not rows:
-            raise ValueError(f"No forecasts for {sample}")
-        export(sample, rows, args.out)
+    for sample in FORMATS:
+        export(sample, replay_rows(sample, getattr(args, sample)), args.out)
 
 
 if __name__ == "__main__":

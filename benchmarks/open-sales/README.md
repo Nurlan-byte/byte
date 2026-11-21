@@ -34,20 +34,31 @@
 
 ## Повторный запуск
 
-Команды рассчитаны на запуск из корня репозитория в окружении Python 3.14. Для исторического сравнения используйте опубликованную с этим отчётом версию дерева. Проверка требует NumPy, для чтения данных панели также нужны pandas, pyreadr и база часовых поясов. Полные парные результаты с фактическими наблюдениями сохраняются в локальной папке `private`.
+Команды рассчитаны на запуск из корня репозитория в окружении Python 3.14. Скрипты берутся из текущего дерева, а историческое ядро — из отдельной копии на коммите `ac3c2af`. Обучение и прогноз требуют NumPy, для чтения данных панели также нужны pandas, pyreadr и база часовых поясов. Полные парные результаты с фактическими наблюдениями сохраняются в локальной папке `private`.
 
 ```sh
+git worktree add --detach ../bakeplan-open-sales-core ac3c2af5a4535c6fcd35ccd7ebdd41c4f7bac4cb
 python -m pip install numpy==2.5.3 pandas==3.1.1 pyreadr==0.5.9 tzdata
 ```
 
 Поместите исходные архивы Kaggle в `private/bakery.zip` и `private/vending.zip`, а файлы Mendeley `Transactions.csv` и `Products.csv` в `private/cafe-source/`. Скрипт панели загружает закреплённые таблицы в указанную папку при первом запуске. Контрольные суммы входных файлов проверяются при чтении. [ZIP пекарни, v1](https://api.kaggle.com/v1/datasets/download/matthieugimbert/french-bakery-daily-sales?datasetVersionNumber=1) · [ZIP вендинга, v5](https://api.kaggle.com/v1/datasets/download/awesomeasingh/vending-machine-sales?datasetVersionNumber=5) · [Файлы кафе, v2](https://data.mendeley.com/datasets/kcgf45y24m/2)
 
 ```sh
-python benchmarks/open-sales/scripts/evaluate_bakery.py --repo . --input private/bakery.zip --out private/bench/bakery
-python benchmarks/open-sales/scripts/evaluate_cafe.py --repo . --data private/cafe-source --out private/bench/cafe
-python benchmarks/open-sales/scripts/evaluate_vending.py --repo . --input private/vending.zip --out private/bench/vending
-python benchmarks/open-sales/scripts/evaluate_grocery.py --repo . --data private/grocery-source --out private/bench/grocery
+python benchmarks/open-sales/scripts/evaluate_bakery.py --repo ../bakeplan-open-sales-core --input private/bakery.zip --out private/bench/bakery
+python benchmarks/open-sales/scripts/evaluate_cafe.py --repo ../bakeplan-open-sales-core --data private/cafe-source --out private/bench/cafe
+python benchmarks/open-sales/scripts/evaluate_vending.py --repo ../bakeplan-open-sales-core --input private/vending.zip --out private/bench/vending
+python benchmarks/open-sales/scripts/evaluate_grocery.py --repo ../bakeplan-open-sales-core --data private/grocery-source --out private/bench/grocery
 python benchmarks/open-sales/scripts/export_results.py --bakery private/bench/bakery --cafe private/bench/cafe --vending private/bench/vending --grocery private/bench/grocery --out private/comparison
 python benchmarks/open-sales/scripts/weekly.py --bakery-forecasts private/bench/bakery/bakery_forecasts.csv --cafe-forecasts private/bench/cafe/cafe_predictions.csv --out private/comparison/weekly.csv
-python benchmarks/open-sales/scripts/check_alternatives.py --repo . --french-source private/bakery.zip --french-forecasts private/bench/bakery/bakery_forecasts.csv --cafe-source private/cafe-source/Transactions.csv --cafe-forecasts private/bench/cafe/cafe_predictions.csv --out private/comparison/secondary_b0_metrics.csv
+python benchmarks/open-sales/scripts/check_alternatives.py --repo ../bakeplan-open-sales-core --french-source private/bakery.zip --french-forecasts private/bench/bakery/bakery_forecasts.csv --cafe-source private/cafe-source/Transactions.csv --cafe-forecasts private/bench/cafe/cafe_predictions.csv --out private/comparison/secondary_b0_metrics.csv
 ```
+
+## Проверка после изменения
+
+Когда готовы четыре локальных файла с прогнозами и фактами и отчёт панели `completejourney_results.json`, повторную сверку можно выполнить стандартным Python. Команда читает эти файлы и опубликованные `results/<выборка>/forecasts.csv` и `metrics.csv`. Она проверяет уникальность пар «точка, товар, дата», проверочный период, горизонт в два дня и то, что записанная дата обучения не позже среза прогноза. Для каждой пары сверяются оба прогноза и выбранный метод, для каждого опубликованного среза заново считаются число пар, частота ML, MAE, WAPE и изменение ошибки.
+
+```sh
+python benchmarks/open-sales/scripts/verify_results.py --bakery private/bench/bakery --cafe private/bench/cafe --vending private/bench/vending --grocery private/bench/grocery
+```
+
+Успех означает, что показатели исторического ядра `ac3c2af` воспроизводятся по сохранённым исходам. Команда выводит JSON, включая отрицательное снижение ошибки там, где лучше B1, и завершает работу с ошибкой при расхождении. Для оценки изменённой модели нужен отдельный прогон новой версии на заранее выбранном проверочном периоде.
