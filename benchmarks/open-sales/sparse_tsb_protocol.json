@@ -1,0 +1,28 @@
+{
+  "id": "sparse-pos-tsb-1",
+  "baseline_commit": "8012cffd0f7e462c1870539921aa3e7fc08c2993",
+  "target": "sold_units",
+  "panel_lf_sha256": {
+    "m5": "2256e9ab27ca7f3dbff687717ed05d8888a378f29b02ecce902ed9af63f047e2",
+    "vending": "3c5b1d1c46bf4477045166e71eb0c4d426be180416037af8904555bd6eebc7d5"
+  },
+  "horizon_days": 2,
+  "development_days": 21,
+  "holdout_days": 28,
+  "sources": "Three predefined M5 FOODS store panels, prepared using only pre-development sales for product selection. The six previously published vending machine SKUs form a separate regression group. M5 units are retail unit sales, vending units are registered sales on observed machine days. Availability and true unmet demand are unknown.",
+  "split": "For each source, reserve its last 28 observed site dates. Development is the most recent 21 observed dates at or before the first holdout target minus two calendar days. Include every selected product on every target date in the coverage denominator. Missing observations are unknown. Score all three methods only on the same available item-dates.",
+  "eligibility": "Only physical unit forecasts with at least 28 observed days in the last 56 calendar days and more than half of observations equal to zero can change. Others retain the shipping forecast. TSB uses known observations over the last 56 calendar days in time order, including confirmed zeros, never filling gaps. No calendar, store ID or future covariates.",
+  "tsb": {"alpha_d": 0.1, "alpha_p": 0.1},
+  "candidates": ["half_cap_above_recent_mean", "half_cap_tsb", "half_tsb", "tsb"],
+  "estimators": "tsb is the unrounded StatsForecast TSB mean. half_tsb is its equal-weight blend with production. half_cap_tsb only applies half the downward correction where TSB is below production. half_cap_above_recent_mean uses the higher of TSB and the average observed units over the last 56 days as this downward cap.",
+  "selection": "Select one global candidate on development. First minimize the number of source-level breaches of the holdout limits for MAE or absolute bias increase, then minimize the equally weighted mean of per-source MAE ratios against production. Ties use candidate list order. Freeze before scoring holdout; no source-specific retuning.",
+  "gate": {
+    "mean_relative_mae_improvement_min_pct": 1.0,
+    "per_source_mae_increase_max_pct": 0.0,
+    "per_source_absolute_volume_bias_increase_max_pp": 2.0,
+    "minimum_paired_coverage_pct": 80.0,
+    "minimum_eligible_pairs_per_source": 28,
+    "minimum_eligible_positive_days_per_source": 5,
+    "description": "All four groups must be present with unchanged candidate coverage versus shipping, a positive absolute-error denominator, and the minimum evidence per intermittent cohort. The candidate must reduce MAE across eligible cases on average to consider promotion. This is an external experiment, not the two-club pilot."
+  }
+}

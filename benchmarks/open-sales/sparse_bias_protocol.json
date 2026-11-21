@@ -1,0 +1,15 @@
+{
+  "id": "sparse-pos-bias-cap-1",
+  "reference": "sparse_tsb_protocol.json",
+  "baseline_commit": "8012cffd0f7e462c1870539921aa3e7fc08c2993",
+  "candidate": "bias_guarded_half_cap_tsb",
+  "candidate_count": 1,
+  "bias_window_calendar_days": 14,
+  "minimum_bias_pairs": 7,
+  "formula": "For a target d use the unchanged shipping forecast prod(d | cutoff=d-2). If eligible under the reference TSB rule, compute the mean signed shipping error (prediction minus recorded sales) for this same SKU over the 14 calendar dates ending at cutoff inclusive. Each prior shipping prediction uses its own cutoff=t-2. Use only dates with both a recorded actual and a shipping forecast. With fewer than 7 pairs or a nonpositive mean, return production unchanged. Otherwise subtract the smaller of that positive mean and the reference half_cap_tsb downward change. No tuning.",
+  "regression_groups": ["m5_CA_1", "m5_TX_1", "m5_WI_1", "vending"],
+  "confirmation_groups": ["m5_CA_2", "m5_TX_2", "m5_WI_2"],
+  "confirmation_selection": "Use the same frozen M5 archive, d_1634..d_1745 selection window, 2 products per frequency stratum per store and missing-data policy as prepare_m5.py. Only the three store IDs change. New stores have not been scored by the preceding experiment. The same retail chain and dates can share demand shocks.",
+  "evaluation": "Use the last 28 observed store dates, 6 preselected products each, from the reference walk-forward protocol. The old four sources are a regression panel after prior inspection. The new three stores form a separate confirmation panel. Require both panels independently to meet all reference thresholds: mean source-level relative MAE improvement >=1%, no source-level MAE increase, absolute volume bias increase <=2pp, paired coverage >=80%, at least 28 sparse eligible pairs and five positive sparse days per group, positive mean improvement among eligible cohorts. Eligibility for the cohort is the fixed reference sparsity criterion before the bias check. Evaluation of this single candidate ends after these two panels.",
+  "baseline": "Unrounded forecast_mean from the shipping Chronos-2/B1 routing engine, same physical units and horizon as reference. B1 on the same targets is reported for comparison. No production change unless both panels pass."
+}
