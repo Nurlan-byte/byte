@@ -17,7 +17,7 @@ async function startApi(
   day: string,
   provision: boolean,
   request: APIRequestContext,
-  outage = false,
+  mode: "fresh" | "outage" | "stale" = "fresh",
 ) {
   const venv = path.resolve(
     process.platform === "win32"
@@ -38,7 +38,8 @@ async function startApi(
         BAKEPLAN_POS_ENABLED: "1",
         BAKEPLAN_POS_MASTER_KEY_FILE: path.join(folder, "master.key"),
         POS_TEST_PROVISION: provision ? "1" : "0",
-        POS_TEST_OUTAGE: outage ? "1" : "0",
+        POS_TEST_OUTAGE: mode === "outage" ? "1" : "0",
+        POS_TEST_LAST_RECEIPT: mode === "stale" ? "2026-10-19" : "",
         POS_TEST_NOW: day + "T01:00:00+00:00",
         POS_TEST_PORT_FILE: portFile,
         POS_TEST_STOP_FILE: stopFile,
@@ -219,7 +220,7 @@ test("one POS key updates tomorrow’s forecast after a server restart while the
     );
     await page.goto("about:blank");
     await server.stop();
-    server = await startApi(folder, "2026-10-21", false, request, true);
+    server = await startApi(folder, "2026-10-21", false, request, "outage");
     list = server.base + "/api/pos/connections";
     await expect
       .poll(async () => (await (await request.get(list)).json())[0]?.status)
@@ -234,8 +235,19 @@ test("one POS key updates tomorrow’s forecast after a server restart while the
     await expect(page.locator("#panel-model")).toContainText(
       "последний успешный прогноз от 2026-10-20",
     );
+    // A healthy HTTP response containing only old receipts must not advance the forecast.
+    await page.goto("about:blank");
+    await server.stop();
+    server = await startApi(folder, "2026-10-22", false, request, "stale");
+    list = server.base + "/api/pos/connections";
+    await expect.poll(async () => (await (await request.get(list)).json())[0]?.error)
+      .toContain("не подтвердила продажи");
+    await page.goto("/");
+    await expect(page.getByTestId("forecast-result")).toContainText("2026-10-21");
     await navigate(page, "Данные");
     await openDetails(page, "Подключить кассу по ключу API");
+    await expect(daily).toContainText("Продажи подтверждены по 2026-10-19");
+    await expect(daily).toContainText("не подтвердила продажи");
     await daily.getByRole("button", { name: "Отключить кассу" }).click();
     await expect(daily).toContainText(
       "Загруженные продажи и созданные планы сохранятся",

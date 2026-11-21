@@ -20,7 +20,7 @@ from pathlib import Path
 from backend import model_storage
 from backend.storage import SQLITE_SCHEMA_COLUMNS as COLUMNS
 from backend.storage import SQLITE_SCHEMA_VERSION as SCHEMA_VERSION
-from backend.storage import SQLITE_V3_COLUMNS, SQLITE_V4_COLUMNS
+from backend.storage import SQLITE_V3_COLUMNS, SQLITE_V4_COLUMNS, SQLITE_V5_COLUMNS
 
 FORMAT = "bakeplan-sqlite-snapshot-1"
 
@@ -72,7 +72,8 @@ def inspect_database(path):
             if con.execute("PRAGMA integrity_check").fetchall() != [("ok",)]:
                 raise SnapshotError("SQLite integrity_check failed")
             version = con.execute("PRAGMA user_version").fetchone()[0]
-            expected_columns = {3: SQLITE_V3_COLUMNS, 4: SQLITE_V4_COLUMNS, SCHEMA_VERSION: COLUMNS}.get(version)
+            expected_columns = {3: SQLITE_V3_COLUMNS, 4: SQLITE_V4_COLUMNS, 5: SQLITE_V5_COLUMNS,
+                                SCHEMA_VERSION: COLUMNS}.get(version)
             if expected_columns is None:
                 raise SnapshotError(f"Unsupported BakePlan schema version {version}")
             tables = {
@@ -158,6 +159,31 @@ def inspect_database(path):
                         or snapshot.get("targetDate") != target
                     ):
                         raise SnapshotError("POS forecast does not match its saved dataset and target")
+            if "pos_fresh_days" in expected_columns:
+                if con.execute("""
+                    SELECT 1 FROM pos_fresh_days WHERE observed_through IS NOT date(business_day, '-1 day')
+                    OR julianday(fresh_at) IS NULL
+                    OR (ping_token IS NOT NULL AND next_ping_at IS NULL)
+                    OR (pinged_at IS NOT NULL AND (ping_token IS NOT NULL OR next_ping_at IS NOT NULL
+                        OR julianday(pinged_at) IS NULL OR julianday(pinged_at)<julianday(fresh_at)))
+                    UNION ALL
+                    SELECT 1 FROM pos_fresh_days f JOIN pos_connections c
+                        ON c.id=f.connection_id AND c.last_success_day=f.business_day
+                    WHERE json_extract(c.forecast,'$.observed_through') IS NOT f.observed_through
+                       OR json_extract(c.forecast,'$.result.cutoff') IS NOT f.observed_through
+                       OR json_extract(c.forecast,'$.cutoff') IS NOT f.observed_through
+                       OR json_extract(c.forecast,'$.result.target_date') IS NOT c.target_date
+                       OR c.target_date IS NOT date(f.business_day,'+1 day') LIMIT 1
+                """).fetchone():
+                    raise SnapshotError("Invalid POS freshness receipt")
+                if con.execute("""
+                    SELECT 1 FROM pos_connections c WHERE NOT EXISTS (
+                        SELECT 1 FROM pos_monitoring_epochs e WHERE e.connection_id=c.id AND e.ended_at IS NULL)
+                    UNION ALL
+                    SELECT 1 FROM pos_monitoring_epochs e WHERE e.ended_at IS NULL AND NOT EXISTS (
+                        SELECT 1 FROM pos_connections c WHERE c.id=e.connection_id) LIMIT 1
+                """).fetchone():
+                    raise SnapshotError("Inconsistent POS monitoring period")
             counts = {
                 table: con.execute(f"SELECT count(*) FROM {table}").fetchone()[0]
                 for table in sorted(expected_columns)

@@ -17,6 +17,7 @@ from backend.procurement_imports import parse_procurement_csv
 from backend.procurement_planning import (
     MAX_ORDER_QTY,
     assess_order_quantity,
+    pack_adjustment,
     prepare_procurement_items,
 )
 from backend.schemas import ConfirmRequest, ImportRequest, PlanRequest
@@ -349,7 +350,8 @@ def _create_procurement_plan(body: PlanRequest, today: date, dataset: dict):
 
 
 def confirm_plan(ident: str, body: ConfirmRequest, today: date):
-    encoded_body = json.dumps(body.model_dump(), sort_keys=True)
+    # Old idempotency receipts were encoded before reasons existed.
+    encoded_body = json.dumps(body.model_dump(exclude_none=True), sort_keys=True)
     with connection() as con:
         con.execute("BEGIN IMMEDIATE")
         previous = con.execute(
@@ -384,6 +386,9 @@ def confirm_plan(ident: str, body: ConfirmRequest, today: date):
             raise ServiceError(409, "План изменён. Перезагрузите актуальную версию")
         if set(body.quantities) != {p["product_id"] for p in plan["items"]}:
             raise ServiceError(422, "Укажите количество для каждого товара из сохранённого плана")
+        reasons = body.override_reasons
+        if reasons and (plan.get("planning_kind") != "procurement" or reasons.keys() - body.quantities.keys()):
+            raise ServiceError(422, "Причины правок должны относиться к позициям этого заказа.")
         for item in plan["items"]:
             q = body.quantities[item["product_id"]]
             if plan.get("planning_kind", "production") == "procurement":
@@ -395,6 +400,13 @@ def confirm_plan(ident: str, body: ConfirmRequest, today: date):
                     or (not item.get("target_is_open", True) and q != 0)
                 ):
                     raise ServiceError(422, f"{item['name']}: order violates pack, maximum or closed-day rule")
+                reason = (reasons or {}).get(item["product_id"])
+                if reason is not None:
+                    if not pack_adjustment(item, q):
+                        raise ServiceError(422, "Причину можно указать при изменении предложения хотя бы на упаковку.")
+                    item["override_reason"] = reason
+                elif reasons is not None or q != item.get("confirmed_qty"):
+                    item.pop("override_reason", None)
                 item["confirmed_qty"] = q
                 if "recommended_packs" in item:
                     assessment = assess_order_quantity(

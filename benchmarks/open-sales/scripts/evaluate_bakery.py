@@ -30,7 +30,7 @@ def write_csv(path, values):
         writer.writerows(values)
 
 
-def get_data(path):
+def get_data(path, ranks=slice(0, 6)):
     with zipfile.ZipFile(path) as handle:
         raw = handle.read("Bakery sales.csv")
     if hashlib.sha256(raw).hexdigest() != SOURCE_HASH:
@@ -66,7 +66,7 @@ def get_data(path):
         net_units[day][sku] += units
         if day <= TRAIN_END:
             training_units[sku] += units
-    ranked = sorted(training_units, key=lambda sku: (-training_units[sku], sku))[:6]
+    ranked = sorted(training_units, key=lambda sku: (-training_units[sku], sku))[ranks]
     active_days = sorted(
         day for day, by_sku in net_units.items() if sum(by_sku.values()) > 0
     )

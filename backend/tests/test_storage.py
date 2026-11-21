@@ -114,7 +114,7 @@ def test_concurrent_database_startup_preserves_snapshots(db, existing):
         assert con.execute("PRAGMA user_version").fetchone()[0] == storage.SQLITE_SCHEMA_VERSION
     backups = list(db.parent.glob("*.bak"))
     if existing:
-        assert {p.name for p in backups} == {f"{db.name}.pre-v{n}.bak" for n in (2, 3, 4, 5)}
+        assert {p.name for p in backups} == {f"{db.name}.pre-v{n}.bak" for n in (2, 3, 4, 5, 6)}
         for backup in backups:
             with storage.connection(backup) as con:
                 assert storage.fetch(con, "datasets", "legacy") == dataset("legacy")

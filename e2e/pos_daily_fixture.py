@@ -3,7 +3,7 @@
 import os
 import threading
 import time
-from datetime import datetime
+from datetime import date, datetime
 from pathlib import Path
 from urllib.error import URLError
 
@@ -29,7 +29,7 @@ if __name__ == "__main__":
     vendor = (
         UnavailablePoster()
         if os.environ.get("POS_TEST_OUTAGE") == "1"
-        else PosterFixture()
+        else PosterFixture(date.fromisoformat(os.environ["POS_TEST_LAST_RECEIPT"]) if os.environ.get("POS_TEST_LAST_RECEIPT") else None)
     )
     pos_providers.build_opener = lambda *args: vendor
     config = uvicorn.Config(app, host="127.0.0.1", port=0, log_level="warning")

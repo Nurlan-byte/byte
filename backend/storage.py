@@ -10,7 +10,7 @@ from pathlib import Path
 
 SCHEMA_VERSION = "history-1"
 MAX_SQLITE_INTEGER = 2**63 - 1
-SQLITE_SCHEMA_VERSION = 5
+SQLITE_SCHEMA_VERSION = 6
 SQLITE_V3_COLUMNS = {
     "datasets": {
         "id", "payload", "schema_version", "source", "content_hash", "created_at",
@@ -36,13 +36,19 @@ SQLITE_V4_COLUMNS = {
     },
     "delivery_receipts": {"delivery_id", "idempotency_key", "quantity", "received_at", "response"},
 }
-SQLITE_SCHEMA_COLUMNS = {
+SQLITE_V5_COLUMNS = {
     **SQLITE_V4_COLUMNS,
     "pos_connections": {
         "id", "provider", "bakery_id", "location_id", "location_name", "days", "city", "ciphertext",
         "updated_at", "last_attempt_at", "attempt_day", "last_success_day", "error", "retry_at",
         "lease_token", "lease_until", "dataset_id", "forecast", "target_date",
     },
+}
+SQLITE_SCHEMA_COLUMNS = {
+    **SQLITE_V5_COLUMNS,
+    "pos_monitoring_epochs": {"connection_id", "started_at", "ended_at"},
+    "pos_fresh_days": {"connection_id", "business_day", "observed_through", "fresh_at",
+                       "pinged_at", "ping_token", "next_ping_at"},
 }
 
 
@@ -106,7 +112,8 @@ def initialize_database(path=None):
     with connection(path) as con:
         if con.execute("PRAGMA user_version").fetchone()[0] == SQLITE_SCHEMA_VERSION:
             return
-        migrations = ((2, _migrate_v2), (3, _migrate_v3), (4, _migrate_v4), (5, _migrate_v5))
+        migrations = ((2, _migrate_v2), (3, _migrate_v3), (4, _migrate_v4), (5, _migrate_v5),
+                      (6, _migrate_v6))
         while True:
             con.execute("BEGIN IMMEDIATE")
             version = con.execute("PRAGMA user_version").fetchone()[0]
@@ -256,6 +263,29 @@ def _migrate_v5(con):
         )
     """)
     con.execute("PRAGMA user_version=5")
+
+
+def _migrate_v6(con):
+    con.execute("""
+        CREATE TABLE pos_monitoring_epochs (
+            connection_id TEXT PRIMARY KEY NOT NULL, started_at TEXT NOT NULL, ended_at TEXT
+        )
+    """)
+    con.execute("""
+        CREATE TABLE pos_fresh_days (
+            connection_id TEXT NOT NULL REFERENCES pos_monitoring_epochs(connection_id),
+            business_day TEXT NOT NULL, observed_through TEXT NOT NULL, fresh_at TEXT NOT NULL,
+            pinged_at TEXT, ping_token TEXT, next_ping_at TEXT,
+            PRIMARY KEY(connection_id, business_day)
+        )
+    """)
+    # Legacy snapshots have no evidence of timely, fresh publications.
+    con.execute("INSERT INTO pos_monitoring_epochs SELECT id, ?, NULL FROM pos_connections", (timestamp(),))
+    con.execute("""
+        UPDATE pos_connections SET error='freshness_unverified'
+        WHERE last_success_day IS NOT NULL AND error IS NULL AND lease_token IS NULL
+    """)
+    con.execute("PRAGMA user_version=6")
 
 
 def fetch(con, table, ident):

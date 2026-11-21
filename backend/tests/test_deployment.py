@@ -133,6 +133,8 @@ def test_backup_restore_preserves_all_state_and_retry_keys(
         "deliveries": 1,
         "delivery_receipts": 1,
         "pos_connections": 0,
+        "pos_monitoring_epochs": 0,
+        "pos_fresh_days": 0,
     }
     assert snapshots.verify_backup(backup) == summary
     restored = tmp_path / "restored.sqlite3"

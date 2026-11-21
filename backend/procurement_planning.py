@@ -14,6 +14,25 @@ CAP_WARNINGS = {
 }
 
 
+def has_order_suggestion(item):
+    """Older plans can omit eligibility; count only an identifiable automatic suggestion."""
+    return (
+        item.get("target_is_open") is not False
+        and item.get(
+            "automatic_eligible", item.get("method") in ("ML", "B1", "Chronos-2")
+        )
+        and isinstance(item.get("recommended_qty"), int)
+        and (item.get("pack_size") or 0) > 0
+    )
+
+
+def pack_adjustment(item, quantity):
+    return (
+        has_order_suggestion(item)
+        and abs(quantity - item["recommended_qty"]) >= item["pack_size"]
+    )
+
+
 def _quantity_limit(maximum: int | None) -> int:
     return MAX_ORDER_QTY if maximum is None else min(maximum, MAX_ORDER_QTY)
 

@@ -10,8 +10,9 @@ from typing import Annotated
 from uuid import UUID
 
 from fastapi import APIRouter, Path, Response
+from opentelemetry.trace import StatusCode
 
-from backend import pos, pos_connection_store as store, pos_providers, pos_vault
+from backend import pos, pos_connection_store as store, pos_monitoring, pos_providers, pos_vault
 from backend.context_routes import forecast_for_day
 from backend.dataset_identity import identity
 from backend.errors import ServiceError
@@ -30,6 +31,7 @@ ERROR_MESSAGES = {
     "vault_unavailable": "Серверу недоступен сохранённый ключ. Проверьте настройку защищённого хранилища.",
     "forecast_unavailable": "Не удалось пересчитать прогноз. BakePlan повторит обновление.",
     "sync_failed": "Не удалось обновить продажи. Проверьте период и доступ к кассе.",
+    "freshness_unverified": "Касса не подтвердила продажи за последний завершённый день. BakePlan повторит проверку.",
 }
 
 
@@ -52,6 +54,7 @@ def public_connection(row):
         "status": row["status"],
         "dataset_id": row["dataset_id"],
         "last_success_day": row["last_success_day"],
+        "last_observed_day": row["last_observed_day"],
         "last_attempt_at": row["last_attempt_at"],
         "error": ERROR_MESSAGES.get(row["error"]),
     }
@@ -59,6 +62,17 @@ def public_connection(row):
 
 def _update(claim, day, clock, verified=None):
     """Publish the new pair only while this worker still owns the connection."""
+    with pos_monitoring.span("pos.daily", **{"bakeplan.connection.id": claim["id"], "bakeplan.day": str(day)}) as span:
+        published, outcome = _update_stages(claim, day, clock, verified)
+        span.set_attribute("bakeplan.outcome", outcome)
+        if outcome != "fresh":
+            span.set_status(StatusCode.ERROR)
+    if outcome == "fresh":
+        pos_monitoring.notify_ready(clock, only=claim["id"])
+    return published
+
+
+def _update_stages(claim, day, clock, verified):
     failure = "vault_unavailable"
     try:
         if verified is None:
@@ -72,16 +86,32 @@ def _update(claim, day, clock, verified=None):
         else:
             reader, outlet = verified
         failure = "sync_failed"
-        imported = pos.import_outlet(reader, outlet, claim["days"], claim["city"], day)
-        dataset_id = imported["dataset"]["id"]
+        with pos_monitoring.span("pos.import"):
+            imported = pos.import_outlet(reader, outlet, claim["days"], claim["city"], day, require_last_day=True)
+            dataset = imported["dataset"]
+            dataset_id = dataset["id"]
+            observed = max((r["date"] for r in dataset["rows"]), default=None)
+            if dataset["bakery_id"] != claim["bakery_id"]:
+                raise ServiceError(422, "Неверный филиал в импорте")
+            if observed != str(day - timedelta(days=1)):
+                # These providers supply receipts, with no closing-shift watermark.
+                # A gap can mean a closed or zero-sales day, or an outdated feed.
+                failure = "freshness_unverified"
+                raise ServiceError(422, "Нет подтверждения за нужную дату")
         failure = "forecast_unavailable"
-        forecast = forecast_for_day(dataset_id, day)
-        forecast["warnings"] = list(
-            dict.fromkeys(imported["context_warnings"] + forecast["warnings"])
-        )
-        return store.finish(claim, dataset_id, forecast, day, clock())
+        with pos_monitoring.span("pos.forecast"):
+            forecast = forecast_for_day(dataset_id, day)
+            forecast["observed_through"] = observed
+            forecast["warnings"] = list(
+                dict.fromkeys(imported["context_warnings"] + forecast["warnings"])
+            )
+        with pos_monitoring.span("pos.publish"):
+            published = store.finish(claim, dataset_id, forecast, day, clock())
+        return published, "fresh" if published else "superseded"
     except pos.NoSales:
         failure = "no_sales"
+    except pos.StaleSales:
+        failure = "freshness_unverified"
     except ServiceError as error:
         if failure in {"branch_changed", "sync_failed"}:
             if error.status_code in {401, 403}:
@@ -92,7 +122,7 @@ def _update(claim, day, clock, verified=None):
         # Vendor exceptions can contain a credential in a request URL or message.
         # Keep only a fixed stage/error code and preserve the previous successful pair.
         pass
-    return store.fail(claim, failure, clock())
+    return store.fail(claim, failure, clock()), failure
 
 
 @router.post("")
@@ -161,7 +191,7 @@ def latest(ident: ConnectionID):
 @router.delete("/{ident}", status_code=204)
 def disconnect(ident: ConnectionID):
     pos.require_enabled()
-    store.revoke(str(ident))
+    store.revoke(str(ident), now_utc())
     return Response(status_code=204)
 
 
@@ -177,6 +207,7 @@ def run_due(now=None, stop=None):
         if claim is None:
             break
         _update(claim, date.fromisoformat(claim["day"]), clock)
+    pos_monitoring.notify_ready(clock)
 
 
 def _loop(stop):

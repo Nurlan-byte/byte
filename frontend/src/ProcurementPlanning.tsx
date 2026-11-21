@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import type { PlanWorkflowProps } from "./PlanningSection";
 import type { DeliverySource, ExpectedDelivery, Plan } from "./types";
+import { overrideReasonLabels, type OverrideReason } from "./types";
 import { ExpectedDeliveries } from "./ExpectedDeliveries";
 import { DeliveryRegistry } from "./DeliveryRegistry";
 import { api } from "./api";
@@ -17,6 +18,8 @@ import { SupplierOrderText } from "./SupplierOrderText";
 export function ProcurementPlanning(p: PlanWorkflowProps) {
   const runReplacingPlan = p.runReplacingPlan ?? p.run;
   const plan = p.plan?.planning_kind === "procurement" ? p.plan : null;
+  const [reasonEdits, setReasonEdits] = useState<Record<string, {quantity: string; reason: OverrideReason | ""}>>({});
+  useEffect(() => setReasonEdits({}), [plan?.id, plan?.revision]);
   const [reviewSelection, setReviewSelection] = useState<Set<string> | null>(
     null,
   );
@@ -115,6 +118,15 @@ export function ProcurementPlanning(p: PlanWorkflowProps) {
     return { item, value, stock, ...reviewOrderItem(item, value, stock) };
   });
   const invalid = orderRows.some((row) => !row.valid);
+  const overrideReasons: Record<string, OverrideReason> = {};
+  for (const {item, value, valid} of orderRows) {
+    if (!valid || item.target_is_open === false || !item.automatic_eligible ||
+      Math.abs(Number(value) - item.recommended_qty) < (item.pack_size ?? 1)) continue;
+    const edit = reasonEdits[item.product_id];
+    const reason = edit?.quantity === value ? edit.reason :
+      Number(value) === item.confirmed_qty ? item.override_reason : undefined;
+    if (reason) overrideReasons[item.product_id] = reason;
+  }
   const reviewRows = orderRows.filter((row) => row.reasons.length > 0);
   // Keep corrected lines in the review until the operator leaves the filter.
   const visibleRows = reviewSelection
@@ -576,6 +588,28 @@ export function ProcurementPlanning(p: PlanWorkflowProps) {
                             ? `${coverage.packs} уп. по ${pack} шт.`
                             : "Целое количество, кратное упаковке и не выше лимита."}
                         </small>
+                        {valid && i.target_is_open !== false && i.automatic_eligible &&
+                          Math.abs(Number(value) - i.recommended_qty) >= pack &&
+                          (Number(value) !== i.confirmed_qty ? (
+                            <label>
+                              Причина правки (необязательно)
+                              <select
+                                aria-label={`Причина правки: ${i.name}`}
+                                value={overrideReasons[i.product_id] ?? ""}
+                                disabled={p.busy || stale}
+                                onChange={(event) => setReasonEdits({
+                                  ...reasonEdits,
+                                  [i.product_id]: {quantity: value, reason: event.target.value as OverrideReason | ""},
+                                })}
+                              >
+                                <option value="">Не указана</option>
+                                {Object.entries(overrideReasonLabels).map(([key, label]) =>
+                                  <option key={key} value={key}>{label}</option>)}
+                              </select>
+                            </label>
+                          ) : (
+                            <small>Причина правки: {i.override_reason ? overrideReasonLabels[i.override_reason] : "Не указана"}</small>
+                          ))}
                         <small>
                           {i.confirmed_qty == null
                             ? "Ещё не подтверждён"
@@ -651,6 +685,7 @@ export function ProcurementPlanning(p: PlanWorkflowProps) {
                       plan.id,
                       plan.revision,
                       p.quantities,
+                      overrideReasons,
                     ]);
                     if (p.confirmation.current?.signature !== signature)
                       p.confirmation.current = {
@@ -661,6 +696,7 @@ export function ProcurementPlanning(p: PlanWorkflowProps) {
                       await api<Plan>(`/plans/${plan.id}/confirm`, {
                         revision: plan.revision,
                         idempotency_key: p.confirmation.current.key,
+                        override_reasons: overrideReasons,
                         quantities: Object.fromEntries(
                           Object.entries(p.quantities).map(([k, v]) => [
                             k,

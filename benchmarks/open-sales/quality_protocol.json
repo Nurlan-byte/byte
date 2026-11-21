@@ -1,0 +1,20 @@
+{
+  "id": "order-volume-quality-1",
+  "baseline_commit": "ecf23cb6879f68b2d6dfdae2badd8f268c083010",
+  "baseline_files_sha256": {
+    "backend/chronos_order.py": "57caa1622a4b2b7c57affd89a10be12ce8d41584aa198ec5d36852e4ac55b597",
+    "backend/forecasting.py": "82854f8841c836d222b9cae07d40c8eba26bcf7b52bdb1ccf1eb90da7ca16794",
+    "backend/chronos_assets.py": "6c22ca8c3e2dcad1fc327921430caef8e2e4a395ac10165fd37533cf1d50f375"
+  },
+  "horizon_days": 2,
+  "development_first_scored_dates": 21,
+  "holdout_last_scored_dates": 28,
+  "candidates": ["integer_quantiles", "causal_bias"],
+  "selection": "On development only, minimize equally weighted mean of per-source MAE ratios to the operational baseline; ties prefer the first named candidate.",
+  "gate": {
+    "mean_relative_mae_improvement_min_pct": 1.0,
+    "per_source_mae_increase_max_pct": 0.0,
+    "per_source_absolute_volume_bias_increase_max_pp": 2.0,
+    "description": "Apply to the four historical sources plus unseen bakery SKUs ranked 7-12 by sales through 2022-06-30. No selection or refitting after holdout."
+  }
+}

@@ -1,0 +1,11 @@
+# Optional overlay for Healthchecks.io in an authenticated POS deployment.
+services:
+  api:
+    environment:
+      BAKEPLAN_HEALTHCHECKS_FILE: /run/secrets/pos_healthchecks
+    secrets:
+      - pos_healthchecks
+
+secrets:
+  pos_healthchecks:
+    file: ${BAKEPLAN_HEALTHCHECKS_FILE:?Set the host path of the private per-connection check mapping}

@@ -42,9 +42,12 @@ def start(key=TOKEN, now=NOW, location="1", branch="poster-A"):
 
 
 def forecast(ident, day):
+    target = str(day + timedelta(days=1))
+    cutoff = str(day - timedelta(days=1))
     return {
-        "result": {"dataset_id": ident, "items": []},
-        "targetDate": str(day + timedelta(days=1)),
+        "result": {"dataset_id": ident, "cutoff": cutoff, "target_date": target,
+                   "items": [{"product_id": "p", "forecast_mean": 0}]},
+        "targetDate": target, "cutoff": cutoff, "observed_through": cutoff,
     }
 
 

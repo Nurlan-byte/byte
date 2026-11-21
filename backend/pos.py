@@ -63,6 +63,10 @@ class NoSales(ServiceError):
     """The verified outlet has no sales in the completed-day window."""
 
 
+class StaleSales(ServiceError):
+    """Historical receipts exist but none confirms activity on the requested final day."""
+
+
 def require_enabled():
     if not enabled():
         raise ServiceError(
@@ -124,7 +128,7 @@ def select_outlet(reader, location_id):
         raise pos_providers.invalid_response() from None
 
 
-def import_outlet(reader, selected, days, city, today):
+def import_outlet(reader, selected, days, city, today, *, require_last_day=False):
     start = today - timedelta(days=days)
     sales = pos_providers.Observations(start, today - timedelta(days=1))
     try:
@@ -144,6 +148,8 @@ def import_outlet(reader, selected, days, city, today):
     # trading day means zero recorded sales (no assumption about stock or demand).
     values = sales.quantities if sales.physical else sales.lines
     days = sorted({day for day, _ in values})
+    if require_last_day and days[-1] != str(sales.end):
+        raise StaleSales(422, "Нет подтверждения продаж за последний завершённый день.")
     observed = {}
     for day, item in values:
         low, high = observed.get(item, (day, day))

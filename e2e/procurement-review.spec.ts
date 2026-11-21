@@ -1,6 +1,8 @@
 import { expect, test } from "@playwright/test";
+import { calculateAutomatically, navigate } from "./helpers";
 
 test("reviewed orders preserve hidden lines and expose only the saved supplier message", async ({ page }) => {
+  test.setTimeout(120_000);
   await page.addInitScript(() => {
     Object.defineProperty(navigator, "clipboard", { configurable: true, value: undefined });
   });
@@ -17,7 +19,7 @@ test("reviewed orders preserve hidden lines and expose only the saved supplier m
   await page.getByLabel("Срок поставки, дней").fill("2");
   await page.getByLabel("Доступный остаток: Чай в бутылке", { exact: true }).fill("0");
   await expect(page.getByLabel("Доступный остаток: Сок", { exact: true })).toHaveValue("");
-  await page.getByRole("button", { name: "Рассчитать заказ", exact: true }).click();
+  await calculateAutomatically(page, "/plans", page.getByRole("button", { name: "Рассчитать заказ", exact: true }));
 
   const tea = page.getByLabel("Заказ: Чай в бутылке", { exact: true });
   const juice = page.getByLabel("Заказ: Сок", { exact: true });
@@ -37,6 +39,7 @@ test("reviewed orders preserve hidden lines and expose only the saved supplier m
   await expect(teaRow.locator(".confirmation-cell")).toContainText("2 уп.");
   await expect(teaRow).toContainText("До прогноза не хватает 8 шт.");
   await tea.fill("30");
+  await page.getByLabel("Причина правки: Чай в бутылке").selectOption("event");
   await expect(teaRow).not.toContainText("До прогноза не хватает");
   await review.click();
   await expect(review).toHaveAttribute("aria-pressed", "true");
@@ -58,6 +61,7 @@ test("reviewed orders preserve hidden lines and expose only the saved supplier m
   await confirm.click();
   await expect(message).toHaveValue(/Чай в бутылке — 30 шт\. \(5 уп\. по 6 шт\.\)/);
   await expect(message).not.toHaveValue(/Сок/);
+  await expect(message).not.toHaveValue(/Мероприятие/);
   await copy.click();
   await expect(supplier).toContainText("Скопируйте выделенный текст вручную");
   await expect(message).toBeFocused();
@@ -68,4 +72,14 @@ test("reviewed orders preserve hidden lines and expose only the saved supplier m
   await target.fill("2026-09-02");
   await expect(page.getByTestId("stale-plan")).toBeVisible();
   await expect(copy).toBeHidden();
+  await page.reload();
+  await expect(page.getByText("Причина правки: Мероприятие", {exact: true})).toBeVisible();
+  await navigate(page, "История");
+  await page.getByText("Правки заказов и точность прогноза", {exact: true}).click();
+  await page.getByLabel("Заказы отчёта").selectOption("replay");
+  await page.getByLabel("Начало отчёта").fill("2026-09-01");
+  await page.getByLabel("Конец отчёта").fill("2026-09-01");
+  await page.getByRole("button", {name: "Показать отчёт"}).click();
+  await expect(page.getByText("Изменены на упаковку или больше: 1 из 1 (100%).", {exact: true})).toBeVisible();
+  await expect(page.getByText("Мероприятие — 1", {exact: true})).toBeVisible();
 });

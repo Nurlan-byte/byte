@@ -4,6 +4,8 @@ services:
     environment:
       BAKEPLAN_POS_ENABLED: "1"
       BAKEPLAN_POS_MASTER_KEY_FILE: /run/secrets/pos_master
+      OTEL_EXPORTER_OTLP_TRACES_ENDPOINT: ${OTEL_EXPORTER_OTLP_TRACES_ENDPOINT:-}
+      OTEL_EXPORTER_OTLP_TRACES_HEADERS: ${OTEL_EXPORTER_OTLP_TRACES_HEADERS:-}
     secrets:
       - pos_master
 

@@ -90,6 +90,7 @@ class ConfirmRequest(BaseModel):
     revision: StrictInt = Field(ge=0)
     idempotency_key: str = Field(min_length=1, max_length=100, pattern=r"\S")
     quantities: dict[str, StrictInt]
+    override_reasons: dict[str, Literal["forecast", "stock", "event", "supply", "other"]] | None = None
 
 
 class TrainRequest(BaseModel):

@@ -12,6 +12,7 @@ export type PosConnectionSummary = {
   location: { id: string; name: string };
   status: "ready" | "syncing" | "error";
   last_success_day: string | null;
+  last_observed_day?: string | null;
   last_attempt_at: string | null;
   error: string | null;
   dataset_id: string | null;
@@ -69,6 +70,7 @@ export function DailyConnections({
             {connection.last_success_day
               ? `Последнее успешное обновление: ${connection.last_success_day}`
               : "Первого успешного обновления пока нет."}
+            {connection.last_observed_day && ` · Продажи подтверждены по ${connection.last_observed_day}`}
           </p>
           <div className="actions">
             {connection.dataset_id && (

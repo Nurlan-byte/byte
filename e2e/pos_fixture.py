@@ -18,6 +18,9 @@ class VendorResponse(io.BytesIO):
 
 
 class PosterFixture:
+    def __init__(self, last_receipt_day=None):
+        self.last_receipt_day = last_receipt_day
+
     def open(self, request, timeout):
         url = urlsplit(request.full_url)
         params = parse_qs(url.query)
@@ -54,6 +57,8 @@ class PosterFixture:
             assert url.path.endswith("transactions.getTransactions")
             start = date.fromisoformat(params["date_from"][0])
             end = date.fromisoformat(params["date_to"][0])
+            if self.last_receipt_day is not None:
+                end = min(end, self.last_receipt_day)
             products = [
                 {"product_id": 17, "num": 6 if key == "fixture-pieces" else 0.5}
             ]

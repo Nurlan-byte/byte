@@ -3,5 +3,7 @@ fastapi==0.143.0
 uvicorn==0.54.0
 pydantic==2.14.1
 numpy==2.5.4
+opentelemetry-sdk==1.45.1
+opentelemetry-exporter-otlp-proto-http==1.45.1
 cryptography==50.0.2
 pywin32==312; sys_platform == "win32"

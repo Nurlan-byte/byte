@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect } from "react";
+import { OrderAdjustmentReport } from "./OrderAdjustmentReport";
 import {
   savedDataset,
   forPlanningKind,
@@ -543,6 +544,14 @@ export function App() {
           )}
         </div>
         <div id="panel-history" hidden={view !== "history"}>
+          {planningKind === "procurement" && (selectedDataset?.bakery_id || selectedPlan?.bakery_id) && (
+            <OrderAdjustmentReport
+              key={`${selectedDataset?.id}:${selectedPlan?.id}:${selectedPlan?.revision}`}
+              branch={(selectedDataset?.bakery_id ?? selectedPlan?.bakery_id)!}
+              source={(selectedDataset?.source ?? selectedPlan?.source)!}
+              datasetId={selectedDataset?.target === "sold_units" && selectedDataset?.unit === "physical_unit" ? selectedDataset.id : undefined}
+            />
+          )}
           {
             <HistorySection
               onPlan={() => changeView("planning")}

@@ -1,14 +1,20 @@
 """Public operator API, restart catch-up, duplicate workers and outlet isolation."""
 
 from concurrent.futures import ThreadPoolExecutor
+from contextlib import contextmanager
 from datetime import UTC, date, datetime, timedelta
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import json
+import math
+from queue import Queue
+import threading
 from time import monotonic, sleep
+from uuid import uuid4
 
 from fastapi.testclient import TestClient
 import pytest
 
-from backend import context_sources, pos_providers, pos_sync, pos_vault
+from backend import context_sources, pos_monitoring, pos_providers, pos_sync, pos_vault, storage
 from backend.app import app
 from backend.errors import ServiceError
 
@@ -19,11 +25,16 @@ START = datetime(2026, 10, 12, 1, tzinfo=UTC)
 
 @pytest.fixture
 def shop(tmp_path, monkeypatch):
+    monkeypatch.delenv("OTEL_EXPORTER_OTLP_TRACES_ENDPOINT", raising=False)
+    monkeypatch.delenv("BAKEPLAN_HEALTHCHECKS_FILE", raising=False)
     # Only the model's numerical inference is substituted. Re-import, date
     # slicing, forecast selection, retries and persistence use the real code.
     monkeypatch.setattr(
         "backend.chronos_order._predict",
-        lambda inputs, horizon: [float(item["target"][-1]) for item in inputs],
+        lambda inputs, horizon: [
+            float(next(value for value in reversed(item["target"]) if math.isfinite(value)))
+            for item in inputs
+        ],
     )
     keyfile = tmp_path / "master.key"
     pos_vault.init_key(keyfile)
@@ -58,7 +69,11 @@ def shop(tmp_path, monkeypatch):
             return
         for offset in range((observed.end - observed.start).days + 1):
             day = observed.start + timedelta(days=offset)
-            observed.add(day, "9", "Чай", 3 + day.weekday(), True)
+            if day == observed.end and (state.get("stale") or location.id in state.get("stale_shops", ())):
+                observed.add(day, "9", "Чай", 0, True)
+                continue
+            product = "11" if state.get("new_item") and day == observed.end else "9"
+            observed.add(day, product, "Чай", 3 + day.weekday(), True)
 
     monkeypatch.setattr(pos_providers, "locations", shops)
     monkeypatch.setattr(pos_providers, "poster_sales", sales)
@@ -70,6 +85,134 @@ def register(client, **kwargs):
     return client.post(
         URL, json={"provider": "poster", "api_key": TOKEN, "days": 14, **kwargs}
     )
+
+
+@contextmanager
+def otlp_collector(monkeypatch):
+    from opentelemetry.proto.collector.trace.v1.trace_service_pb2 import ExportTraceServiceRequest
+
+    received = Queue()
+
+    class Collector(BaseHTTPRequestHandler):
+        def log_message(self, *args):
+            pass
+
+        def do_POST(self):
+            assert self.path == "/v1/traces"
+            payload = self.rfile.read(int(self.headers["Content-Length"]))
+            received.put(ExportTraceServiceRequest.FromString(payload))
+            self.send_response(200)
+            self.end_headers()
+
+    server = ThreadingHTTPServer(("127.0.0.1", 0), Collector)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    monkeypatch.setenv("OTEL_EXPORTER_OTLP_TRACES_ENDPOINT", f"http://127.0.0.1:{server.server_port}/v1/traces")
+    monkeypatch.setenv("OTEL_BSP_SCHEDULE_DELAY", "20")
+    try:
+        yield received
+    finally:
+        server.shutdown()
+        thread.join()
+        server.server_close()
+
+
+def test_stale_http_success_keeps_last_pair_and_exports_safe_spans(shop, monkeypatch):
+    with otlp_collector(monkeypatch) as received, TestClient(app) as client:
+        good = register(client).json()
+        ident = good["connection"]["id"]
+        assert good["connection"]["last_observed_day"] == "2026-10-11"
+        shop["now"] += timedelta(days=1)
+        shop["stale"] = True
+        pos_sync.run_due(shop["now"])
+        latest = client.get(f"{URL}/{ident}/latest").json()
+        assert latest["forecast"] == good["forecast"] and latest["dataset"]["id"] == good["dataset"]["id"]
+        assert latest["connection"]["last_success_day"] == "2026-10-12"
+        assert "не подтвердила продажи" in latest["connection"]["error"]
+        with storage.connection() as db:
+            assert db.execute("SELECT COUNT(*) FROM datasets").fetchone() == (1,)
+            assert db.execute("SELECT business_day,observed_through FROM pos_fresh_days").fetchall() == [
+                ("2026-10-12", "2026-10-11")
+            ]
+        spans = []
+        while len(spans) < 6:
+            export = received.get(timeout=8)
+            assert TOKEN not in str(export) and "Чай" not in str(export)
+            for resource in export.resource_spans:
+                for scope in resource.scope_spans:
+                    spans.extend(scope.spans)
+        assert sorted(s.name for s in spans) == sorted(["pos.daily", "pos.import", "pos.forecast", "pos.publish", "pos.daily", "pos.import"])
+        parents = {s.span_id: s for s in spans if s.name == "pos.daily"}
+        for stage in (s for s in spans if s.name != "pos.daily"):
+            assert parents[stage.parent_span_id].trace_id == stage.trace_id
+        assert sorted(s.status.code for s in parents.values()) == [0, 2]
+        assert not any(s.events for s in spans)
+
+
+def test_heartbeat_failure_retries_after_commit_without_reimport_or_stale_signal(shop, monkeypatch, tmp_path):
+    check_id = str(uuid4())
+    sent = []
+    config = tmp_path / "checks.json"
+    with TestClient(app) as client:
+        ident = register(client).json()["connection"]["id"]
+        config.write_text(json.dumps({ident: check_id}), encoding="utf-8")
+        monkeypatch.setenv("BAKEPLAN_HEALTHCHECKS_FILE", str(config))
+
+        def provider(key):
+            assert key == check_id
+            with storage.connection() as db:
+                assert db.execute("SELECT last_success_day FROM pos_connections WHERE id=?", (ident,)).fetchone() == (
+                    str(shop["now"].date()),)
+            sent.append(key)
+            if len(sent) == 1:
+                raise TimeoutError("simulated timeout")
+            return True
+
+        monkeypatch.setattr(pos_monitoring, "_send_success", provider)
+        pos_sync.run_due(shop["now"])
+        pos_sync.run_due(shop["now"] + timedelta(minutes=14))
+        assert len(sent) == 1 and len(shop["reads"]) == 1
+        with ThreadPoolExecutor(3) as pool:
+            list(pool.map(pos_sync.run_due, [shop["now"] + timedelta(minutes=15)] * 3))
+        assert len(sent) == 2 and len(shop["reads"]) == 1
+        shop["now"] += timedelta(days=1)
+        shop["stale"] = True
+        pos_sync.run_due(shop["now"])
+        assert len(sent) == 2
+        assert client.get(URL).json()[0]["status"] == "error"
+        shop["stale"] = False
+        pos_sync.run_due(shop["now"] + timedelta(minutes=15))
+        assert len(sent) == 3 and client.get(URL).json()[0]["status"] == "ready"
+
+
+def test_heartbeat_is_per_outlet_and_never_replays_yesterdays_signal(shop, monkeypatch, tmp_path):
+    shop["shops"].append("2")
+    with TestClient(app) as client:
+        first, second = [register(client, location_id=n).json()["connection"]["id"] for n in ("1", "2")]
+        check1, check2 = str(uuid4()), str(uuid4())
+        config = tmp_path / "checks.json"
+        config.write_text(json.dumps({first: check1, second: check2, "bad": "bad"}), encoding="utf-8")
+        monkeypatch.setenv("BAKEPLAN_HEALTHCHECKS_FILE", str(config))
+        sent = []
+
+        def success(key):
+            sent.append(key)
+            return True
+
+        monkeypatch.setattr(pos_monitoring, "_send_success", success)
+        shop["stale_shops"] = {"1"}
+        shop["new_item"] = True
+        shop["now"] += timedelta(days=1)
+        pos_sync.run_due(shop["now"])
+        assert sent == [check2]
+        first_saved = client.get(f"{URL}/{first}/latest").json()
+        second_saved = client.get(f"{URL}/{second}/latest").json()
+        assert first_saved["connection"]["last_observed_day"] == "2026-10-11"
+        assert second_saved["connection"]["last_observed_day"] == "2026-10-12"
+        assert {r["product_id"] for r in second_saved["dataset"]["rows"] if r["date"] == "2026-10-12"} == {"11"}
+        assert client.delete(f"{URL}/{second}").status_code == 204
+        with storage.connection() as db:
+            assert db.execute("SELECT COUNT(*) FROM pos_fresh_days WHERE pinged_at IS NOT NULL").fetchone() == (1,)
 
 
 @pytest.mark.parametrize("provider", ["poster", "moysklad"])
@@ -213,6 +356,8 @@ def test_daily_forecast_service_outage_keeps_pair_until_successful_retry(shop, m
         kept = client.get(latest).json()
         assert "пересчитать прогноз" in kept["connection"]["error"]
         assert kept["dataset"] == old["dataset"] and kept["forecast"] == old["forecast"]
+        with connection() as db:
+            assert db.execute("SELECT business_day FROM pos_fresh_days").fetchall() == [("2026-10-12",)]
         monkeypatch.setattr(chronos_order, "_predict", predict)
         pos_sync.run_due(shop["now"] + timedelta(minutes=20))
         recovered = client.get(latest).json()
@@ -264,3 +409,27 @@ def test_replacement_preserves_the_old_result_until_new_credential_succeeds(shop
             refreshed[0]["status"] == "ready"
             and refreshed[0]["dataset_id"] != old["dataset"]["id"]
         )
+
+
+@pytest.mark.parametrize("bad_field", ["dataset_id", "cutoff", "target_date", "items"])
+def test_inconsistent_or_missing_forecast_cannot_signal_success(shop, monkeypatch, tmp_path, bad_field):
+    produce = pos_sync.forecast_for_day
+
+    def invalid(dataset, day):
+        forecast = produce(dataset, day)
+        forecast["result"][bad_field] = [] if bad_field == "items" else "unrelated"
+        return forecast
+
+    with TestClient(app) as client:
+        saved = register(client).json()
+        ident = saved["connection"]["id"]
+        config = tmp_path / "checks.json"
+        config.write_text(json.dumps({ident: str(uuid4())}), encoding="utf-8")
+        monkeypatch.setenv("BAKEPLAN_HEALTHCHECKS_FILE", str(config))
+        monkeypatch.setattr(pos_monitoring, "_send_success", lambda *_: pytest.fail("Unverified forecast"))
+        monkeypatch.setattr(pos_sync, "forecast_for_day", invalid)
+        shop["now"] += timedelta(days=1)
+        pos_sync.run_due(shop["now"])
+        kept = client.get(f"{URL}/{ident}/latest").json()
+        assert kept["connection"]["status"] == "error"
+        assert kept["forecast"] == saved["forecast"] and kept["dataset"] == saved["dataset"]

@@ -8,6 +8,8 @@
 *.pre-v3.bak
 *.pre-v4.bak
 *.pre-v5.bak
+*.pre-v6.bak
+*.pre-v6.bak
 *.key
 *.sqlite3
 *.sqlite3-shm

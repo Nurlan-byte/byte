@@ -26,6 +26,14 @@ export type CatalogItem = {
 export type DatasetTarget = "sold_units" | "item_line_count";
 export type MeasurementUnit = "physical_unit" | "item_line";
 export type OrderConstraint = "supplier_limit" | "system_limit";
+export const overrideReasonLabels = {
+  forecast: "Оценка спроса",
+  stock: "Остаток на полке",
+  event: "Мероприятие",
+  supply: "Условия поставщика",
+  other: "Другая причина",
+} as const;
+export type OverrideReason = keyof typeof overrideReasonLabels;
 export type EvaluationApplicability = {
   applicable: boolean;
   reason: string | null;
@@ -46,6 +54,7 @@ export type Item = {
   shortage_units?: number | null;
   constraint_reason?: OrderConstraint | null;
   confirmed_qty: number | null;
+  override_reason?: OverrideReason;
   confirmed_packs?: number | null;
   confirmed_shortage_units?: number | null;
   confirmed_constraint_reason?: OrderConstraint | null;

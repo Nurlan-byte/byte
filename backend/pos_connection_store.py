@@ -1,7 +1,8 @@
 """Private POS subscriptions and fenced, recoverable daily work in the application database."""
 
 import json
-from datetime import timedelta, timezone
+import math
+from datetime import UTC, datetime, timedelta, timezone
 from uuid import uuid4
 
 from backend import pos_vault, storage
@@ -17,9 +18,12 @@ ERROR_CODES = {
     "vault_unavailable",
     "branch_changed",
     "sync_failed",
+    "freshness_unverified",
 }
 PUBLIC = """id, provider, location_id, location_name, bakery_id, days, city,
             updated_at, last_success_day, last_attempt_at, retry_at, error, dataset_id, target_date,
+            (SELECT f.observed_through FROM pos_fresh_days f WHERE f.connection_id=pos_connections.id
+             AND f.business_day=pos_connections.last_success_day) AS last_observed_day,
             CASE WHEN lease_token IS NOT NULL THEN 'syncing'
                  WHEN error IS NOT NULL THEN 'error' ELSE 'ready' END AS status"""
 PRIVATE = """id, provider, location_id, bakery_id, days, city, attempt_day AS day, lease_token AS token"""
@@ -102,6 +106,10 @@ def start_connection(
                 _time(now + LEASE_DURATION),
             ),
         )
+        db.execute(
+            "INSERT OR IGNORE INTO pos_monitoring_epochs(connection_id,started_at) VALUES(?,?)",
+            (ident, _time(now)),
+        )
         return _query_one(
             db, f"SELECT {PRIVATE} FROM pos_connections WHERE id=?", (ident,)
         )
@@ -170,8 +178,21 @@ def claim_key(claim):
 
 def finish(claim, dataset_id, forecast, day, now):
     """Publish the immutable snapshot and success date in the same fenced update."""
-    if forecast["result"]["dataset_id"] != dataset_id:
-        raise ValueError("Forecast must belong to the imported dataset")
+    observed = str(day - timedelta(days=1))
+    target = str(day + timedelta(days=1))
+    result = forecast["result"]
+    quantities = (item.get("forecast_mean") for item in result["items"])
+    if (
+        claim["day"] != str(day)
+        or result["dataset_id"] != dataset_id
+        or forecast["observed_through"] != observed
+        or forecast["cutoff"] != observed
+        or result["cutoff"] != observed
+        or forecast["targetDate"] != target
+        or result["target_date"] != target
+        or not any(isinstance(q, (int, float)) and math.isfinite(q) and q >= 0 for q in quantities)
+    ):
+        raise ValueError("Forecast must match the fresh import, cutoff and target")
     encoded = json.dumps(
         forecast, ensure_ascii=False, allow_nan=False, separators=(",", ":")
     )
@@ -194,7 +215,13 @@ def finish(claim, dataset_id, forecast, day, now):
                 str(day),
             ),
         )
-        return cursor.rowcount == 1
+        if cursor.rowcount != 1:
+            return False
+        db.execute("""
+            INSERT OR IGNORE INTO pos_fresh_days(connection_id,business_day,observed_through,fresh_at)
+            VALUES(?,?,?,?)
+        """, (claim["id"], str(day), observed, _time(now)))
+        return True
 
 
 def fail(claim, error, now):
@@ -217,7 +244,34 @@ def fail(claim, error, now):
         return cursor.rowcount == 1
 
 
-def revoke(ident):
+def revoke(ident, now=None):
     with storage.connection() as db:
         db.execute("PRAGMA secure_delete=ON")
+        db.execute(
+            "UPDATE pos_monitoring_epochs SET ended_at=? WHERE connection_id=? AND ended_at IS NULL",
+            (_time(now or datetime.now(UTC)), ident),
+        )
         db.execute("DELETE FROM pos_connections WHERE id=?", (ident,))
+
+
+def claim_ping(ident, day, now):
+    """Lease a committed, fresh publication. A crash permits a later retry that day."""
+    token = str(uuid4())
+    with storage.connection() as db:
+        cursor = db.execute("""
+            UPDATE pos_fresh_days SET ping_token=?, next_ping_at=?
+            WHERE connection_id=? AND business_day=? AND pinged_at IS NULL
+            AND (next_ping_at IS NULL OR next_ping_at<=?)
+            AND EXISTS (SELECT 1 FROM pos_connections c WHERE c.id=connection_id
+                AND c.last_success_day=business_day AND c.error IS NULL AND c.lease_token IS NULL)
+        """, (token, _time(now + LEASE_DURATION), ident, str(day), _time(now)))
+        return token if cursor.rowcount == 1 else None
+
+
+def finish_ping(ident, day, token, now, success):
+    with storage.connection() as db:
+        db.execute("""
+            UPDATE pos_fresh_days SET ping_token=NULL,pinged_at=?,next_ping_at=?
+            WHERE connection_id=? AND business_day=? AND ping_token=?
+        """, (_time(now) if success else None, None if success else _time(now + RETRY_DELAY),
+              ident, str(day), token))
