@@ -11,8 +11,8 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
           python-version: '3.14'
       - name: Check and register the published paired evaluation in local MLflow
@@ -20,7 +20,7 @@ jobs:
           python -m pip install -r tools/requirements-tracking.txt
           python -m unittest tools.tests.test_track_forecast
           python -m tools.track_forecast benchmarks/open-sales/results/volume_quality.json --database test-results/forecast-experiments.sqlite3
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: forecast-experiment-${{ github.sha }}
           path: test-results/forecast-experiments.sqlite3
@@ -29,13 +29,13 @@ jobs:
     runs-on: windows-latest
     timeout-minutes: 40
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
           python-version: '3.14'
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: '24'
       - name: Install locked dependencies
@@ -46,7 +46,7 @@ jobs:
           npm.cmd ci
           npm.cmd --prefix frontend ci
           npx.cmd playwright install chromium
-      - uses: actions/cache@v4
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ~/.cache/bakeplan
           key: chronos-assets-${{ hashFiles('backend/chronos_assets.py') }}
@@ -101,7 +101,7 @@ jobs:
           .\.venv\Scripts\python.exe -m scripts.replay_demo --output-dir test-results/defense-replay
       - name: Upload screenshot evidence
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: bakeplan-ui-evidence-${{ github.sha }}-${{ github.run_attempt }}
           path: |
@@ -113,7 +113,7 @@ jobs:
           if-no-files-found: warn
       - name: Upload real demo recording
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: bakeplan-demo-video-${{ github.sha }}-${{ github.run_attempt }}
           path: |
@@ -125,8 +125,8 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 40
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
           python-version: '3.14'
       - name: Verify Linux snapshot, deployment, and replay contracts
