@@ -4,7 +4,7 @@
 
 <h1 align="center">BakePlan</h1>
 
-> **In English.** BakePlan is AI demand forecasting and purchase planning for small businesses: bakeries, cafés, clubs and mini-markets. It turns a CSV of sales history into tomorrow's production plan or supplier order, and it is used by all 4 branches of the Cloud Game Zone computer-club chain. The forecast is hybrid: a same-weekday baseline, a Ridge regression written in NumPy, and a per-product arbiter that turns the model on only where backtesting shows it beats the baseline. 370+ automated tests, CI on Windows and Linux; Digital Taraz top-10 finalist.
+> **In English.** BakePlan is AI demand forecasting and purchase planning for bakeries, cafés, clubs and mini-markets. It turns a CSV of sales history into tomorrow's production plan or supplier order. The manager of the Cloud Game Zone computer-club chain reports use at four branches. BakePlan combines a same-weekday baseline with Ridge regression written in NumPy and selects the model per product using historical validation. Automated checks run on Windows and Linux. Digital Taraz top-10 finalist.
 >
 > **[Live demo](https://bakeplan.spotlightdesk.xyz/)** (data resets hourly) · **[Demo video](presentation/BakePlan_CGZ_demo.mp4)**\
 > The interface and the rest of this README are in Russian: in the demo, open «Данные» and press «Загрузить демо CSV».
@@ -194,13 +194,13 @@ CI на **Windows и Linux** проверяет каждое изменение,
 | `средний остаток × закупочная цена` | `доп. продажи × (цена − себестоимость)` | `заказы × (минуты до − минуты после)` |
 | Меньше лишнего товара — больше свободных денег в обороте | Товар есть на полке в пиковые часы — клиент не уходит | Считает система, человек только проверяет и подтверждает |
 
-**Пример:** если заказ занимает 15 минут в день, 4 филиала тратят на него **30 часов в месяц**. Двухнедельный пилот измерит все три рычага в тенге.
+При допущении «15 минут ежедневно в каждом из четырёх филиалов» за 30 дней на заказы уходит **30 часов**. Экономию времени предстоит измерить на сопоставимых заказах. Полевые замеры, списания и оплату подписки будем проверять отдельно. [План и критерии успеха пилота](PRODUCT_PLAN.md)
 
 ## Дорожная карта: Шымкент → Тараз → вся область
 
 | Сейчас | Шаг 2 · 2 недели | Шаг 3 | Шаг 4 |
 |---|---|---|---|
-| **MVP и первый клиент.** Работающий продукт, 4 филиала Cloud Game Zone | **Пилот с замерами.** Остатки, дефицит и время администратора — до и после | **Тараз.** Пекарни, кафе и клубы Тараза и Жамбылской области | **Масштаб.** Интеграция с кассами, уведомления в Telegram, облако для сетей |
+| **MVP и первый клиентский контакт.** По словам руководителя, продукт используют в четырёх филиалах Cloud Game Zone | **Пилот с замерами.** Остатки, дефицит и время администратора — до и после | **Тараз.** Пекарни, кафе и клубы Тараза и Жамбылской области | **Масштаб.** Интеграция с кассами, уведомления в Telegram, облако для сетей |
 
 **Цель — AI-помощник по закупкам в каждой малой точке региона.**
 
