@@ -55,7 +55,7 @@ def model_summary(model):
         product: {
             key: value
             for key, value in details.items()
-            if key in {"status", "reason", "evaluation", "counts", "exclusions"}
+            if key in {"status", "reason", "evaluation", "counts", "exclusions", "selection"}
         }
         for product, details in model.get("products", {}).items()
     }
@@ -162,7 +162,7 @@ def train_dataset(ident, body, today):
 
 
 def _b1(dataset, rows, product, target, cutoff, reason):
-    if dataset.get("planning_kind") == "procurement":
+    if dataset.get("planning_kind") == "procurement" or dataset.get("schema_version") == "pos-units-1":
         kwargs = {"eligible": lambda row: row.get("is_open") is not False}
     elif dataset["target"] == "item_line_count":
         kwargs = {"eligible": lambda _: True, "value_key": "item_line_count"}

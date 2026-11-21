@@ -1,3 +1,8 @@
+import {
+  ContextControl,
+  PosConnection,
+  type AdoptDataset,
+} from "./DemandSources";
 import { ProcurementImport } from "./ProcurementImport";
 import { Icon } from "./Icon";
 import { useMemo, useRef, useState, useEffect } from "react";
@@ -80,7 +85,7 @@ export type ImportProps = Pick<
   | "setNotice"
   | "run"
   | "runReplacingPlan"
-> & { onContinue?: () => void; active?: boolean };
+> & { onContinue?: () => void; active?: boolean; adopt?: AdoptDataset };
 
 export function ImportSection(props: ImportProps) {
   const selected = {
@@ -115,6 +120,7 @@ function ProductionImport({
   runReplacingPlan = run,
   onContinue = () => {},
   active = true,
+  adopt,
 }: ImportProps) {
   const [saved, setSaved] = useState<SavedDataset[]>([]);
   const [savedId, setSavedId] = useState("");
@@ -149,6 +155,7 @@ function ProductionImport({
   }, [active, dataset]);
   const [importedDraft, setImportedDraft] = useState<{
     datasetId: string;
+    datasetVersion?: string;
     signature: string;
   } | null>(null);
   const salesOnly = dataTarget === "item_line_count";
@@ -163,7 +170,10 @@ function ProductionImport({
     provenance.trim(),
   ]);
   const draftMatchesSaved =
-    dataset?.id === importedDraft?.datasetId &&
+    (dataset?.id === importedDraft?.datasetId ||
+      (!!importedDraft?.datasetVersion &&
+        dataset?.demand_context_base_version ===
+          importedDraft.datasetVersion)) &&
     draftSignature === importedDraft?.signature;
   const hasDraftChanges =
     !!dataset &&
@@ -244,6 +254,12 @@ function ProductionImport({
               доступна диагностика; план выпуска не рассчитывается.
             </p>
           )}
+          {dataset.forecast_only && !savedSalesOnly && (
+            <p>
+              Касса передала продажи в штуках. Для плана выпуска понадобится
+              история остатков и выпуска.
+            </p>
+          )}
           {dataset.metadata_declared === false && (
             <p className="status-note">
               Старый набор доступен для расчёта по истории. Для
@@ -284,7 +300,9 @@ function ProductionImport({
           )}
           <div className="actions">
             <button className="cta" disabled={busy} onClick={onContinue}>
-              {savedSalesOnly ? "Перейти к диагностике" : "Перейти к плану"}
+              {savedSalesOnly || dataset.forecast_only
+                ? "Перейти к диагностике"
+                : "Перейти к плану"}
               <Icon name="arrow" />
             </button>
             <span className="muted">
@@ -296,6 +314,20 @@ function ProductionImport({
         </div>
       )}
 
+      {dataset && (
+        <ContextControl
+          dataset={dataset}
+          busy={busy}
+          run={runReplacingPlan}
+          adopt={adopt}
+        />
+      )}
+      <PosConnection
+        busy={busy}
+        run={runReplacingPlan}
+        adopt={adopt}
+        active={active}
+      />
       {dataset && <h2 className="subheading">Загрузить другой набор</h2>}
       <div className="source-options">
         <div className="file-drop source-option">
@@ -646,6 +678,7 @@ function ProductionImport({
               setDataset(imported);
               setImportedDraft({
                 datasetId: imported.id,
+                datasetVersion: imported.version,
                 signature: draftSignature,
               });
               setPlan(null);

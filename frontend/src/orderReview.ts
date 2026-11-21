@@ -91,7 +91,7 @@ export function reviewOrderItem(
     reasons.push(`Введите 0 или целое количество, кратное ${pack}.${limit}`);
   }
   if (stock == null)
-    reasons.push("Укажите остаток на дату продаж и пересчитайте заказ.");
+    reasons.push("Укажите остаток для автоматического расчёта или выберите количество заказа вручную.");
   if (item.forecast_mean == null) {
     reasons.push("Прогноз отсутствует. Проверьте количество вручную.");
   } else if (

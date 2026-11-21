@@ -339,3 +339,8 @@
     align-items: stretch;
   }
 }
+
+.demand-source { margin-block: 12px; padding: 2px 14px; border: 1px solid var(--line); border-radius: var(--radius-sm); }
+.demand-source .control-field { max-width: 34rem; margin: 10px 0; }
+.demand-source form > button, .demand-source > button { margin: 8px 0 14px; }
+.demand-source p { font-size: 14px; }

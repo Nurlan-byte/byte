@@ -83,6 +83,7 @@ export type PlanSummary = {
   created_at?: string;
 };
 export type Plan = PlanSummary & {
+  dataset_schema_version?: string;
   provenance?: string;
   items: Item[];
   cutoff: string;
@@ -97,6 +98,18 @@ export type Plan = PlanSummary & {
   unit?: MeasurementUnit;
 };
 export type Dataset = {
+  forecast_only?: boolean;
+  pos_provider?: string;
+  pos_location_name?: string;
+  product_names?: Record<string, string>;
+  demand_context?: {
+    calendar: { date: string }[];
+    weather: { date: string }[];
+    city?: string;
+    calendar_source?: string;
+    weather_source?: string;
+  };
+
   planning_kind?: PlanningKind;
   catalog?: CatalogItem[];
   id: string;
@@ -115,6 +128,7 @@ export type Dataset = {
   schema_version: string;
   dataset_version?: string;
   version?: string;
+  demand_context_base_version?: string;
   metadata_declared?: boolean;
 };
 export type ModelSummary = {
@@ -166,6 +180,7 @@ export type Forecast = {
     product_id: string;
     forecast_mean: number | null;
     b1_mean: number | null;
+    demand_features?: Record<string, number>;
     method: string;
     fallback_reason?: string | null;
     used_dates?: string[];

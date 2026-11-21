@@ -4,6 +4,7 @@ import {
   forPlanningKind,
   workspaceReference,
   hasQuantityChanges,
+  initialQuantity,
   productActiveOnTarget,
 } from "./workspace";
 import { Icon } from "./Icon";
@@ -16,6 +17,8 @@ import {
 } from "./WorkspaceChrome";
 import { api } from "./api";
 import type { Dataset, DatasetTarget, Plan, PlanSummary } from "./types";
+import type { ForecastSnapshot } from "./ForecastResult";
+import type { AdoptDataset } from "./DemandSources";
 import { businessDate } from "./dates";
 import { validQuantity } from "./quantities";
 import { ImportSection } from "./ImportSection";
@@ -82,7 +85,12 @@ export function App() {
         const stored = savedDataset(data.value);
         setDataset(stored);
         setPlanningKind(
-          stored.planning_kind === "procurement" ? "procurement" : "production",
+          stored.forecast_only &&
+            workspaceReference("pos-mode") === "procurement"
+            ? "procurement"
+            : stored.planning_kind === "procurement"
+              ? "procurement"
+              : "production",
         );
         setSource(stored.source);
         setBakeryId(stored.bakery_id);
@@ -190,10 +198,7 @@ export function App() {
     if (calendar) setTargetOpen(calendar.target_is_open!);
     setQuantities(
       Object.fromEntries(
-        p.items.map((i) => [
-          i.product_id,
-          String(i.confirmed_qty ?? i.recommended_qty),
-        ]),
+        p.items.map((i) => [i.product_id, initialQuantity(p, i)]),
       ),
     );
   }
@@ -222,7 +227,7 @@ export function App() {
     setDataset: (
       value: Dataset | null | ((previous: Dataset | null) => Dataset | null),
     ) => {
-      if (value && typeof value !== "function") {
+      if (value && typeof value !== "function" && !value.forecast_only) {
         setPlanningKind(
           value.planning_kind === "procurement" ? "procurement" : "production",
         );
@@ -262,7 +267,48 @@ export function App() {
     show,
     refreshHistory: () => loadHistory(0),
   };
+  const [firstForecast, setFirstForecast] = useState<{
+    snapshot: ForecastSnapshot;
+    sequence: number;
+  } | null>(null);
+  async function prepareForecast(datasetId: string) {
+    const first = await api<ForecastSnapshot & { warnings: string[] }>(
+      `/datasets/${datasetId}/first-forecast`,
+      {},
+    );
+    setCutoff(first.cutoff);
+    setTarget(first.targetDate);
+    setMethod(first.method);
+    setFirstForecast((previous) => ({
+      snapshot: first,
+      sequence: (previous?.sequence ?? 0) + 1,
+    }));
+    return first;
+  }
+  const adopt: AdoptDataset = async (result, contextWarnings, fromPos) => {
+    const saved = savedDataset(result);
+    setDataset(saved);
+    setPlan(null);
+    workspaceReference("plan", null);
+    if (saved.forecast_only) workspaceReference("pos-mode", planningKind);
+    else setPlanningKind(saved.planning_kind ?? "production");
+    setSource(saved.source);
+    setDataTarget(saved.target);
+    setProvenance(saved.provenance);
+    setBakeryId(saved.bakery_id);
+    if (fromPos) setCsv("");
+    const first = await prepareForecast(saved.id);
+    changeView("model");
+    setNotice(
+      [
+        "Продажи сохранены. Прогноз готов.",
+        ...contextWarnings,
+        ...first.warnings,
+      ].join(" "),
+    );
+  };
   const salesOnly =
+    selectedDataset?.forecast_only ||
     selectedDataset?.target === "item_line_count" ||
     selectedDataset?.unit === "item_line";
   return (
@@ -365,6 +411,7 @@ export function App() {
           <PlanningSection
             {...sectionProps}
             onImport={() => changeView("import")}
+            onForecast={() => changeView("model")}
             onHistory={() => changeView("history")}
           />
         </div>
@@ -372,13 +419,40 @@ export function App() {
           <ImportSection
             {...sectionProps}
             active={view === "import"}
+            adopt={adopt}
             onContinue={() => changeView(salesOnly ? "model" : "planning")}
           />
         </div>
         <div id="panel-model" hidden={view !== "model"}>
           {selectedDataset ? (
             <ModelSection
-              key={selectedDataset.id}
+              key={
+                selectedDataset.id +
+                "/" +
+                (firstForecast?.snapshot.result.dataset_id ===
+                selectedDataset.id
+                  ? firstForecast.sequence
+                  : 0)
+              }
+              onOrderDataset={async (value) => {
+                const first = await prepareForecast(value.id);
+                setPlan(null);
+                workspaceReference("plan", null);
+                setDataset(value);
+                setPlanningKind("procurement");
+                changeView("planning");
+                setNotice(
+                  [
+                    "Упаковки сохранены. Проверьте остатки и срок поставки.",
+                    ...first.warnings,
+                  ].join(" "),
+                );
+              }}
+              initial={
+                firstForecast?.snapshot.result.dataset_id === selectedDataset.id
+                  ? firstForecast.snapshot
+                  : undefined
+              }
               {...sectionProps}
               dataset={selectedDataset}
               active={view === "model"}

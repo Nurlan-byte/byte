@@ -82,6 +82,8 @@ def _select_forecast(
             evaluation_applicability=prediction.get("evaluation_applicability"),
         )
         if target_is_open and prediction["method"] == "ML":
+            if "demand_features" in prediction:
+                forecast["demand_features"] = prediction["demand_features"]
             forecast.update(
                 diagnostic_method="ML", forecast_mean=prediction["forecast_mean"],
                 used_dates=prediction["used_dates"], n=prediction["n"],
@@ -162,7 +164,7 @@ def prepare_procurement_items(
         prepared.append(ProcurementForecast(
             product=product, forecast=forecast, target_is_open=target_is_open,
             unknown_open=sum(row.get("is_open") is None for row in observed),
-            unknown_stockout=sum(row.get("stockout_status") == "unknown" for row in observed),
+            unknown_stockout=sum(row.get("stockout_status", "unknown") == "unknown" for row in observed),
             ml_warning=ml_warning,
         ))
     return prepared

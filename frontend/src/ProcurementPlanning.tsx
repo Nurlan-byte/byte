@@ -9,7 +9,7 @@ import { dayWord } from "./dayWord";
 import { stockAssumptions } from "./procurement";
 import { reviewOrderItem } from "./orderReview";
 import { MAX_QUANTITY, validQuantity } from "./quantities";
-import { hasQuantityChanges } from "./workspace";
+import { hasQuantityChanges, needsManualOrder } from "./workspace";
 import { methodText, procurementNotes } from "./explanations";
 import { Icon } from "./Icon";
 import { SupplierOrderText } from "./SupplierOrderText";
@@ -504,6 +504,7 @@ export function ProcurementPlanning(p: PlanWorkflowProps) {
                     max_constraint_active: false,
                   }).slice(2);
                   const pack = i.pack_size ?? 1;
+                  const manual = needsManualOrder(plan, i);
                   return (
                     <tr key={i.product_id}>
                       <td>
@@ -547,8 +548,8 @@ export function ProcurementPlanning(p: PlanWorkflowProps) {
                         className="numeric-cell recommendation-cell"
                         data-label="Предложенный заказ, шт."
                       >
-                        {i.recommended_qty}
-                        {i.recommended_packs != null && (
+                        {manual ? "Нет расчёта" : i.recommended_qty}
+                        {!manual && i.recommended_packs != null && (
                           <small>{i.recommended_packs} уп.</small>
                         )}
                       </td>
@@ -576,6 +577,7 @@ export function ProcurementPlanning(p: PlanWorkflowProps) {
                                 )
                           }
                           disabled={p.busy || stale}
+                          placeholder={manual ? "Введите количество" : undefined}
                           aria-invalid={!valid}
                           aria-describedby={`order-help-${i.product_id}${reasons.length ? " order-review-" + i.product_id : ""}`}
                           value={value}
@@ -638,7 +640,7 @@ export function ProcurementPlanning(p: PlanWorkflowProps) {
           </div>
           {invalid && (
             <p role="alert" className="field-error">
-              Исправьте количества заказа: соблюдайте упаковку и лимит.
+              Укажите количество для каждой позиции с учётом упаковки и лимита.
             </p>
           )}
           <div className="confirm-bar" id="plan-confirm" tabIndex={-1}>

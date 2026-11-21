@@ -39,7 +39,7 @@ type PlanningProps = Pick<
   | "runReplacingPlan"
   | "show"
   | "refreshHistory"
-> & { onImport?: () => void; onHistory?: () => void };
+> & { onImport?: () => void; onHistory?: () => void; onForecast?: () => void };
 
 export type PlanWorkflowProps = PlanningProps & {
   showCalculated: (plan: Plan) => void;
@@ -66,11 +66,34 @@ export function PlanningSection(props: PlanningProps) {
       />
     );
   }
+  if (dataset?.forecast_only && !plan) {
+    return (
+      <section className="sales-only" data-testid="sales-only-notice">
+        <h2>Прогноз по данным кассы</h2>
+        <p>
+          {dataset.unit === "physical_unit"
+            ? "Продажи в штуках уже загружены. Из прогноза можно перейти к заказу и указать упаковки."
+            : "Доступен прогноз строк чеков. Для заказа нужны количества в штуках."}
+        </p>
+        <button onClick={props.onForecast} disabled={props.busy}>
+          Открыть прогноз продаж
+        </button>
+      </section>
+    );
+  }
   function showCalculated(result: Plan) {
     focusResult.current = result.id;
     props.show(result);
   }
-  const selected = { ...props, dataset, plan, showCalculated };
+  const selected = {
+    ...props,
+    dataset:
+      props.planningKind === "procurement" && dataset?.forecast_only
+        ? null
+        : dataset,
+    plan,
+    showCalculated,
+  };
   return props.planningKind === "procurement" ? (
     <ProcurementPlanning key={dataset?.id ?? ""} {...selected} />
   ) : (
@@ -104,14 +127,21 @@ function ProductionPlanning({
   refreshHistory,
 }: PlanWorkflowProps) {
   const salesOnly =
-    dataset?.target === "item_line_count" || dataset?.unit === "item_line";
+    dataset?.forecast_only ||
+    dataset?.target === "item_line_count" ||
+    dataset?.unit === "item_line";
   if (salesOnly && (!plan || dataset.id === plan.dataset_id)) {
     return (
       <aside className="sales-only" data-testid="sales-only-notice">
-        <strong>Для выпуска нужна история продаж в штуках</strong>
+        <strong>
+          {dataset?.forecast_only
+            ? "Для выпуска нужны остатки готовых изделий"
+            : "Для выпуска нужна история продаж в штуках"}
+        </strong>
         <p>
-          Строки продаж не преобразуются в физические штуки. Добавьте историю с
-          остатками и количеством проданных изделий.
+          {dataset?.forecast_only && dataset.unit === "physical_unit"
+            ? "Прогноз продаж доступен в разделе качества. Для расчёта выпуска добавьте остатки и размеры партий."
+            : "Строки продаж не преобразуются в физические штуки. Добавьте историю с остатками и количеством проданных изделий."}
         </p>
         <button className="secondary" disabled={busy} onClick={onImport}>
           Перейти к данным

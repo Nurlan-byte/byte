@@ -7,6 +7,7 @@ import json
 import uuid
 from datetime import date, datetime, timedelta, timezone
 from backend.config import CATALOG, VERSION
+from backend.demand_context import with_demand_context
 from backend.errors import ServiceError
 from backend.dataset_identity import identity, parse_sales_csv
 from backend.deliveries import outstanding_deliveries
@@ -31,15 +32,16 @@ from backend.storage import (
 )
 
 
-def import_history(body: ImportRequest, today: date):
+def import_history(body: ImportRequest, today: date, *, pos_metadata=None):
     catalog = [product.model_dump() for product in body.catalog] if body.catalog else None
     continuity = []
     if body.schema_version == "procurement-1":
         rows, continuity = parse_procurement_csv(
             body.csv_text, today, {product["product_id"] for product in catalog}
         )
-    elif body.schema_version == "sales-1":
-        rows = parse_sales_csv(body.csv_text, today)
+    elif body.schema_version in {"sales-1", "pos-units-1"}:
+        value_field = "sold" if body.schema_version == "pos-units-1" else "item_line_count"
+        rows = parse_sales_csv(body.csv_text, today, value_field)
     else:
         rows = parse_csv(
             body.csv_text,
@@ -91,6 +93,9 @@ def import_history(body: ImportRequest, today: date):
         }
         dataset.update(**metadata, metadata_declared=True)
         hash_content = {**metadata, "csv_hash": dataset["version"]}
+        if pos_metadata is not None:
+            dataset.update(pos_metadata)
+            hash_content["pos_metadata"] = pos_metadata
         if catalog is not None:
             hash_content["catalog"] = catalog
         dataset["content_hash"] = hashlib.sha256(
@@ -104,6 +109,22 @@ def import_history(body: ImportRequest, today: date):
         dataset["diagnostics"] = [
             "Только явно указанные item-line counts. Пропуски неизвестны и не заменяются нулями.",
             "Sales-only: единица — строка товара, не физическая штука. Выпуск, остатки, waste и скрытый спрос не оцениваются.",
+        ]
+    if body.demand_context is not None:
+        dataset = with_demand_context(dataset, body.demand_context)
+    if body.schema_version == "pos-units-1":
+        dataset["forecast_only"] = True
+        dataset["missing_calendar_days"] = None
+        dataset["diagnostics"] = [
+            "Касса: наблюдаемые проданные штуки. Остатки, выпуск и упущенный спрос неизвестны.",
+            "Прогноз продаж доступен без складского баланса.",
+        ]
+    if pos_metadata is not None:
+        dataset["diagnostics"] = [
+            "Периоды без продаж точки и даты вне периода продаж конкретного товара пропущены.",
+            "Между первой и последней продажей товара на днях с продажами других товаров "
+            "отсутствие строки означает ноль зарегистрированных продаж.",
+            "Возвраты не вычтены. Складские остатки, списания и упущенный спрос неизвестны.",
         ]
     return save_dataset(dataset)
 
@@ -119,6 +140,10 @@ def create_plan(body: PlanRequest, today: date):
     if body.cutoff >= body.target_date:
         raise ServiceError(422, "cutoff должен быть раньше target_date")
     dataset = identity(get_dataset(body.dataset_id))
+    if dataset.get("forecast_only"):
+        if dataset["unit"] == "physical_unit":
+            raise ServiceError(422, "Укажите размеры упаковок, чтобы составить заказ. При неизвестном остатке количество можно подтвердить вручную.")
+        raise ServiceError(422, "Для заказа нужны продажи в штуках. По строкам чеков доступен прогноз частоты покупок.")
     if dataset["planning_kind"] == "procurement":
         return _create_procurement_plan(body, today, dataset)
     if (body.lead_time_days is not None or body.usable_stock_assumption is not None
@@ -183,6 +208,8 @@ def create_plan(body: PlanRequest, today: date):
             # eligibility guard. A fallback must never replace that baseline.
             if body.target_is_open and prediction["method"] == "ML":
                 item["forecast_mean"] = prediction["forecast_mean"]
+                if "demand_features" in prediction:
+                    item["demand_features"] = prediction["demand_features"]
                 item["diagnostic_method"] = prediction["method"]
                 item["used_dates"] = prediction["used_dates"]
                 item["n"] = prediction["n"]
@@ -283,6 +310,8 @@ def _create_procurement_plan(body: PlanRequest, today: date, dataset: dict):
         "mode": body.mode, "timezone": "Asia/Qyzylorda",
         "availability_assumption": "Sales are observed units. Availability and stockouts remain unknown unless explicitly recorded; usable target-day stock is supplied as a scenario.",
     }
+    if dataset.get("schema_version") == "pos-procurement-1":
+        plan["dataset_schema_version"] = dataset["schema_version"]
     # Save the very same quantities we read. A receipt cannot change the ledger
     # between reading a delivery and recording it in the plan's first revision.
     with connection() as con:
@@ -507,6 +536,11 @@ def _export_procurement_csv(plan: dict):
             "confirmed_order_packs": item.get("confirmed_packs"),
             "used_dates": ";".join(item.get("used_dates") or []),
         }
+        if (plan.get("dataset_schema_version") == "pos-procurement-1"
+                and item.get("target_is_open") is not False
+                and item.get("automatic_eligible") is False):
+            record["suggested_order_units"] = None
+            record["suggested_order_packs"] = None
         if "registry_deliveries" in plan:
             record["registry_deliveries"] = json.dumps(
                 registry_by_product.get(item["product_id"], []), ensure_ascii=False, separators=(",", ":"),

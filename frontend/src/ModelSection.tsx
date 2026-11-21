@@ -1,3 +1,4 @@
+import { PosOrderSetup } from "./PosOrderSetup";
 import { useRef, useState, useEffect } from "react";
 import { api } from "./api";
 import type { Dataset, Forecast, ModelSummary } from "./types";
@@ -9,7 +10,13 @@ import { reasonText } from "./explanations";
 type Props = Pick<
   SectionProps,
   "busy" | "cutoff" | "setCutoff" | "target" | "setTarget" | "run" | "setNotice"
-> & { dataset: Dataset; active?: boolean };
+> & {
+  dataset: Dataset;
+  active?: boolean;
+  initial?: ForecastSnapshot;
+  onOrderDataset?: (dataset: Dataset) => Promise<void>;
+  runReplacingPlan?: SectionProps["run"];
+};
 export function ModelSection({
   dataset,
   busy,
@@ -20,11 +27,16 @@ export function ModelSection({
   run,
   setNotice,
   active = true,
+  initial,
+  onOrderDataset,
+  runReplacingPlan = run,
 }: Props) {
   const [models, setModels] = useState<ModelSummary[]>([]);
   const [loaded, setLoaded] = useState(false);
-  const [forecast, setForecast] = useState<ForecastSnapshot | null>(null);
-  const [forecastMethod, setForecastMethod] = useState("ML");
+  const [forecast, setForecast] = useState<ForecastSnapshot | null>(
+    initial ?? null,
+  );
+  const [forecastMethod, setForecastMethod] = useState(initial?.method ?? "ML");
   const [loadError, setLoadError] = useState("");
   const modelRead = useRef(0);
   useEffect(() => {
@@ -73,14 +85,41 @@ export function ModelSection({
         Посмотрите прогноз по товарам на выбранную дату и сравните методы на
         прошлых продажах.
       </p>
+      {dataset.demand_context && (
+        <div className="status-note">
+          <strong>Факторы, доступные модели</strong>
+          <p>
+            {dataset.demand_context.calendar_source ?? "Дни недели"}
+            {dataset.demand_context.weather.length > 0
+              ? ` · ${dataset.demand_context.city ?? "Погода"} · ${dataset.demand_context.weather.length} дневных погодных записей`
+              : " · Погодные данные не подключены"}
+            .
+          </p>
+          {dataset.demand_context.weather_source?.startsWith("Open-Meteo") && (
+            <small>
+              Погодные прогнозы NOAA GFS предоставлены{" "}
+              <a
+                href="https://open-meteo.com/"
+                target="_blank"
+                rel="noreferrer"
+              >
+                Open-Meteo
+              </a>
+              .
+            </small>
+          )}
+        </div>
+      )}
       <div className="quality-setup">
         <h2 className="subheading">Параметры прогноза</h2>
         <p className="muted">
           {salesOnly
             ? "Единица прогноза — строка продажи. По этому набору нельзя назначить выпуск."
-            : dataset.planning_kind === "procurement"
-              ? "Прогноз оценивает продажи в штуках. Заказ подтверждается отдельно после проверки остатка и упаковки."
-              : "Прогноз оценивает продажи в штуках. Количество для выпечки вы подтвердите отдельно в плане."}
+            : dataset.forecast_only
+              ? "Касса передала проданные штуки. Для решения о выпуске или заказе проверьте остатки."
+              : dataset.planning_kind === "procurement"
+                ? "Прогноз оценивает продажи в штуках. Заказ подтверждается отдельно после проверки остатка и упаковки."
+                : "Прогноз оценивает продажи в штуках. Количество для выпечки вы подтвердите отдельно в плане."}
         </p>
         {dataset.metadata_declared === false && (
           <p className="error">
@@ -206,6 +245,8 @@ export function ModelSection({
       {forecast && (
         <ForecastResult
           procurement={dataset.planning_kind === "procurement"}
+          productNames={dataset.product_names}
+          hasDemandContext={!!dataset.demand_context}
           snapshot={forecast}
           stale={forecastInputsChanged(forecast, {
             target,
@@ -213,6 +254,14 @@ export function ModelSection({
             method: forecastMethod,
           })}
           unitLabel={unitLabel}
+        />
+      )}
+      {onOrderDataset && (
+        <PosOrderSetup
+          dataset={dataset}
+          busy={busy}
+          run={runReplacingPlan}
+          onReady={onOrderDataset}
         />
       )}
       <div className="saved-models-heading">

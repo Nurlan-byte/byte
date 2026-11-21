@@ -1,6 +1,7 @@
 import { afterEach, expect, test, vi } from "vitest";
 import {
   hasQuantityChanges,
+  initialQuantity,
   productActiveOnTarget,
   savedDataset,
   workspaceReference,
@@ -56,4 +57,38 @@ test("product activity dates include boundaries and exclude outside targets", ()
   expect(productActiveOnTarget(item, "2026-10-01")).toBe(true);
   expect(productActiveOnTarget(item, "2026-10-11")).toBe(true);
   expect(productActiveOnTarget(item, "2026-10-12")).toBe(false);
+});
+
+test("an open POS order without an automatic quantity starts blank until the operator explicitly enters one", () => {
+  const item = {
+    product_id: "p",
+    recommended_qty: 0,
+    confirmed_qty: null,
+    target_is_open: true,
+    automatic_eligible: false,
+  } as Plan["items"][number];
+  const plan = {
+    dataset_schema_version: "pos-procurement-1",
+    items: [item],
+  } as Plan;
+  expect(initialQuantity(plan, item)).toBe("");
+  expect(hasQuantityChanges(plan, {})).toBe(false);
+  expect(hasQuantityChanges(plan, { p: "" })).toBe(false);
+  expect(hasQuantityChanges(plan, { p: "0" })).toBe(true);
+  expect(hasQuantityChanges(plan, { p: "6" })).toBe(true);
+
+  for (const quantity of [0, 6]) {
+    const savedItem = { ...item, confirmed_qty: quantity };
+    const saved = { ...plan, items: [savedItem] };
+    expect(initialQuantity(saved, savedItem)).toBe(String(quantity));
+    expect(hasQuantityChanges(saved, { p: String(quantity) })).toBe(false);
+    expect(hasQuantityChanges(saved, { p: "" })).toBe(true);
+  }
+  expect(initialQuantity(plan, { ...item, automatic_eligible: true })).toBe(
+    "0",
+  );
+  expect(initialQuantity(plan, { ...item, target_is_open: false })).toBe("0");
+  expect(
+    initialQuantity({ ...plan, dataset_schema_version: undefined }, item),
+  ).toBe("0");
 });

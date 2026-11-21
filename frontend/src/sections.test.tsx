@@ -249,6 +249,34 @@ test("saved quantities stay distinguishable from unsaved manual edits", () => {
   expect(html).toContain('href="/api/plans/plan-1/export?revision=1"');
 });
 
+test("a manual POS line blocks order confirmation until a valid pack quantity or explicit zero is entered", () => {
+  const order: Plan = {
+    ...plan,
+    planning_kind: "procurement",
+    dataset_schema_version: "pos-procurement-1",
+    lead_time_days: 1,
+    items: [{
+      ...plan.items[0], method: "manual", automatic_eligible: false,
+      recommended_qty: 0, recommended_packs: 0, pack_size: 6,
+      usable_stock_assumption: null,
+    }],
+  };
+  const render = (quantity: string) => renderToStaticMarkup(
+    <PlanningSection {...planningProps(units)} planningKind="procurement"
+      dataset={null} plan={order} quantities={{ p1: quantity }} />,
+  );
+  expect(render("")).toContain("Нет расчёта");
+  expect(render("")).toContain('placeholder="Введите количество"');
+  expect(render("")).not.toContain("Есть несохранённые изменения");
+  for (const invalid of ["", "1"]) {
+    expect(render(invalid)).toMatch(/<button disabled="">Подтвердить заказ<\/button>/);
+  }
+  for (const valid of ["0", "12"]) {
+    expect(render(valid)).toContain("<button>Подтвердить заказ</button>");
+    expect(render(valid)).toContain("Есть несохранённые изменения");
+  }
+});
+
 test("stale diagnostic snapshot retains its own dates and method with an actionable warning", () => {
   const html = renderToStaticMarkup(
     <ForecastResult

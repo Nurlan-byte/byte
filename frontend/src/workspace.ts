@@ -1,10 +1,12 @@
 import type { Dataset, Item, Plan } from "./types";
 
-export function forPlanningKind<T extends { planning_kind?: string }>(
-  value: T | null,
-  kind = "production",
-): T | null {
-  return value && (value.planning_kind ?? "production") === kind ? value : null;
+export function forPlanningKind<
+  T extends { planning_kind?: string; forecast_only?: boolean },
+>(value: T | null, kind = "production"): T | null {
+  return value &&
+    (value.forecast_only || (value.planning_kind ?? "production") === kind)
+    ? value
+    : null;
 }
 
 export function productActiveOnTarget(item: Item, targetDate: string) {
@@ -27,7 +29,7 @@ export function savedDataset(result: Dataset): Dataset {
 
 // Store references only. Quantities and CSV drafts are never restored as saved data.
 export function workspaceReference(
-  key: "dataset" | "plan",
+  key: "dataset" | "plan" | "pos-mode",
   value?: string | null,
 ) {
   try {
@@ -41,13 +43,25 @@ export function workspaceReference(
   return null;
 }
 
+export function needsManualOrder(plan: Plan, item: Item) {
+  return (
+    plan.dataset_schema_version === "pos-procurement-1" &&
+    item.target_is_open !== false &&
+    item.automatic_eligible === false
+  );
+}
+
+export function initialQuantity(plan: Plan, item: Item) {
+  if (item.confirmed_qty != null) return String(item.confirmed_qty);
+  return needsManualOrder(plan, item) ? "" : String(item.recommended_qty);
+}
+
 export function hasQuantityChanges(
   plan: Plan | null,
   quantities: Record<string, string>,
 ) {
   return !!plan?.items.some(
     (item) =>
-      quantities[item.product_id] !==
-      String(item.confirmed_qty ?? item.recommended_qty),
+      (quantities[item.product_id] ?? "") !== initialQuantity(plan, item),
   );
 }

@@ -23,13 +23,13 @@ def identity(dataset):
     }
 
 
-def parse_sales_csv(text, today):
+def parse_sales_csv(text, today, field="item_line_count"):
     reader = csv.DictReader(io.StringIO(text.lstrip("\ufeff"), newline=""), strict=True)
     try:
         headers = reader.fieldnames
     except csv.Error as error:
         raise CsvValidationError([f"Ошибка заголовка CSV: {error}"]) from error
-    expected = {"date", "product_id", "item_line_count"}
+    expected = {"date", "product_id", field}
     if (
         not headers
         or len(headers) != 3
@@ -37,7 +37,7 @@ def parse_sales_csv(text, today):
     ):
         raise CsvValidationError(
             [
-                "Sales-only CSV: date,product_id,item_line_count; остатки и физические штуки не выводятся"
+                f"Sales-only CSV: date,product_id,{field}; остатки не выводятся"
             ]
         )
     rows, seen, products = [], set(), set()
@@ -51,11 +51,11 @@ def parse_sales_csv(text, today):
                 raise ValueError("Дата должна иметь формат YYYY-MM-DD")
             day = date.fromisoformat(raw["date"])
             product = raw["product_id"]
-            value = raw["item_line_count"]
+            value = raw[field]
             if day > today or not product.strip() or len(product) > 100:
                 raise ValueError("Недопустимая дата или product_id")
             if not value.isascii() or not value.isdigit() or int(value) > 1_000_000_000:
-                raise ValueError("item_line_count: требуется целое от 0 до 1000000000")
+                raise ValueError(f"{field}: требуется целое от 0 до 1000000000")
             if (raw["date"], product) in seen:
                 raise ValueError("Дубликат даты и продукта")
             seen.add((raw["date"], product))
@@ -66,7 +66,7 @@ def parse_sales_csv(text, today):
                 {
                     "date": raw["date"],
                     "product_id": product,
-                    "item_line_count": int(value),
+                    field: int(value),
                 }
             )
     except (ValueError, csv.Error) as error:

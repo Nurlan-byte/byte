@@ -1,3 +1,4 @@
+import { ContextControl, PosConnection } from "./DemandSources";
 import { useEffect, useRef, useState } from "react";
 import type { ImportProps } from "./ImportSection";
 import type { CatalogItem, Dataset } from "./types";
@@ -47,7 +48,7 @@ export function ProcurementImport(p: ImportProps) {
   const [saved, setSaved] = useState<Dataset[]>([]);
   const [savedId, setSavedId] = useState("");
   const summary = useRef<HTMLDivElement>(null);
-  const dataset = p.dataset?.planning_kind === "procurement" ? p.dataset : null;
+  const dataset = p.dataset;
   const draft = JSON.stringify([
     p.csv,
     catalog,
@@ -89,7 +90,7 @@ export function ProcurementImport(p: ImportProps) {
             Источник: {datasetSourceLabel(dataset.source)} · строк:{" "}
             {dataset.row_count ?? "—"}
           </p>
-          {signature !== draft && (
+          {!dataset.forecast_only && signature !== draft && (
             <p className="status-note">
               Есть несохранённые поля импорта. План использует сохранённый
               набор.
@@ -97,11 +98,26 @@ export function ProcurementImport(p: ImportProps) {
           )}
           <div className="actions">
             <button className="cta" disabled={p.busy} onClick={p.onContinue}>
-              Перейти к плану <Icon name="arrow" />
+              {dataset.forecast_only ? "Перейти к прогнозу" : "Перейти к плану"}{" "}
+              <Icon name="arrow" />
             </button>
           </div>
         </div>
       )}
+      {dataset && (
+        <ContextControl
+          dataset={dataset}
+          busy={p.busy}
+          run={runReplacingPlan}
+          adopt={p.adopt}
+        />
+      )}
+      <PosConnection
+        busy={p.busy}
+        run={runReplacingPlan}
+        adopt={p.adopt}
+        active={p.active}
+      />
       {dataset && <h2 className="subheading">Загрузить другой набор</h2>}
       <div className="source-options">
         <div className="file-drop source-option">
@@ -184,7 +200,7 @@ export function ProcurementImport(p: ImportProps) {
             void p.run(async () =>
               setSaved(
                 (await api<Dataset[]>("/datasets?limit=100")).filter(
-                  (d) => d.planning_kind === "procurement",
+                  (d) => d.planning_kind === "procurement" || !!d.pos_provider,
                 ),
               ),
             )
@@ -201,7 +217,9 @@ export function ProcurementImport(p: ImportProps) {
           <option value="">Выберите набор</option>
           {saved.map((d) => (
             <option key={d.id} value={d.id}>
-              {d.provenance || d.id}
+              {d.pos_location_name
+                ? `${d.pos_location_name} · ${d.created_at?.slice(0, 10)} · ${d.row_count} строк`
+                : d.provenance || d.id}
             </option>
           ))}
         </select>

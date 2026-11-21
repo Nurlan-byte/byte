@@ -1,6 +1,7 @@
 from datetime import date
 from typing import Literal
 from pydantic import BaseModel, Field, StrictInt, model_validator
+from backend.demand_context import DemandContext
 
 
 class ProcurementProduct(BaseModel):
@@ -11,9 +12,10 @@ class ProcurementProduct(BaseModel):
 
 
 class ImportRequest(BaseModel):
+    demand_context: DemandContext | None = None
     csv_text: str = Field(max_length=1_000_000)
     source: Literal["synthetic", "local", "external"]
-    schema_version: Literal["history-1", "sales-1", "procurement-1"] = "history-1"
+    schema_version: Literal["history-1", "sales-1", "procurement-1", "pos-units-1"] = "history-1"
     catalog: list[ProcurementProduct] | None = Field(default=None, max_length=50)
     bakery_id: str | None = Field(
         default=None, min_length=1, max_length=64, pattern=r"^[a-zA-Z0-9_-]+$"
@@ -32,7 +34,7 @@ class ImportRequest(BaseModel):
                 )
             expected = (
                 ("sold_units", "physical_unit")
-                if self.schema_version in {"history-1", "procurement-1"}
+                if self.schema_version in {"history-1", "procurement-1", "pos-units-1"}
                 else ("item_line_count", "item_line")
             )
             if (self.target, self.unit) != expected:
@@ -43,7 +45,7 @@ class ImportRequest(BaseModel):
             raise ValueError("procurement-1 requires explicit identity and provenance")
         elif self.schema_version != "history-1":
             raise ValueError(
-                "Для sales-1 необходимо явно указать происхождение и единицу item_line"
+                "Для истории только продаж необходимо явно указать происхождение и единицу"
             )
         if self.schema_version == "procurement-1":
             if not self.catalog or len({p.product_id for p in self.catalog}) != len(self.catalog):

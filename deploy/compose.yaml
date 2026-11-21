@@ -9,6 +9,9 @@ services:
         PYTHON_IMAGE: ${PYTHON_IMAGE:-python:3.14.8-slim-bookworm}
     environment:
       BAKEPLAN_DB: /data/${BAKEPLAN_DB_FILE:-bakeplan.sqlite3}
+      BAKEPLAN_POS_ENABLED: ${BAKEPLAN_POS_ENABLED:-0}
+      BAKEPLAN_WEATHER_MODE: ${BAKEPLAN_WEATHER_MODE:-}
+      BAKEPLAN_WEATHER_API_KEY: ${BAKEPLAN_WEATHER_API_KEY:-}
     volumes:
       - sqlite_data:/data
       - backup_data:/backups

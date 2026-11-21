@@ -11,11 +11,15 @@ export type ForecastSnapshot = {
 
 export function ForecastResult({
   procurement = false,
+  productNames,
+  hasDemandContext = false,
   snapshot,
   stale,
   unitLabel,
 }: {
   procurement?: boolean;
+  productNames?: Record<string, string>;
+  hasDemandContext?: boolean;
   snapshot: ForecastSnapshot;
   stale: boolean;
   unitLabel: string;
@@ -71,7 +75,9 @@ export function ForecastResult({
             <tbody>
               {items.map((item) => (
                 <tr key={item.product_id}>
-                  <th scope="row">{item.product_id}</th>
+                  <th scope="row">
+                    {productNames?.[item.product_id] ?? item.product_id}
+                  </th>
                   <td className="forecast-quantity">
                     {item.forecast_mean == null
                       ? "Нет оценки"
@@ -79,6 +85,19 @@ export function ForecastResult({
                   </td>
                   <td>
                     <strong>{methodText(item.method)}</strong>
+                    {hasDemandContext && item.method === "ML" && (
+                      <small>
+                        {item.demand_features
+                          ? Object.keys(item.demand_features).some(
+                              (key) =>
+                                key.includes("temperature") ||
+                                key.includes("precipitation"),
+                            )
+                            ? "История продаж, календарь и погода"
+                            : "История продаж и календарь"
+                          : "Только история продаж"}
+                      </small>
+                    )}
                     {item.fallback_reason && (
                       <small className="unsaved">
                         Использован упрощённый прогноз.{" "}

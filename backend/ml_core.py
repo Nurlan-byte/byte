@@ -18,17 +18,37 @@ from dataclasses import dataclass
 from datetime import date
 
 import numpy as np
+from backend.demand_context import CONTEXT_FEATURE_NAMES, ContextIndex
 
 PROTOCOL_VERSION = "pooled-relative-ridge-200-v3-horizon-2-experimental"
 PROCUREMENT_PROTOCOL_VERSION = "procurement-observed-sales-ridge-v1-horizon-2-experimental"
+POS_PROTOCOL_VERSION = "pos-observed-sales-ridge-v1-horizon-2-experimental"
+_BASE_PROTOCOLS = {
+    "production": PROTOCOL_VERSION,
+    "procurement": PROCUREMENT_PROTOCOL_VERSION,
+    "pos_units": POS_PROTOCOL_VERSION,
+}
+_RAW_CONTEXT_PROTOCOLS = {kind: protocol + "-context-v1" for kind, protocol in _BASE_PROTOCOLS.items()}
+_CONTEXT_PROTOCOLS = {kind: protocol + "-selection" for kind, protocol in _RAW_CONTEXT_PROTOCOLS.items()}
+_OBSERVED_SALES_PROTOCOLS = {
+    protocols[kind] for protocols in (_BASE_PROTOCOLS, _RAW_CONTEXT_PROTOCOLS, _CONTEXT_PROTOCOLS)
+    for kind in ("procurement", "pos_units")
+}
 
 
-def protocol_for_dataset(dataset):
-    return (
-        PROCUREMENT_PROTOCOL_VERSION
-        if dataset.get("planning_kind") == "procurement"
-        else PROTOCOL_VERSION
-    )
+def _dataset_kind(dataset):
+    if dataset.get("schema_version") == "pos-units-1":
+        return "pos_units"
+    return dataset.get("planning_kind", "production")
+
+
+def protocol_for_dataset(dataset, *, select_context=True):
+    protocols = _BASE_PROTOCOLS
+    if dataset.get("demand_context") is not None:
+        protocols = _CONTEXT_PROTOCOLS if select_context else _RAW_CONTEXT_PROTOCOLS
+    return protocols[_dataset_kind(dataset)]
+
+
 FORECAST_HORIZON_DAYS = 2
 ALPHA = 200.0
 # Relative correction bounds: ML may move B1 by -80%..+200% of max(B1, 1).
@@ -72,6 +92,7 @@ MODEL_FEATURE_NAMES = (
     "weekday_cos",
 )
 IDENTITY_KEYS = ("bakery_id", "dataset_id", "dataset_version", "target", "unit")
+CONTEXT_MODEL_FEATURE_NAMES = MODEL_FEATURE_NAMES + CONTEXT_FEATURE_NAMES
 
 
 def _day(value):
@@ -113,7 +134,7 @@ def _identity(dataset):
 
 def _label(row, target, planning_kind="production"):
     """Return an observed label or an explicit exclusion reason."""
-    if target == "sold_units" and planning_kind == "procurement":
+    if target == "sold_units" and planning_kind in {"procurement", "pos_units"}:
         if row.get("is_open") is False:
             return None, "explicit_closed_day"
         value = row.get("sold")
@@ -138,8 +159,8 @@ def _label(row, target, planning_kind="production"):
 
 def _snapshot_rows(dataset, cutoff):
     identity = _identity(dataset)
-    planning_kind = dataset.get("planning_kind", "production")
-    if planning_kind not in {"production", "procurement"}:
+    planning_kind = _dataset_kind(dataset)
+    if planning_kind not in _BASE_PROTOCOLS:
         raise ValueError("Unsupported planning kind")
     rows = dataset.get("rows")
     if not isinstance(rows, list) or len(rows) > MAX_ROWS:
@@ -169,7 +190,7 @@ def _snapshot_rows(dataset, cutoff):
             "sold" if identity["target"] == "sold_units" else "item_line_count"
         )
         if identity["target"] == "sold_units" and (
-            (planning_kind == "procurement" and row.get("is_open") is False)
+            (planning_kind in {"procurement", "pos_units"} and row.get("is_open") is False)
             or (planning_kind == "production" and (
                 row.get("is_open") is not True or row.get("stockout_status") != "none"
             ))
@@ -193,16 +214,45 @@ def _snapshot_rows(dataset, cutoff):
     return identity, records
 
 
-def _snapshot_hash(identity, records, planning_kind):
+def _snapshot_hash(identity, records, planning_kind, context_days=None):
     snapshot = {"identity": identity, "rows": records}
-    if planning_kind == "procurement":
+    if planning_kind in {"procurement", "pos_units"}:
         snapshot["planning_kind"] = planning_kind
+    if context_days is not None:
+        # The artifact is already bound to the immutable dataset id and version.
+        # Those include vintages and rows after this issue cutoff. Keep them out
+        # of the numerical training fingerprint so identical evidence compares equal.
+        snapshot["identity"] = {key: identity[key] for key in ("bakery_id", "target", "unit")}
+        snapshot["demand_context"] = {
+            day: [None if math.isnan(value) else value for value in features]
+            for day, features in context_days.items()
+        }
     return _digest(snapshot)
 
 
 def _snapshot(dataset, cutoff):
     identity, records = _snapshot_rows(dataset, cutoff)
-    return identity, records, _snapshot_hash(identity, records, dataset.get("planning_kind"))
+    context = _context_index(dataset)
+    return identity, records, _snapshot_hash(identity, records, _dataset_kind(dataset), _context_days(context, records))
+
+
+def _context_index(dataset):
+    context = dataset.get("demand_context")
+    return ContextIndex(context) if context is not None else None
+
+
+def _issue_cutoff(target):
+    return date.fromordinal(max(1, target.toordinal() - FORECAST_HORIZON_DAYS))
+
+
+def _context_days(context, records):
+    if context is None:
+        return None
+    result = {}
+    for value in {row["date"] for row in records}:
+        target = _day(value)
+        result[value] = context.features(target, _issue_cutoff(target))
+    return result
 
 
 def _history(records):
@@ -259,7 +309,7 @@ def _features(history, target, cutoff):
 
 
 def _safe_features(features):
-    return len(features) == len(FEATURE_NAMES) and all(
+    return len(features) in (len(FEATURE_NAMES), len(FEATURE_NAMES) + len(CONTEXT_FEATURE_NAMES)) and all(
         math.isnan(value) or (math.isfinite(value) and abs(value) <= MAX_COUNT)
         for value in features
     )
@@ -290,7 +340,8 @@ def _relative_target(value, b1):
 
 
 def _fit(samples):
-    if any(not _safe_features(sample["features"]) for sample in samples):
+    feature_count = len(samples[0]["features"])
+    if any(len(sample["features"]) != feature_count or not _safe_features(sample["features"]) for sample in samples):
         raise ValueError("Features exceed the ML bound")
     raw = np.asarray(
         [_model_features(sample["features"]) for sample in samples], dtype=float
@@ -322,7 +373,7 @@ def _fit(samples):
     )
     params = {
         "alpha": ALPHA,
-        "feature_names": list(MODEL_FEATURE_NAMES),
+        "feature_names": list(MODEL_FEATURE_NAMES if feature_count == len(FEATURE_NAMES) else CONTEXT_MODEL_FEATURE_NAMES),
         "imputation_medians": medians.tolist(),
         "means": means.tolist(),
         "scales": scales.tolist(),
@@ -346,13 +397,14 @@ def _validate_params(params):
         "intercept",
     }:
         raise ValueError("Invalid estimator fields")
-    if params.get("feature_names") != list(MODEL_FEATURE_NAMES):
+    names = params.get("feature_names")
+    if names not in (list(MODEL_FEATURE_NAMES), list(CONTEXT_MODEL_FEATURE_NAMES)):
         raise ValueError("Invalid feature schema")
     for key, size in (
-        ("imputation_medians", len(MODEL_FEATURE_NAMES)),
-        ("means", 2 * len(MODEL_FEATURE_NAMES)),
-        ("scales", 2 * len(MODEL_FEATURE_NAMES)),
-        ("coefficients", 2 * len(MODEL_FEATURE_NAMES)),
+        ("imputation_medians", len(names)),
+        ("means", 2 * len(names)),
+        ("scales", 2 * len(names)),
+        ("coefficients", 2 * len(names)),
     ):
         values = params.get(key)
         if not isinstance(values, list) or len(values) != size:
@@ -378,7 +430,7 @@ def _validate_params(params):
 def _predict(params, features, b1):
     _validate_params(params)
     raw = np.asarray(features, dtype=float)
-    if raw.shape != (len(FEATURE_NAMES),) or not _safe_features(raw):
+    if raw.shape != (len(params["feature_names"]) + 1,) or not _safe_features(raw):
         raise ValueError("Invalid prediction features")
     if type(b1) not in (int, float) or not math.isfinite(b1) or b1 != raw[0]:
         raise ValueError("B1 does not match the prediction features")
@@ -410,6 +462,32 @@ def _score(pairs):
         "b1_mae": sum(abs(value - b1) for value, b1, _ in pairs) / n if n else None,
         "ml_mae": sum(abs(value - pred) for value, _, pred in pairs) / n if n else None,
     }
+
+
+def _holdout_predictions(estimator, samples):
+    width = len(estimator["feature_names"]) + 1
+    return [
+        (row["value"], row["b1"], _predict(estimator, row["features"][:width], row["b1"]))
+        for row in samples
+    ]
+
+
+def _history_features_only(samples):
+    return [{**row, "features": row["features"][:len(FEATURE_NAMES)]} for row in samples]
+
+
+def _context_selection(context_pairs, history_pairs):
+    context = _score(context_pairs)
+    errors = {
+        "B1": context["b1_mae"],
+        "history": _score(history_pairs)["ml_mae"],
+        "context": context["ml_mae"],
+    }
+    best = min(errors.values())
+    # Dict order breaks numerical ties in favour of the simpler model.
+    chosen = next(name for name, error in errors.items()
+                  if math.isclose(error, best, rel_tol=1e-12, abs_tol=1e-12))
+    return {"selected": chosen, "paired_n": len(context_pairs), "mae": errors}
 
 
 def _paired_evaluation(pairs, paired_dates, eligible_n):
@@ -449,7 +527,9 @@ def evaluation_applicability(model, target, cutoff, product_id=None):
     reason = None
     if not isinstance(model, dict):
         reason = "no_model"
-    elif model.get("protocol_version") not in {PROTOCOL_VERSION, PROCUREMENT_PROTOCOL_VERSION}:
+    elif model.get("protocol_version") not in (
+        *_BASE_PROTOCOLS.values(), *_CONTEXT_PROTOCOLS.values(), *_RAW_CONTEXT_PROTOCOLS.values(),
+    ):
         reason = "unsupported_protocol"
     elif evaluated_horizon != FORECAST_HORIZON_DAYS:
         reason = "unknown_evaluation_horizon"
@@ -484,17 +564,24 @@ def evaluation_applicability(model, target, cutoff, product_id=None):
     }
 
 
-def train_model(dataset: dict, cutoff: date) -> dict:
+def train_model(dataset: dict, cutoff: date, *, select_context: bool = True) -> dict:
     """Fit an immutable, deterministic JSON object for an explicit as-of snapshot.
 
     Last max(7, ceil(20%)) distinct dates are the common holdout. Training and
     holdout features both use target minus two calendar days. Frozen estimators
     see labels only through the first holdout issue cutoff. Observations roll
     forward at that same two-day horizon; deployment refits through cutoff.
-    No test-based parameter/model selection.
+    Context-enabled operation selects the simplest of three candidates with the
+    lowest frozen holdout MAE per product. select_context=False is for evaluating
+    the raw context candidate on a later external test, never on the selection dates.
     """
     cutoff = _day(cutoff)
-    identity, records, snapshot_hash = _snapshot(dataset, cutoff)
+    identity, records = _snapshot_rows(dataset, cutoff)
+    context_days = _context_days(_context_index(dataset), records)
+    compare_context = context_days is not None and select_context
+    kind = _dataset_kind(dataset)
+    observed_sales = kind in {"procurement", "pos_units"}
+    snapshot_hash = _snapshot_hash(identity, records, kind, context_days)
     dates = sorted({row["date"] for row in records})
     holdout_n = max(MIN_HOLDOUT_DATES, math.ceil(len(dates) * 0.2))
     candidate_holdout = dates[-holdout_n:]
@@ -528,8 +615,10 @@ def train_model(dataset: dict, cutoff: date) -> dict:
         features, baseline = _features(
             histories[product],
             day,
-            date.fromordinal(max(1, day.toordinal() - FORECAST_HORIZON_DAYS)),
+            _issue_cutoff(day),
         )
+        if features is not None and context_days is not None:
+            features.extend(context_days[row["date"]])
         feature_reason = (
             "missing_b1_history"
             if features is None
@@ -560,12 +649,15 @@ def train_model(dataset: dict, cutoff: date) -> dict:
         if train_end and sample["date"] <= train_end
     ]
     pooled_all = [sample for product in sorted(samples) for sample in samples[product]]
-    frozen = deployment = None
+    frozen = deployment = history_frozen = history_deployment = None
     pooled_reason = None
     if split_ok and len(pooled_prefix) >= MIN_TRAIN_ROWS:
         try:
             frozen = _fit(pooled_prefix)
             deployment = _fit(pooled_all)
+            if compare_context:
+                history_frozen = _fit(_history_features_only(pooled_prefix))
+                history_deployment = _fit(_history_features_only(pooled_all))
         except ValueError, TypeError, ArithmeticError, np.linalg.LinAlgError:
             frozen = deployment = None
             pooled_reason = "estimator_failure"
@@ -639,41 +731,40 @@ def train_model(dataset: dict, cutoff: date) -> dict:
         if frozen is None or deployment is None:
             result["reason"] = pooled_reason or "insufficient_training_feature_rows"
             continue
+        chosen_frozen, chosen_deployment = frozen, deployment
         try:
-            pairs = [
-                (
-                    sample["value"],
-                    sample["b1"],
-                    _predict(frozen, sample["features"], sample["b1"]),
-                )
-                for sample in later
-            ]
+            pairs = _holdout_predictions(frozen, later)
+            if compare_context:
+                history_pairs = _holdout_predictions(history_frozen, later)
+                result["selection"] = _context_selection(pairs, history_pairs)
+                if result["selection"]["selected"] == "history":
+                    chosen_frozen, chosen_deployment = history_frozen, history_deployment
+                    pairs = history_pairs
         except ValueError, TypeError, ArithmeticError, np.linalg.LinAlgError:
             result["reason"] = "estimator_failure"
             continue
         # Procurement has no verified unconstrained-demand label. Retain ML
         # only when its frozen, pre-cutoff check improves on the same B1 rows.
         # This decision never uses the later external rolling evaluation.
-        if dataset.get("planning_kind") == "procurement":
-            validation = _paired_evaluation(
-                pairs, [sample["date"] for sample in later], product_holdout_n
-            )
-            if validation["ml_mae"] >= validation["b1_mae"]:
-                result["reason"] = "not_better_than_b1_validation"
-                result["evaluation"] = validation
-                continue
+        validation = _paired_evaluation(pairs, [sample["date"] for sample in later], product_holdout_n)
+        prefer_b1 = (
+            result["selection"]["selected"] == "B1" if compare_context
+            else observed_sales and validation["ml_mae"] >= validation["b1_mae"]
+        )
+        if prefer_b1:
+            result["reason"] = "not_better_than_b1_validation"
+            result["evaluation"] = validation
+            continue
         result.update(
             {
                 "status": "ready",
                 "reason": None,
-                "parameters": deployment,
-                "parameters_hash": _digest(deployment),
+                "parameters": chosen_deployment,
+                "parameters_hash": _digest(chosen_deployment),
                 "evaluation_fit_end": train_end,
-                "evaluation_parameters_hash": _digest(frozen),
+                "evaluation_parameters_hash": _digest(chosen_frozen),
                 "deployment_fit_end": deployment_fit_end,
-                "evaluation": _paired_evaluation(
-                    pairs, [sample["date"] for sample in later], product_holdout_n
-                ),
+                "evaluation": validation,
             }
         )
         result["counts"]["deployment_training_rows"] = len(samples[product])
@@ -703,20 +794,22 @@ def train_model(dataset: dict, cutoff: date) -> dict:
             else []
         ),
         "experimental": True,
-        "selection_performed": dataset.get("planning_kind") == "procurement",
+        "selection_performed": observed_sales or compare_context,
         "evaluation_role": (
             "internal_selection_validation_not_independent_accuracy_estimate"
-            if dataset.get("planning_kind") == "procurement"
+            if observed_sales or compare_context
             else "chronological_holdout_no_selection"
         ),
         "selection_rule": (
+            "Per product: lowest frozen MAE among B1, history-only Ridge and contextual Ridge on identical rows; ties prefer the simpler method"
+            if compare_context else
             "Per product: use ML only when frozen validation MAE is below B1 MAE on identical rows; otherwise B1"
-            if dataset.get("planning_kind") == "procurement"
+            if observed_sales
             else None
         ),
         "design_selected_on": (
             "current_dataset_pre_cutoff_internal_validation"
-            if dataset.get("planning_kind") == "procurement"
+            if observed_sales or compare_context
             else "generated_synthetic_data_only"
         ),
         "estimator_scope": "pooled_all_products",
@@ -761,7 +854,7 @@ def train_model(dataset: dict, cutoff: date) -> dict:
         },
     }
     return {
-        "protocol_version": protocol_for_dataset(dataset),
+        "protocol_version": protocol_for_dataset(dataset, select_context=select_context),
         **identity,
         "training_cutoff": cutoff.isoformat(),
         "snapshot_hash": snapshot_hash,
@@ -785,8 +878,8 @@ def train_model(dataset: dict, cutoff: date) -> dict:
             "min_training_dates": MIN_TRAIN_DATES,
             "min_training_feature_rows": MIN_TRAIN_ROWS,
             "min_holdout_dates": MIN_HOLDOUT_DATES,
-            "raw_feature_count": len(FEATURE_NAMES),
-            "model_feature_count": len(MODEL_FEATURE_NAMES),
+            "raw_feature_count": len(FEATURE_NAMES) + (len(CONTEXT_FEATURE_NAMES) if context_days is not None else 0),
+            "model_feature_count": len(CONTEXT_MODEL_FEATURE_NAMES if context_days is not None else MODEL_FEATURE_NAMES),
             "relative_correction_bounds": [
                 MIN_RELATIVE_CORRECTION,
                 MAX_RELATIVE_CORRECTION,
@@ -817,18 +910,20 @@ def prepare_forecast(
     if trained is not None and trained > cutoff:
         raise ValueError("Model training cutoff is after forecast cutoff")
     training_hash = None
+    context = _context_index(dataset)
     if trained is not None:
         # The artifact's digest covers only what was visible on its training day.
         training_rows = records
         if trained < cutoff:
             last_day = trained.isoformat()
             training_rows = [row for row in records if row["date"] <= last_day]
-        training_hash = _snapshot_hash(identity, training_rows, dataset.get("planning_kind"))
+        training_hash = _snapshot_hash(identity, training_rows, _dataset_kind(dataset), _context_days(context, training_rows))
     return ForecastBatch(
         model=model, target=target, cutoff=cutoff,
-        protocol=protocol_for_dataset(dataset),
+        protocol=protocol_for_dataset(dataset, select_context=model.get("protocol_version") not in _RAW_CONTEXT_PROTOCOLS.values()),
         training_hash=training_hash,
         histories=_history(records),
+        context_features=context.features(target, cutoff) if context is not None else None,
     )
 
 
@@ -842,6 +937,7 @@ class ForecastBatch:
     protocol: str
     training_hash: str | None
     histories: dict[str, dict[int, int]]
+    context_features: list | None
 
     def predict(self, product_id: str) -> dict:
         model, target, cutoff = self.model, self.target, self.cutoff
@@ -864,7 +960,7 @@ class ForecastBatch:
         if features is None:
             return fallback("no_b1_history")
         if (
-            self.protocol == PROCUREMENT_PROTOCOL_VERSION
+            self.protocol in _OBSERVED_SALES_PROTOCOLS
             and (target - cutoff).days != FORECAST_HORIZON_DAYS
         ):
             return fallback("forecast_horizon_mismatch")
@@ -888,6 +984,9 @@ class ForecastBatch:
         try:
             params = product.get("parameters")
             _validate_params(params)
+            use_context = params["feature_names"] == list(CONTEXT_MODEL_FEATURE_NAMES)
+            if use_context and self.context_features is not None:
+                features.extend(self.context_features)
             if _digest(params) != product.get("parameters_hash"):
                 return fallback("invalid_artifact")
             prediction = _predict(params, features, baseline["b1_mean"])
@@ -898,6 +997,11 @@ class ForecastBatch:
         except ValueError, TypeError, ArithmeticError, KeyError:
             return fallback("invalid_artifact")
         result.update(forecast_mean=prediction, method="ML", fallback_reason=None)
+        if use_context:
+            result["demand_features"] = {
+                name: value for name, value in zip(CONTEXT_FEATURE_NAMES, self.context_features, strict=True)
+                if math.isfinite(value)
+            }
         return result
 
 

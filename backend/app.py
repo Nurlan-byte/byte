@@ -9,6 +9,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, Response
 from starlette.exceptions import HTTPException as StarletteHTTPException
 from backend.config import CATALOG, business_today
+from backend.context_routes import router as context_router
 from backend.imports import CsvValidationError, parse_csv as parse_history
 from backend.imports import REQUIRED as REQUIRED
 from backend.schemas import (
@@ -20,6 +21,8 @@ from backend.schemas import (
 )
 from backend.dataset_identity import identity
 from backend import deliveries
+from backend.pos import router as pos_router
+from backend.pos_order_setup import router as pos_order_router
 from backend.ml_service import train_dataset, models_for_dataset, create_forecast
 from backend.services import (
     ServiceError,
@@ -50,6 +53,9 @@ async def lifespan(app):
 
 
 app = FastAPI(title="BakePlan", version="0.3.0", lifespan=lifespan)
+app.include_router(context_router)
+app.include_router(pos_router)
+app.include_router(pos_order_router)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"],

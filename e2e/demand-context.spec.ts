@@ -1,0 +1,35 @@
+import { expect, test } from '@playwright/test';
+import { navigate, openDetails } from './helpers';
+
+test('saved CSV gets a first forecast with the calendar and no vendor credentials', async ({ page }) => {
+  test.setTimeout(100_000);
+  await page.goto('/');
+  await navigate(page, 'Данные');
+  await page.getByRole('button', { name: 'Загрузить демо CSV', exact: true }).click();
+  const original = page.waitForResponse(r => r.url().endsWith('/api/datasets') && r.request().method() === 'POST');
+  await page.getByRole('button', { name: 'Проверить и импортировать' }).click();
+  const base = await (await original).json();
+  expect(base.id).toBeTruthy();
+  await openDetails(page, 'Календарь и погода для прогноза');
+  await expect(page.getByLabel('Город для погоды')).toHaveValue('none');
+  const context = page.waitForResponse(r => r.url().endsWith('/demand-context'));
+  const forecast = page.waitForResponse(r => r.url().endsWith('/first-forecast'));
+  await page.getByRole('button', { name: 'Применить и рассчитать прогноз' }).click();
+  const saved = (await (await context).json()).dataset;
+  expect(saved.id).not.toBe(base.id);
+  expect(saved.demand_context.weather).toEqual([]);
+  expect(saved.demand_context.calendar.length).toBeGreaterThan(0);
+  const first = await (await forecast).json();
+  expect(first.result.dataset_id).toBe(saved.id);
+  await expect(page.getByTestId('forecast-table')).toBeVisible();
+  await expect(page.getByTestId('forecast-result')).toContainText(first.targetDate);
+  await expect(page.locator('#panel-model')).toContainText('Погодные данные не подключены');
+  const originalRead = await (await page.request.get('/api/datasets/' + base.id)).json();
+  expect(originalRead.demand_context).toBeUndefined();
+  await navigate(page, 'Данные');
+  await expect(page.getByTestId('unsaved-import')).toHaveCount(0);
+  await page.reload();
+  await navigate(page, 'Модель');
+  await expect(page.getByTestId('model-panel')).toContainText('Факторы, доступные модели');
+  expect(await page.evaluate(() => localStorage.getItem('bakeplan.owner.dataset'))).toBe(saved.id);
+});

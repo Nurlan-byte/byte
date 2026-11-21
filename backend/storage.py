@@ -368,7 +368,11 @@ def list_datasets(limit=100, offset=0):
         ],
         limit,
         offset,
-        {"planning_kind": "CASE WHEN json_valid(payload) THEN COALESCE(json_extract(payload,'$.planning_kind'),'production') ELSE 'production' END"},
+        {
+            "planning_kind": "CASE WHEN json_valid(payload) THEN COALESCE(json_extract(payload,'$.planning_kind'),'production') ELSE 'production' END",
+            "pos_provider": "CASE WHEN json_valid(payload) THEN json_extract(payload,'$.pos_provider') END",
+            "pos_location_name": "CASE WHEN json_valid(payload) THEN json_extract(payload,'$.pos_location.name') END",
+        },
     )
 
 

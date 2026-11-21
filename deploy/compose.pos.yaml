@@ -1,0 +1,9 @@
+# Apply only to a private operator workspace. Vendor calls need outbound HTTPS.
+services:
+  api:
+    networks:
+      - app
+      - integrations
+
+networks:
+  integrations: {}

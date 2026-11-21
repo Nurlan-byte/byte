@@ -1,0 +1,156 @@
+{
+  "seoul": {
+    "all": {
+      "pairs": 80,
+      "days": 80,
+      "B1_mae": 5418.65,
+      "prior_mae": 5274.292108,
+      "prior_methods": {
+        "B1": 14,
+        "ML": 66
+      },
+      "calendar_mae": 5242.666621,
+      "calendar_methods": {
+        "B1": 21,
+        "ML": 59
+      },
+      "weather_calendar_mae": 5090.229948,
+      "weather_calendar_methods": {
+        "B1": 21,
+        "ML": 59
+      },
+      "auto_mae": 5078.039069,
+      "auto_methods": {
+        "B1": 7,
+        "ML": 73
+      },
+      "auto_candidate_days": {
+        "B1": 7,
+        "context": 34,
+        "history": 39
+      }
+    }
+  },
+  "cafe": {
+    "all": {
+      "pairs": 1008,
+      "days": 56,
+      "B1_mae": 0.766865,
+      "prior_mae": 0.712946,
+      "prior_methods": {
+        "B1": 77,
+        "ML": 931
+      },
+      "calendar_mae": 0.714496,
+      "calendar_methods": {
+        "B1": 84,
+        "ML": 924
+      },
+      "weather_calendar_mae": 0.71565,
+      "weather_calendar_methods": {
+        "B1": 105,
+        "ML": 903
+      },
+      "auto_mae": 0.713294,
+      "auto_methods": {
+        "B1": 70,
+        "ML": 938
+      },
+      "auto_candidate_days": {
+        "B1": 70,
+        "context": 217,
+        "history": 721
+      }
+    },
+    "SHOP001": {
+      "pairs": 336,
+      "days": 56,
+      "B1_mae": 0.921875,
+      "prior_mae": 0.854465,
+      "prior_methods": {
+        "B1": 21,
+        "ML": 315
+      },
+      "calendar_mae": 0.857044,
+      "calendar_methods": {
+        "B1": 28,
+        "ML": 308
+      },
+      "weather_calendar_mae": 0.857615,
+      "weather_calendar_methods": {
+        "B1": 49,
+        "ML": 287
+      },
+      "auto_mae": 0.853109,
+      "auto_methods": {
+        "B1": 21,
+        "ML": 315
+      },
+      "auto_candidate_days": {
+        "B1": 21,
+        "context": 21,
+        "history": 294
+      }
+    },
+    "SHOP002": {
+      "pairs": 336,
+      "days": 56,
+      "B1_mae": 0.630952,
+      "prior_mae": 0.59639,
+      "prior_methods": {
+        "B1": 49,
+        "ML": 287
+      },
+      "calendar_mae": 0.596656,
+      "calendar_methods": {
+        "B1": 49,
+        "ML": 287
+      },
+      "weather_calendar_mae": 0.593117,
+      "weather_calendar_methods": {
+        "B1": 49,
+        "ML": 287
+      },
+      "auto_mae": 0.594838,
+      "auto_methods": {
+        "B1": 42,
+        "ML": 294
+      },
+      "auto_candidate_days": {
+        "B1": 42,
+        "context": 70,
+        "history": 224
+      }
+    },
+    "SHOP003": {
+      "pairs": 336,
+      "days": 56,
+      "B1_mae": 0.747768,
+      "prior_mae": 0.687981,
+      "prior_methods": {
+        "B1": 7,
+        "ML": 329
+      },
+      "calendar_mae": 0.689789,
+      "calendar_methods": {
+        "B1": 7,
+        "ML": 329
+      },
+      "weather_calendar_mae": 0.696219,
+      "weather_calendar_methods": {
+        "B1": 7,
+        "ML": 329
+      },
+      "auto_mae": 0.691935,
+      "auto_methods": {
+        "B1": 7,
+        "ML": 329
+      },
+      "auto_candidate_days": {
+        "B1": 7,
+        "context": 126,
+        "history": 203
+      }
+    }
+  }
+}
