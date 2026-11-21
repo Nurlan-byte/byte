@@ -426,7 +426,14 @@ export function ProcurementPlanning(p: Parameters<typeof PlanningSection>[0]) {
               </thead>
               <tbody>
                 {visibleRows.map((row) => {
-                  const { item: i, value, stock, valid, reasons } = row;
+                  const {
+                    item: i,
+                    value,
+                    stock,
+                    valid,
+                    reasons,
+                    coverage,
+                  } = row;
                   // The saved cap warning concerns the suggested amount. Review reasons use the current edit.
                   const itemNotes = procurementNotes({
                     ...i,
@@ -464,6 +471,9 @@ export function ProcurementPlanning(p: Parameters<typeof PlanningSection>[0]) {
                         data-label="Предложенный заказ, шт."
                       >
                         {i.recommended_qty}
+                        {i.recommended_packs != null && (
+                          <small>{i.recommended_packs} уп.</small>
+                        )}
                       </td>
                       <td
                         className="confirmation-cell"
@@ -483,7 +493,10 @@ export function ProcurementPlanning(p: Parameters<typeof PlanningSection>[0]) {
                           max={
                             i.target_is_open === false
                               ? 0
-                              : (i.max_order_qty ?? MAX_QUANTITY)
+                              : Math.min(
+                                  i.max_order_qty ?? MAX_QUANTITY,
+                                  MAX_QUANTITY,
+                                )
                           }
                           disabled={p.busy || stale}
                           aria-invalid={!valid}
@@ -497,7 +510,9 @@ export function ProcurementPlanning(p: Parameters<typeof PlanningSection>[0]) {
                           }
                         />
                         <small id={`order-help-${i.product_id}`}>
-                          Целое количество, кратное упаковке и не выше лимита.
+                          {coverage?.packs != null
+                            ? `${coverage.packs} уп. по ${pack} шт.`
+                            : "Целое количество, кратное упаковке и не выше лимита."}
                         </small>
                         <small>
                           {i.confirmed_qty == null

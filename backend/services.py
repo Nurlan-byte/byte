@@ -14,9 +14,8 @@ from backend.planning import plan_item
 from backend.procurement_imports import parse_procurement_csv
 from backend.procurement_planning import (
     MAX_ORDER_QTY,
-    cap_warning,
+    assess_order_quantity,
     procurement_item,
-    suggested_order,
 )
 from backend.schemas import ConfirmRequest, ImportRequest, PlanRequest
 from backend.storage import (
@@ -244,48 +243,25 @@ def _create_procurement_plan(body: PlanRequest, today: date, dataset: dict):
             raise ServiceError(422, "Дата ожидаемой поставки предшествует дате заказа. Проверьте остаток.")
         if delivery.arrival_date <= body.target_date:
             incoming[delivery.product_id] = incoming.get(delivery.product_id, 0) + delivery.quantity
-    items = [
-        procurement_item(
-            dataset["rows"], product, body.target_date, body.cutoff,
-            "B1", body.target_is_open, assumptions.get(product["product_id"]),
-            incoming.get(product["product_id"], 0),
-        )
-        for product in products
-    ]
     model = None
+    model_id = None
+    predictions = {}
     if body.method == "ML":
         from backend.ml_service import forecast_items
 
         result = forecast_items(dataset, body.target_date, body.cutoff, body.model_id)
         model = result.get("model")
+        model_id = result["model_id"]
         predictions = {item["product_id"]: item for item in result["items"]}
-        for item in items:
-            prediction = predictions.get(item["product_id"])
-            if prediction is None:
-                item["warnings"].append("No model forecast for this product; B1 remains in use.")
-                continue
-            item["model_id"] = result["model_id"]
-            item["fallback_reason"] = prediction.get("fallback_reason")
-            item["evaluation_applicability"] = prediction.get("evaluation_applicability")
-            if prediction.get("fallback_reason"):
-                item["warnings"].append("ML fallback: " + prediction["fallback_reason"])
-            if body.target_is_open and prediction["method"] == "ML":
-                item["forecast_mean"] = prediction["forecast_mean"]
-                item["diagnostic_method"] = "ML"
-                item["used_dates"] = prediction["used_dates"]
-                item["n"] = prediction["n"]
-                if item["automatic_eligible"] and prediction["forecast_mean"] is not None:
-                    item["method"] = "ML"
-                    item["recommended_qty"], capped = suggested_order(
-                        prediction["forecast_mean"], item["available_stock_units"],
-                        item["pack_size"], item["max_order_qty"],
-                    )
-                    item["max_constraint_active"] = capped
-                    warning = cap_warning(item["max_order_qty"])
-                    if capped and warning not in item["warnings"]:
-                        item["warnings"].append(warning)
-                    elif not capped and warning in item["warnings"]:
-                        item["warnings"].remove(warning)
+    items = [
+        procurement_item(
+            dataset["rows"], product, body.target_date, body.cutoff,
+            body.method, body.target_is_open, assumptions.get(product["product_id"]),
+            incoming.get(product["product_id"], 0),
+            prediction=predictions.get(product["product_id"]), model_id=model_id,
+        )
+        for product in products
+    ]
     plan = {
         "id": str(uuid.uuid4()), "revision": 0, "status": "draft",
         "planning_kind": "procurement", "dataset_id": dataset["id"],
@@ -298,7 +274,7 @@ def _create_procurement_plan(body: PlanRequest, today: date, dataset: dict):
         "unit": dataset["unit"], "requested_method": body.method,
         "model_id": model["id"] if model else None,
         "protocol_version": model["protocol_version"] if model else None,
-        "dataset_version": dataset["version"], "config_version": "procurement-2",
+        "dataset_version": dataset["version"], "config_version": "procurement-3",
         "config_hash": hashlib.sha256(json.dumps(products, sort_keys=True).encode()).hexdigest(),
         "created_at": datetime.now(timezone.utc).isoformat(),
         "items": items, "mode": body.mode, "timezone": "Asia/Qyzylorda",
@@ -356,6 +332,16 @@ def confirm_plan(ident: str, body: ConfirmRequest, today: date):
                 ):
                     raise ServiceError(422, f"{item['name']}: order violates pack, maximum or closed-day rule")
                 item["confirmed_qty"] = q
+                if "recommended_packs" in item:
+                    assessment = assess_order_quantity(
+                        item["forecast_mean"], item["available_stock_units"], multiple,
+                        maximum, item["target_is_open"], q,
+                    )
+                    item.update(
+                        confirmed_packs=q // multiple,
+                        confirmed_shortage_units=assessment["shortage_units"],
+                        confirmed_constraint_reason=assessment["constraint_reason"],
+                    )
                 continue
             target_date = plan["target_date"]
             product_inactive = (
@@ -471,6 +457,12 @@ def _export_procurement_csv(plan: dict):
         "protocol_version", "used_dates", "fallback_reason",
         "incoming_units", "available_stock_units",
     )
+    # Prior snapshots keep their original CSV headers as well as their quantities.
+    if any("recommended_packs" in item for item in plan["items"]):
+        columns += (
+            "suggested_order_packs", "suggested_shortage_units", "suggested_constraint_reason",
+            "confirmed_order_packs", "confirmed_shortage_units", "confirmed_constraint_reason",
+        )
     writer.writerow(columns)
     for item in plan["items"]:
         record = {
@@ -482,6 +474,10 @@ def _export_procurement_csv(plan: dict):
             "available_stock_units": item.get("available_stock_units", item["usable_stock_assumption"]),
             "suggested_order_units": item["recommended_qty"],
             "confirmed_order_units": item["confirmed_qty"],
+            "suggested_order_packs": item.get("recommended_packs"),
+            "suggested_shortage_units": item.get("shortage_units"),
+            "suggested_constraint_reason": item.get("constraint_reason"),
+            "confirmed_order_packs": item.get("confirmed_packs"),
             "used_dates": ";".join(item.get("used_dates") or []),
         }
         writer.writerow([

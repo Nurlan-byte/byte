@@ -12,6 +12,7 @@ export type CatalogItem = {
 };
 export type DatasetTarget = "sold_units" | "item_line_count";
 export type MeasurementUnit = "physical_unit" | "item_line";
+export type OrderConstraint = "supplier_limit" | "system_limit";
 export type EvaluationApplicability = {
   applicable: boolean;
   reason: string | null;
@@ -28,7 +29,13 @@ export type Item = {
   max_daily_qty: number;
   forecast_mean: number | null;
   recommended_qty: number;
+  recommended_packs?: number;
+  shortage_units?: number | null;
+  constraint_reason?: OrderConstraint | null;
   confirmed_qty: number | null;
+  confirmed_packs?: number | null;
+  confirmed_shortage_units?: number | null;
+  confirmed_constraint_reason?: OrderConstraint | null;
   method: string;
   diagnostic_method?: string;
   target_is_open?: boolean;

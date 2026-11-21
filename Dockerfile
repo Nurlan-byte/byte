@@ -8,7 +8,7 @@ WORKDIR /build/frontend
 COPY frontend/package.json frontend/package-lock.json ./
 RUN npm ci --ignore-scripts
 COPY frontend/ ./
-COPY fixtures/cloud_game_zone_synthetic.csv fixtures/cloud_game_zone_synthetic_catalog.json /build/fixtures/
+COPY fixtures/cloud_game_zone_synthetic.csv fixtures/cloud_game_zone_synthetic_catalog.json fixtures/procurement_order_cases.json /build/fixtures/
 RUN npm run typecheck && npm run build
 
 FROM ${PYTHON_IMAGE} AS api

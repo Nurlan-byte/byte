@@ -3,6 +3,7 @@ import { reviewOrderItem } from "./orderReview";
 import type { Item } from "./types";
 import { stockAssumptions } from "./procurement";
 import { MAX_QUANTITY } from "./quantities";
+import orderCases from "../../fixtures/procurement_order_cases.json";
 
 test("stock and uncapped order quantities enforce the system limit without inventing a supplier cap", () => {
   const large = {
@@ -50,7 +51,11 @@ test("covered orders remain clear despite a model fallback or unknown historical
       { ...item, fallback_reason: "product_not_ready", unknown_stockout_n: 26 },
       "12",
     ),
-  ).toEqual({ valid: true, reasons: [] });
+  ).toEqual({
+    valid: true,
+    reasons: [],
+    coverage: { packs: 2, shortage_units: 0, constraint_reason: null },
+  });
 });
 
 test("an unknown stock estimate differs from explicit zero or historical plan-level stock", () => {
@@ -77,11 +82,96 @@ test("a manual forecast needs review while closed dates only permit a zero order
     usable_stock_assumption: null,
     forecast_mean: null,
   };
-  expect(reviewOrderItem(closed, "0")).toEqual({ valid: true, reasons: [] });
+  expect(reviewOrderItem(closed, "0")).toEqual({
+    valid: true,
+    reasons: [],
+    coverage: { packs: 0, shortage_units: 0, constraint_reason: null },
+  });
   expect(reviewOrderItem(closed, "6")).toEqual({
     valid: false,
     reasons: ["В закрытый день укажите 0 шт."],
+    coverage: null,
   });
+});
+
+test.each(orderCases)(
+  "$name matches the API for an unsaved quantity or a legacy plan",
+  ({ input, expected, edit }) => {
+    const line = {
+      ...item,
+      ...input,
+      recommended_qty: expected.recommended_qty,
+      automatic_eligible: expected.automatic_eligible,
+    };
+    expect(
+      reviewOrderItem(line, String(expected.recommended_qty)),
+    ).toMatchObject({
+      valid: true,
+      coverage: {
+        packs: expected.recommended_packs,
+        shortage_units: expected.shortage_units,
+        constraint_reason: expected.constraint_reason,
+      },
+    });
+    if (edit) {
+      expect(reviewOrderItem(line, String(edit.quantity))).toMatchObject({
+        valid: true,
+        coverage: {
+          packs: edit.quantity / input.pack_size,
+          shortage_units: edit.shortage_units,
+          constraint_reason: edit.constraint_reason,
+        },
+      });
+    }
+  },
+);
+
+test("saved explanations stay tied to their quantities; manual edits get a fresh preview", () => {
+  const saved: Item = {
+    ...item,
+    recommended_qty: 18,
+    recommended_packs: 3,
+    shortage_units: 7,
+    constraint_reason: "supplier_limit",
+    confirmed_qty: 6,
+    confirmed_packs: 1,
+    confirmed_shortage_units: 19,
+    confirmed_constraint_reason: null,
+  };
+  expect(reviewOrderItem(saved, "18").reasons).toEqual([
+    "До прогноза не хватает 7 шт. Лимит поставщика не позволяет добавить упаковку.",
+  ]);
+  expect(reviewOrderItem(saved, "6").reasons).toEqual([
+    "До прогноза не хватает 19 шт. Проверьте количество заказа.",
+  ]);
+  expect(reviewOrderItem(saved, "12").coverage).toEqual({
+    packs: 2,
+    shortage_units: 0,
+    constraint_reason: null,
+  });
+});
+
+test("a historical supplier limit above the system ceiling leaves the system as the constraint", () => {
+  const older = {
+    ...item,
+    forecast_mean: MAX_QUANTITY,
+    pack_size: 600_000_000,
+    usable_stock_assumption: 0,
+  };
+  for (const [limit, reason] of [
+    [MAX_QUANTITY + 100, "system_limit"],
+    [MAX_QUANTITY, "supplier_limit"],
+  ] as const) {
+    const review = reviewOrderItem(
+      { ...older, max_order_qty: limit },
+      "600000000",
+    );
+    expect(review.coverage).toEqual({
+      packs: 1,
+      shortage_units: 400_000_000,
+      constraint_reason: reason,
+    });
+  }
 });
 
 test("the gap follows the entered valid order; supplier limit applies at the largest allowed pack multiple", () => {

@@ -31,7 +31,13 @@ test("reviewed orders preserve hidden lines and expose only the saved supplier m
   await expect(tea).toHaveValue("24");
   await expect(juice).toHaveValue("0");
   await expect(supplier).toBeHidden();
+  const teaRow = page.getByRole("row").filter({ has: tea });
+  await expect(teaRow.locator(".recommendation-cell")).toContainText("4 уп.");
+  await tea.fill("12");
+  await expect(teaRow.locator(".confirmation-cell")).toContainText("2 уп.");
+  await expect(teaRow).toContainText("До прогноза не хватает 8 шт.");
   await tea.fill("30");
+  await expect(teaRow).not.toContainText("До прогноза не хватает");
   await review.click();
   await expect(review).toHaveAttribute("aria-pressed", "true");
   await expect(tea).toBeHidden();

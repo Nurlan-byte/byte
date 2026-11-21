@@ -1,0 +1,57 @@
+[
+  {
+    "name": "empty stock rounds demand up to whole packs",
+    "input": {"forecast_mean": 19.5, "usable_stock_assumption": 0, "incoming_units": 0, "pack_size": 6, "max_order_qty": null, "target_is_open": true},
+    "expected": {"recommended_qty": 24, "recommended_packs": 4, "shortage_units": 0, "constraint_reason": null, "automatic_eligible": true},
+    "edit": {"quantity": 12, "shortage_units": 8, "constraint_reason": null}
+  },
+  {
+    "name": "incoming packs count once alongside usable stock",
+    "input": {"forecast_mean": 19.5, "usable_stock_assumption": 2, "incoming_units": 12, "pack_size": 6, "max_order_qty": 6, "target_is_open": true},
+    "expected": {"recommended_qty": 6, "recommended_packs": 1, "shortage_units": 0, "constraint_reason": null, "automatic_eligible": true},
+    "edit": {"quantity": 0, "shortage_units": 6, "constraint_reason": null}
+  },
+  {
+    "name": "stock covers all sales even when supplier limit is zero",
+    "input": {"forecast_mean": 3, "usable_stock_assumption": 4, "incoming_units": 0, "pack_size": 12, "max_order_qty": 0, "target_is_open": true},
+    "expected": {"recommended_qty": 0, "recommended_packs": 0, "shortage_units": 0, "constraint_reason": null, "automatic_eligible": true}
+  },
+  {
+    "name": "supplier limit leaves capacity below a whole pack",
+    "input": {"forecast_mean": 23.5, "usable_stock_assumption": 2, "incoming_units": 3, "pack_size": 6, "max_order_qty": 19, "target_is_open": true},
+    "expected": {"recommended_qty": 18, "recommended_packs": 3, "shortage_units": 1, "constraint_reason": "supplier_limit", "automatic_eligible": true},
+    "edit": {"quantity": 12, "shortage_units": 7, "constraint_reason": null}
+  },
+  {
+    "name": "supplier limit smaller than one pack",
+    "input": {"forecast_mean": 9, "usable_stock_assumption": 0, "incoming_units": 0, "pack_size": 6, "max_order_qty": 5, "target_is_open": true},
+    "expected": {"recommended_qty": 0, "recommended_packs": 0, "shortage_units": 9, "constraint_reason": "supplier_limit", "automatic_eligible": true}
+  },
+  {
+    "name": "unknown stock remains unknown with incoming goods",
+    "input": {"forecast_mean": 15, "usable_stock_assumption": null, "incoming_units": 12, "pack_size": 6, "max_order_qty": 6, "target_is_open": true},
+    "expected": {"recommended_qty": 0, "recommended_packs": 0, "shortage_units": null, "constraint_reason": null, "automatic_eligible": false},
+    "edit": {"quantity": 6, "shortage_units": null, "constraint_reason": null}
+  },
+  {
+    "name": "absent forecast requires a manual order",
+    "input": {"forecast_mean": null, "usable_stock_assumption": 2, "incoming_units": 0, "pack_size": 6, "max_order_qty": 6, "target_is_open": true},
+    "expected": {"recommended_qty": 0, "recommended_packs": 0, "shortage_units": null, "constraint_reason": null, "automatic_eligible": false}
+  },
+  {
+    "name": "closed day suppresses sales need even with unknown stock",
+    "input": {"forecast_mean": 9, "usable_stock_assumption": null, "incoming_units": 0, "pack_size": 6, "max_order_qty": 0, "target_is_open": false},
+    "expected": {"recommended_qty": 0, "recommended_packs": 0, "shortage_units": 0, "constraint_reason": null, "automatic_eligible": false}
+  },
+  {
+    "name": "an observed zero is a valid sales forecast",
+    "input": {"forecast_mean": 0, "usable_stock_assumption": 0, "incoming_units": 0, "pack_size": 1, "max_order_qty": null, "target_is_open": true},
+    "expected": {"recommended_qty": 0, "recommended_packs": 0, "shortage_units": 0, "constraint_reason": null, "automatic_eligible": true}
+  },
+  {
+    "name": "system ceiling restricts an order without a supplier limit",
+    "input": {"forecast_mean": 1000000000, "usable_stock_assumption": 0, "incoming_units": 0, "pack_size": 600000000, "max_order_qty": null, "target_is_open": true},
+    "expected": {"recommended_qty": 600000000, "recommended_packs": 1, "shortage_units": 400000000, "constraint_reason": "system_limit", "automatic_eligible": true},
+    "edit": {"quantity": 0, "shortage_units": 1000000000, "constraint_reason": null}
+  }
+]

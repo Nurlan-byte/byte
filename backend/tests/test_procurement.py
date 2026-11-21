@@ -11,6 +11,7 @@ from fastapi.testclient import TestClient
 
 from backend.app import app
 from backend.ml_core import forecast_model, train_model
+from backend.storage import save_plan
 
 
 @pytest.fixture
@@ -122,6 +123,64 @@ def test_final_ml_order_and_warning_use_the_same_forecast(client, monkeypatch, m
     assert item["method"] == "ML"
     assert item["max_constraint_active"] is capped
     assert any("Supplier maximum" in warning for warning in item["warnings"]) is capped
+
+
+def test_saved_csv_distinguishes_suggested_order_from_manual_quantity(client):
+    history = payload()
+    history["catalog"][0]["max_order_qty"] = 6
+    dataset_id = client.post("/api/datasets", json=history).json()["id"]
+    plan = client.post("/api/plans", json={
+        "dataset_id": dataset_id, "target_date": "2026-10-11", "cutoff": "2026-10-09",
+        "mode": "replay", "lead_time_days": 1, "usable_stock_assumption": {"tea": 0},
+    }).json()
+    endpoint = f"/api/plans/{plan['id']}"
+    assert plan["items"][0]["forecast_mean"] == 11
+    draft_export = client.get(endpoint + "/export?revision=0").content
+    draft_row, = csv.DictReader(io.StringIO(draft_export.decode("utf-8-sig")))
+    assert draft_row["suggested_constraint_reason"] == "supplier_limit"
+    assert draft_row["confirmed_shortage_units"] == ""
+
+    confirmed = client.post(endpoint + "/confirm", json={
+        "revision": 0, "idempotency_key": "zero", "quantities": {"tea": 0},
+    })
+    assert confirmed.status_code == 200
+    saved = confirmed.json()["items"][0]
+    assert (saved["confirmed_packs"], saved["confirmed_shortage_units"], saved["confirmed_constraint_reason"]) == (0, 11, None)
+    row, = csv.DictReader(io.StringIO(client.get(endpoint + "/export?revision=1").text.lstrip("\ufeff")))
+    assert (row["suggested_order_packs"], row["suggested_shortage_units"], row["suggested_constraint_reason"]) == ("1", "5", "supplier_limit")
+    assert (row["confirmed_order_packs"], row["confirmed_shortage_units"], row["confirmed_constraint_reason"]) == ("0", "11", "")
+    assert client.get(endpoint + "/export?revision=0").content == draft_export
+
+
+def test_legacy_order_export_preserves_original_bytes_and_revision(client):
+    legacy = {
+        "id": "historical-order", "revision": 1, "status": "confirmed", "mode": "replay",
+        "config_version": "procurement-2", "planning_kind": "procurement",
+        "order_date": "2026-10-10", "target_date": "2026-10-11", "cutoff": "2026-10-09",
+        "lead_time_days": 1, "dataset_id": "old-data", "dataset_version": "v1",
+        "source": "synthetic", "provenance": "test", "requested_method": "B1",
+        "items": [{
+            "product_id": "tea", "name": "Tea", "forecast_mean": 11, "usable_stock_assumption": 0,
+            "incoming_units": 0, "available_stock_units": 0, "recommended_qty": 6, "confirmed_qty": 6,
+            "pack_size": 6, "max_order_qty": 6, "method": "B1", "used_dates": ["2026-10-04"],
+        }],
+    }
+    save_plan(legacy)
+    expected = (
+        "plan_id,revision,planning_kind,order_date,target_date,cutoff,lead_time_days,dataset_id,dataset_version,"
+        "source,provenance,product_id,name,forecast_sales_units,assumed_usable_stock_units,suggested_order_units,"
+        "confirmed_order_units,pack_size,max_order_qty,method,requested_method,model_id,protocol_version,used_dates,"
+        "fallback_reason,incoming_units,available_stock_units\r\n"
+        "historical-order,1,procurement,2026-10-10,2026-10-11,2026-10-09,1,old-data,v1,synthetic,test,tea,"
+        "Tea,11,0,6,6,6,6,B1,B1,,,2026-10-04,,0,0\r\n"
+    ).encode("utf-8-sig")
+    url = "/api/plans/historical-order"
+    assert client.get(url + "/export").content == expected
+    updated = client.post(url + "/confirm", json={
+        "revision": 1, "idempotency_key": "edit", "quantities": {"tea": 0},
+    })
+    assert updated.status_code == 200
+    assert client.get(url + "/export?revision=1").content == expected
 
 
 def test_scheduled_deliveries_are_counted_once_by_target_and_saved_with_revision(client):
