@@ -1,3 +1,25 @@
+import type {
+  ConfirmedPlan,
+  ConfirmPlanId,
+  ConfirmRequest,
+  Forecast,
+  ForecastRequest,
+  Plan,
+  PlanRequest,
+} from "./types";
+
+export function createForecast(body: ForecastRequest) {
+  return api<Forecast>("/forecasts", body);
+}
+
+export function createPlan(body: PlanRequest) {
+  return api<Plan>("/plans", body);
+}
+
+export function confirmPlan(id: ConfirmPlanId, body: ConfirmRequest) {
+  return api<ConfirmedPlan>(`/plans/${encodeURIComponent(id)}/confirm`, body);
+}
+
 export function errorMessage(status: number, data: unknown): string {
   if (data && typeof data === "object" && "error" in data) {
     const error = data.error;

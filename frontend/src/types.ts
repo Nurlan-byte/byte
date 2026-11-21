@@ -1,10 +1,23 @@
+import type { paths } from "./generated/order-api";
+
+type ForecastPost = paths["/api/forecasts"]["post"];
+type CreatePlanPost = paths["/api/plans"]["post"];
+type ConfirmPlanPost = paths["/api/plans/{ident}/confirm"]["post"];
+
+export type ForecastRequest = ForecastPost["requestBody"]["content"]["application/json"];
+export type Forecast = ForecastPost["responses"][200]["content"]["application/json"];
+export type PlanRequest = CreatePlanPost["requestBody"]["content"]["application/json"];
+export type Plan = CreatePlanPost["responses"][201]["content"]["application/json"];
+export type ConfirmRequest = ConfirmPlanPost["requestBody"]["content"]["application/json"];
+export type ConfirmPlanId = ConfirmPlanPost["parameters"]["path"]["ident"];
+export type ConfirmedPlan = ConfirmPlanPost["responses"][200]["content"]["application/json"];
+export type PlanMethod = NonNullable<PlanRequest["method"]>;
+export type ForecastMethod = NonNullable<ForecastRequest["method"]>;
+export type Item = Plan["items"][number];
+
 export type PlanningKind = "production" | "procurement";
-export type ExpectedDelivery = {
-  product_id: string;
-  arrival_date: string;
-  quantity: number;
-};
-export type DeliverySource = "manual" | "registry";
+export type ExpectedDelivery = NonNullable<PlanRequest["expected_deliveries"]>[number];
+export type DeliverySource = NonNullable<PlanRequest["delivery_source"]>;
 export type RegisteredDelivery = {
   id: string;
   bakery_id: string;
@@ -16,7 +29,6 @@ export type RegisteredDelivery = {
   remaining_qty: number;
   status: "ordered" | "partial" | "received" | "cancelled";
 };
-export type CountedDelivery = ExpectedDelivery & { id: string; number: string };
 export type CatalogItem = {
   product_id: string;
   name: string;
@@ -25,64 +37,22 @@ export type CatalogItem = {
 };
 export type DatasetTarget = "sold_units" | "item_line_count";
 export type MeasurementUnit = "physical_unit" | "item_line";
-export type OrderConstraint = "supplier_limit" | "system_limit";
+export type OrderConstraint = NonNullable<Item["constraint_reason"]>;
+export type OverrideReason = NonNullable<ConfirmRequest["override_reasons"]>[string];
 export const overrideReasonLabels = {
   forecast: "Оценка спроса",
   stock: "Остаток на полке",
   event: "Мероприятие",
   supply: "Условия поставщика",
   other: "Другая причина",
-} as const;
-export type OverrideReason = keyof typeof overrideReasonLabels;
-export type EvaluationApplicability = {
-  applicable: boolean;
-  reason: string | null;
-  evaluated_horizon_days: number | null;
-  requested_horizon_days: number;
-};
-export type Item = {
-  pack_size?: number;
-  max_order_qty?: number | null;
-  evaluation_applicability?: EvaluationApplicability;
-  product_id: string;
-  name: string;
-  batch_size: number;
-  max_daily_qty: number;
-  forecast_mean: number | null;
-  recommended_qty: number;
-  recommended_packs?: number;
-  shortage_units?: number | null;
-  constraint_reason?: OrderConstraint | null;
-  confirmed_qty: number | null;
-  override_reason?: OverrideReason;
-  confirmed_packs?: number | null;
-  confirmed_shortage_units?: number | null;
-  confirmed_constraint_reason?: OrderConstraint | null;
-  method: string;
-  diagnostic_method?: string;
-  target_is_open?: boolean;
-  active_from?: string | null;
-  active_to?: string | null;
-  automatic_eligible?: boolean;
-  usable_stock_assumption?: number | null;
-  incoming_units?: number;
-  unknown_open_n?: number;
-  unknown_stockout_n?: number;
-  max_constraint_active?: boolean;
-  model_id?: string | null;
-  fallback_reason?: string | null;
-  warnings: string[];
-  used_dates?: string[];
-  n?: number;
-};
+} satisfies Record<OverrideReason, string>;
+export type EvaluationApplicability = NonNullable<Forecast["evaluation_applicability"]>;
+
+// GET /plans returns a paginated summary, not a full plan.
 export type PlanSummary = {
   planning_kind?: PlanningKind;
-  order_date?: string;
-  lead_time_days?: number;
-  usable_stock_assumption?: Record<string, number>;
-  expected_deliveries?: ExpectedDelivery[];
-  delivery_source?: DeliverySource;
-  registry_deliveries?: CountedDelivery[];
+  order_date?: string | null;
+  lead_time_days?: number | null;
   id: string;
   revision: number;
   status: string;
@@ -90,21 +60,6 @@ export type PlanSummary = {
   target_date: string;
   source: string;
   created_at?: string;
-};
-export type Plan = PlanSummary & {
-  dataset_schema_version?: string;
-  provenance?: string;
-  items: Item[];
-  cutoff: string;
-  requested_method?: string;
-  dataset_version?: string;
-  bakery_id?: string;
-  mode?: string;
-  model_id?: string | null;
-  model_version?: string;
-  protocol_version?: string;
-  target?: DatasetTarget;
-  unit?: MeasurementUnit;
 };
 export type Dataset = {
   forecast_only?: boolean;
@@ -176,25 +131,4 @@ export type ModelSummary = {
     holdout_end?: string | null;
   };
   products: Record<string, { status: string; reason?: string | null }>;
-};
-export type Forecast = {
-  evaluation_applicability?: EvaluationApplicability;
-  dataset_id: string;
-  bakery_id: string;
-  target: DatasetTarget;
-  unit: MeasurementUnit;
-  model_id: string | null;
-  items: {
-    evaluation_applicability?: EvaluationApplicability;
-    product_id: string;
-    forecast_mean: number | null;
-    b1_mean: number | null;
-    demand_features?: Record<string, number>;
-    selection?: { observed_days: number; zero_days: number };
-    reason?: string | null;
-    method: string;
-    fallback_reason?: string | null;
-    used_dates?: string[];
-    n?: number;
-  }[];
 };

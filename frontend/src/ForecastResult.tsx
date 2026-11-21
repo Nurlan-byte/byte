@@ -1,4 +1,4 @@
-import type { Forecast } from "./types";
+import type { Forecast, ForecastMethod } from "./types";
 import { methodText, reasonText } from "./explanations";
 import { EvaluationNotice } from "./EvaluationNotice";
 
@@ -6,7 +6,7 @@ export type ForecastSnapshot = {
   result: Forecast;
   cutoff: string;
   targetDate: string;
-  method: string;
+  method: ForecastMethod;
 };
 
 export function ForecastResult({

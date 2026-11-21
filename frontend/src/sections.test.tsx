@@ -201,7 +201,7 @@ test("changing planning inputs blocks confirmation of the previous snapshot", ()
   for (const changed of [
     { target: "2026-10-13" },
     { cutoff: "2026-10-10" },
-    { method: "B0" },
+    { method: "B0" as const },
     { targetOpen: false },
   ]) {
     const html = renderToStaticMarkup(
@@ -243,7 +243,7 @@ test("closed-day plan locks manual increases without disabling valid zero confir
 });
 
 test("saved quantities stay distinguishable from unsaved manual edits", () => {
-  const confirmed = {
+  const confirmed: Plan = {
     ...plan,
     status: "confirmed",
     revision: 1,
@@ -260,6 +260,18 @@ test("saved quantities stay distinguishable from unsaved manual edits", () => {
   expect(html).toContain("Есть несохранённое изменение");
   expect(html).toContain("Несохранённые правки в файл не попадут");
   expect(html).toContain('href="/api/plans/plan-1/export?revision=1"');
+});
+
+test("a saved production row without batch limits still shows its recorded quantities", () => {
+  const item = { ...plan.items[0], confirmed_qty: 36 };
+  delete item.batch_size;
+  delete item.max_daily_qty;
+  const html = renderToStaticMarkup(
+    <PlanningSection {...planningProps(units)} plan={{ ...plan, items: [item] }} invalid />,
+  );
+  expect(html).toContain("Для выпуска нужны размер партии и дневной лимит.");
+  expect(html).toContain('data-label="Ваш выпуск, шт.">36');
+  expect(html).not.toContain("NaN");
 });
 
 test("a manual POS line blocks order confirmation until a valid pack quantity or explicit zero is entered", () => {
@@ -301,9 +313,15 @@ test("stale diagnostic snapshot retains its own dates and method with an actiona
         method: "ML",
         result: {
           dataset_id: units.id,
+          dataset_version: "fixture-v1",
           bakery_id: "test",
+          source: "synthetic",
+          provenance: "Synthetic test",
+          target_date: "2026-10-12",
+          cutoff: "2026-10-10",
           target: "sold_units",
           unit: "physical_unit",
+          warning: "Прогноз наблюдаемых продаж.",
           model_id: "model-1",
           items: [
             {
@@ -311,6 +329,8 @@ test("stale diagnostic snapshot retains its own dates and method with an actiona
               forecast_mean: null,
               b1_mean: null,
               method: "manual",
+              n: 0,
+              used_dates: [],
               fallback_reason: "no_b1_history",
             },
           ],

@@ -12,7 +12,10 @@ from backend.config import CATALOG, business_today
 from backend.context_routes import router as context_router
 from backend.imports import CsvValidationError, parse_csv as parse_history
 from backend.imports import REQUIRED as REQUIRED
+from backend.forecast_contract import ForecastResponse
+from backend.plan_contract import PlanResponse
 from backend.schemas import (
+    ErrorResponse,
     ImportRequest,
     PlanRequest,
     ConfirmRequest,
@@ -208,12 +211,18 @@ def model_status(ident: str):
     return models_for_dataset(ident)
 
 
-@app.post("/api/forecasts")
+def error_responses(*statuses: int):
+    return {status: {"model": ErrorResponse} for status in statuses}
+
+
+@app.post("/api/forecasts", response_model=ForecastResponse, response_model_exclude_unset=True,
+          responses=error_responses(404, 413, 422, 503))
 def forecast(body: ForecastRequest):
     return create_forecast(body, business_today())
 
 
-@app.post("/api/plans", status_code=201)
+@app.post("/api/plans", status_code=201, response_model=PlanResponse, response_model_exclude_unset=True,
+          responses=error_responses(404, 413, 422, 503))
 def create_plan(body: PlanRequest):
     return build_plan(body, business_today())
 
@@ -231,7 +240,8 @@ def plan_detail(ident: str):
     return get_plan(ident)
 
 
-@app.post("/api/plans/{ident}/confirm")
+@app.post("/api/plans/{ident}/confirm", response_model=PlanResponse, response_model_exclude_unset=True,
+          responses=error_responses(404, 409, 413, 422))
 def confirm(ident: str, body: ConfirmRequest):
     return confirm_plan(ident, body, business_today())
 

@@ -4,6 +4,21 @@ from pydantic import BaseModel, Field, StrictInt, model_validator
 from backend.demand_context import DemandContext
 
 
+class FieldError(BaseModel):
+    loc: list[str | int]
+    message: str
+
+
+class ErrorDetail(BaseModel):
+    code: str
+    message: str
+    details: list[FieldError] | None
+
+
+class ErrorResponse(BaseModel):
+    error: ErrorDetail
+
+
 class ProcurementProduct(BaseModel):
     product_id: str = Field(min_length=1, max_length=64, pattern=r"^[a-zA-Z0-9_-]+$")
     name: str = Field(min_length=1, max_length=100)

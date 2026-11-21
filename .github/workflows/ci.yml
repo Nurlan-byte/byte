@@ -64,6 +64,8 @@ jobs:
           npm.cmd ci
           npm.cmd --prefix frontend ci
           npx.cmd playwright install chromium
+      - name: Check forecast and order API types against FastAPI
+        run: .\.venv\Scripts\python.exe -m tools.order_api --check
       - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ~/.cache/bakeplan

@@ -1,10 +1,10 @@
 import { useEffect, useState } from "react";
 import type { PlanWorkflowProps } from "./PlanningSection";
-import type { DeliverySource, ExpectedDelivery, Plan } from "./types";
+import type { DeliverySource, ExpectedDelivery } from "./types";
 import { overrideReasonLabels, type OverrideReason } from "./types";
 import { ExpectedDeliveries } from "./ExpectedDeliveries";
 import { DeliveryRegistry } from "./DeliveryRegistry";
-import { api } from "./api";
+import { createPlan, confirmPlan } from "./api";
 import { businessDate } from "./dates";
 import { dayWord } from "./dayWord";
 import { stockAssumptions } from "./procurement";
@@ -331,11 +331,12 @@ export function ProcurementPlanning(p: PlanWorkflowProps) {
           !leadValid ||
           !!inputError
         }
-        onClick={() =>
+        onClick={() => {
+          if (!dataset) return;
           void runReplacingPlan(async () =>
             p.showCalculated(
-              await api<Plan>("/plans", {
-                dataset_id: dataset?.id,
+              await createPlan({
+                dataset_id: dataset.id,
                 target_date: p.target,
                 cutoff: p.cutoff,
                 method: "AUTO",
@@ -354,8 +355,8 @@ export function ProcurementPlanning(p: PlanWorkflowProps) {
                 ),
               }),
             ),
-          )
-        }
+          );
+        }}
       >
         Рассчитать заказ
       </button>
@@ -693,7 +694,7 @@ export function ProcurementPlanning(p: PlanWorkflowProps) {
                         key: crypto.randomUUID(),
                       };
                     p.show(
-                      await api<Plan>(`/plans/${plan.id}/confirm`, {
+                      await confirmPlan(plan.id, {
                         revision: plan.revision,
                         idempotency_key: p.confirmation.current.key,
                         override_reasons: overrideReasons,

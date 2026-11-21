@@ -1,7 +1,7 @@
 import { PosOrderSetup } from "./PosOrderSetup";
 import { useRef, useState, useEffect } from "react";
-import { api } from "./api";
-import type { Dataset, Forecast, ModelSummary } from "./types";
+import { api, createForecast } from "./api";
+import type { Dataset, ForecastMethod, ModelSummary } from "./types";
 import type { SectionProps } from "./sectionProps";
 import { ForecastResult, type ForecastSnapshot } from "./ForecastResult";
 import { forecastInputsChanged } from "./snapshots";
@@ -40,7 +40,7 @@ export function ModelSection({
     dataset.planning_kind === "procurement" ||
     dataset.forecast_only ||
     dataset.schema_version === "sales-1";
-  const [diagnosticMethod, setDiagnosticMethod] = useState(
+  const [diagnosticMethod, setDiagnosticMethod] = useState<ForecastMethod>(
     initial?.method ?? "ML",
   );
   const forecastMethod = automatic ? "AUTO" : diagnosticMethod;
@@ -168,7 +168,10 @@ export function ModelSection({
                 id="diagnostic-method"
                 disabled={busy}
                 value={forecastMethod}
-                onChange={(e) => setDiagnosticMethod(e.target.value)}
+                onChange={(e) => {
+                  const value = e.target.value;
+                  if (value === "ML" || value === "B1") setDiagnosticMethod(value);
+                }}
               >
                 <option value="ML">Экспериментальный расчёт</option>
                 <option value="B1">По похожим дням недели</option>
@@ -182,7 +185,7 @@ export function ModelSection({
             disabled={busy || !cutoff || !target}
             onClick={() =>
               void run(async () => {
-                const result = await api<Forecast>("/forecasts", {
+                const result = await createForecast({
                   dataset_id: dataset.id,
                   target_date: target,
                   cutoff,

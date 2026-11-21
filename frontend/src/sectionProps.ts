@@ -1,5 +1,5 @@
 import type { Dispatch, SetStateAction, RefObject } from "react";
-import type { Dataset, DatasetTarget, Plan } from "./types";
+import type { Dataset, DatasetTarget, Plan, PlanMethod } from "./types";
 type Setter<T> = Dispatch<SetStateAction<T>>;
 export type SectionProps = {
   planningKind?: "production" | "procurement";
@@ -24,8 +24,8 @@ export type SectionProps = {
   setTarget: Setter<string>;
   cutoff: string;
   setCutoff: Setter<string>;
-  method: string;
-  setMethod: Setter<string>;
+  method: PlanMethod;
+  setMethod: Setter<PlanMethod>;
   targetOpen: boolean;
   setTargetOpen: Setter<boolean>;
   quantities: Record<string, string>;

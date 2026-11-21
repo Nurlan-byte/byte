@@ -72,7 +72,11 @@ def test_same_forecast_has_one_order_decision(case, monkeypatch, tmp_path):
             prediction = {
                 "product_id": "water", "method": "ML", "forecast_mean": inputs["forecast_mean"],
                 "used_dates": baseline["used_dates"], "n": baseline["n"],
-                "evaluation_applicability": {"applicable": True}, "fallback_reason": None,
+                "evaluation_applicability": {
+                    "applicable": True, "reason": None,
+                    "evaluated_horizon_days": 2, "requested_horizon_days": 2,
+                },
+                "fallback_reason": None,
             }
             monkeypatch.setattr("backend.ml_service.forecast_items", lambda *args, **kwargs: {
                 "model": model, "model_id": model["id"], "items": [prediction],

@@ -17,7 +17,7 @@ import {
   type View,
 } from "./WorkspaceChrome";
 import { api, ApiError } from "./api";
-import type { Dataset, DatasetTarget, Plan, PlanSummary } from "./types";
+import type { Dataset, DatasetTarget, Plan, PlanMethod, PlanSummary } from "./types";
 import type { ForecastSnapshot } from "./ForecastResult";
 import type { AdoptDataset } from "./DemandSources";
 import type {
@@ -64,7 +64,7 @@ export function App() {
   const running = useRef(false);
   const [target, setTarget] = useState(() => businessDate(1)),
     [cutoff, setCutoff] = useState(businessDate(-1)),
-    [method, setMethod] = useState("B1");
+    [method, setMethod] = useState<PlanMethod>("B1");
   const [targetOpen, setTargetOpen] = useState(true);
   const [historyOffset, setHistoryOffset] = useState(0);
   const [historyLoaded, setHistoryLoaded] = useState(false);
@@ -270,6 +270,8 @@ export function App() {
       (i.target_is_open === false && quantities[i.product_id] !== "0") ||
       (!productActiveOnTarget(i, plan.target_date) &&
         quantities[i.product_id] !== "0") ||
+      i.batch_size == null ||
+      i.max_daily_qty == null ||
       !validQuantity(
         quantities[i.product_id] ?? "",
         i.batch_size,

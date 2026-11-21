@@ -2,7 +2,7 @@ import { useEffect, useRef } from "react";
 import { ProcurementPlanning } from "./ProcurementPlanning";
 import { PlanStart } from "./PlanStart";
 import { Icon } from "./Icon";
-import { api } from "./api";
+import { createPlan, confirmPlan } from "./api";
 import type { Plan } from "./types";
 import type { SectionProps } from "./sectionProps";
 import { validQuantity } from "./quantities";
@@ -209,11 +209,12 @@ function ProductionPlanning({
         <button
           className="cta"
           disabled={busy || !dataset || salesOnly || !target || !cutoff}
-          onClick={() =>
+          onClick={() => {
+            if (!dataset) return;
             void runReplacingPlan(async () =>
               showCalculated(
-                await api<Plan>("/plans", {
-                  dataset_id: dataset?.id,
+                await createPlan({
+                  dataset_id: dataset.id,
                   target_date: target,
                   cutoff,
                   method,
@@ -221,8 +222,8 @@ function ProductionPlanning({
                   target_is_open: targetOpen,
                 }),
               ),
-            )
-          }
+            );
+          }}
         >
           Рассчитать план
         </button>
@@ -246,7 +247,10 @@ function ProductionPlanning({
             id="planning-method"
             disabled={busy}
             value={method}
-            onChange={(e) => setMethod(e.target.value)}
+            onChange={(e) => {
+              const value = e.target.value;
+              if (value === "B1" || value === "B0" || value === "ML") setMethod(value);
+            }}
           >
             <option value="B1">По похожим дням недели</option>
             <option value="ML">Экспериментальный расчёт</option>
@@ -388,7 +392,15 @@ function ProductionPlanning({
                 </tr>
               </thead>
               <tbody>
-                {plan.items.map((i) => (
+                {plan.items.map((i) => i.batch_size == null || i.max_daily_qty == null ? (
+                  <tr key={i.product_id}>
+                    <td>{i.name}</td>
+                    <td data-label="Прогноз, шт.">{i.forecast_mean?.toFixed(1) ?? "Нет оценки"}</td>
+                    <td data-label="Рекомендация, шт.">{i.recommended_qty}</td>
+                    <td data-label="Ваш выпуск, шт.">{i.confirmed_qty ?? "Ещё не сохранено"}</td>
+                    <td>Для выпуска нужны размер партии и дневной лимит.</td>
+                  </tr>
+                ) : (
                   <tr key={i.product_id}>
                     <td>
                       <strong>{i.name}</strong>
@@ -576,7 +588,7 @@ function ProductionPlanning({
                 onClick={() =>
                   void run(async () => {
                     show(
-                      await api<Plan>(`/plans/${plan.id}/confirm`, {
+                      await confirmPlan(plan.id, {
                         revision: plan.revision,
                         idempotency_key: (() => {
                           const signature = JSON.stringify({
