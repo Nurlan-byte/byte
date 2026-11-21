@@ -1,6 +1,8 @@
 """Single-target-day procurement suggestions for ready-made goods."""
 
 import math
+from collections import defaultdict
+from dataclasses import dataclass
 from datetime import date
 
 from backend.forecasting import baseline
@@ -87,54 +89,93 @@ def _select_forecast(
     return forecast
 
 
+@dataclass(frozen=True)
+class ProcurementForecast:
+    """The part of one order line that depends on historical observations."""
+
+    product: dict
+    forecast: dict
+    target_is_open: bool
+    unknown_open: int
+    unknown_stockout: int
+    ml_warning: str | None
+
+    def order(self, usable_stock: int | None, incoming_units: int) -> dict:
+        decision = _recommend_order(
+            self.forecast, usable_stock, incoming_units, self.product["pack_size"],
+            self.product["max_order_qty"], self.target_is_open,
+        )
+        warnings = [
+            "Forecast concerns observed unit sales, not unconstrained demand.",
+            "Usable stock is a user scenario for the target day, not inferred from historical closing stock.",
+        ]
+        if self.unknown_open or self.unknown_stockout:
+            warnings.append(
+                f"Historical availability is unverified: {self.unknown_open} open-status unknown, "
+                f"{self.unknown_stockout} stockout-status unknown rows."
+            )
+        if not self.target_is_open:
+            warnings.append("Target day is marked closed; order must be zero.")
+        if usable_stock is None:
+            warnings.append("Enter estimated usable stock at target-day opening for an automatic order.")
+        if self.forecast["n"] == 0:
+            warnings.append("No suitable weekday history: manual order only; zero is not a sales forecast.")
+        if decision["constraint_reason"]:
+            warnings.append(CAP_WARNINGS[decision["constraint_reason"]])
+        if self.ml_warning:
+            warnings.append(self.ml_warning)
+        return {
+            **self.product,
+            **self.forecast,
+            **decision,
+            "confirmed_qty": None,
+            "target_is_open": self.target_is_open,
+            "unknown_open_n": self.unknown_open,
+            "unknown_stockout_n": self.unknown_stockout,
+            "warnings": warnings,
+        }
+
+
+def prepare_procurement_items(
+    rows: list[dict], products: list[dict], target: date, cutoff: date,
+    method: str, target_is_open: bool, predictions: dict, model_id: str | None,
+) -> list[ProcurementForecast]:
+    by_product = defaultdict(list)
+    last_day = cutoff.isoformat()
+    for row in rows:
+        if row["date"] <= last_day:
+            by_product[row["product_id"]].append(row)
+
+    prepared = []
+    for product in products:
+        product_id = product["product_id"]
+        observed = by_product[product_id]
+        prediction = predictions.get(product_id)
+        forecast = _select_forecast(
+            observed, product_id, target, cutoff, method, target_is_open, prediction, model_id,
+        )
+        ml_warning = None
+        if method == "ML" and prediction is None:
+            ml_warning = "No model forecast for this product; B1 remains in use."
+        elif forecast.get("fallback_reason"):
+            ml_warning = "ML fallback: " + forecast["fallback_reason"]
+        prepared.append(ProcurementForecast(
+            product=product, forecast=forecast, target_is_open=target_is_open,
+            unknown_open=sum(row.get("is_open") is None for row in observed),
+            unknown_stockout=sum(row.get("stockout_status") == "unknown" for row in observed),
+            ml_warning=ml_warning,
+        ))
+    return prepared
+
+
 def procurement_item(
     rows: list[dict], product: dict, target: date, cutoff: date,
     method: str, target_is_open: bool, usable_stock: int | None, incoming_units: int = 0,
     *, prediction: dict | None = None, model_id: str | None = None,
 ) -> dict:
-    product_id = product["product_id"]
-    cutoff_date = cutoff.isoformat()
-    observed = [
-        row for row in rows
-        if row["product_id"] == product_id and row["date"] <= cutoff_date
-    ]
-    forecast = _select_forecast(
-        observed, product_id, target, cutoff, method, target_is_open, prediction, model_id,
+    """Build a single order line using the batch calculation."""
+    predictions = {product["product_id"]: prediction} if prediction is not None else {}
+    items = prepare_procurement_items(
+        rows, [product], target, cutoff, method, target_is_open, predictions, model_id,
     )
-    decision = _recommend_order(
-        forecast, usable_stock, incoming_units, product["pack_size"],
-        product["max_order_qty"], target_is_open,
-    )
-    warnings = [
-        "Forecast concerns observed unit sales, not unconstrained demand.",
-        "Usable stock is a user scenario for the target day, not inferred from historical closing stock.",
-    ]
-    unknown_open = sum(row.get("is_open") is None for row in observed)
-    unknown_stockout = sum(row.get("stockout_status") == "unknown" for row in observed)
-    if unknown_open or unknown_stockout:
-        warnings.append(
-            f"Historical availability is unverified: {unknown_open} open-status unknown, "
-            f"{unknown_stockout} stockout-status unknown rows."
-        )
-    if not target_is_open:
-        warnings.append("Target day is marked closed; order must be zero.")
-    if usable_stock is None:
-        warnings.append("Enter estimated usable stock at target-day opening for an automatic order.")
-    if forecast["n"] == 0:
-        warnings.append("No suitable weekday history: manual order only; zero is not a sales forecast.")
-    if decision["constraint_reason"]:
-        warnings.append(CAP_WARNINGS[decision["constraint_reason"]])
-    if method == "ML" and prediction is None:
-        warnings.append("No model forecast for this product; B1 remains in use.")
-    elif forecast.get("fallback_reason"):
-        warnings.append("ML fallback: " + forecast["fallback_reason"])
-    return {
-        **product,
-        **forecast,
-        **decision,
-        "confirmed_qty": None,
-        "target_is_open": target_is_open,
-        "unknown_open_n": unknown_open,
-        "unknown_stockout_n": unknown_stockout,
-        "warnings": warnings,
-    }
+    return items[0].order(usable_stock, incoming_units)

@@ -16,7 +16,7 @@ from backend.procurement_imports import parse_procurement_csv
 from backend.procurement_planning import (
     MAX_ORDER_QTY,
     assess_order_quantity,
-    procurement_item,
+    prepare_procurement_items,
 )
 from backend.schemas import ConfirmRequest, ImportRequest, PlanRequest
 from backend.storage import (
@@ -261,6 +261,10 @@ def _create_procurement_plan(body: PlanRequest, today: date, dataset: dict):
         model = result.get("model")
         model_id = result["model_id"]
         predictions = {item["product_id"]: item for item in result["items"]}
+    prepared = prepare_procurement_items(
+        dataset["rows"], products, body.target_date, body.cutoff,
+        body.method, body.target_is_open, predictions, model_id,
+    )
     manual = [delivery.model_dump(mode="json") for delivery in body.expected_deliveries]
     plan = {
         "id": str(uuid.uuid4()), "revision": 0, "status": "draft",
@@ -293,15 +297,11 @@ def _create_procurement_plan(body: PlanRequest, today: date, dataset: dict):
         for entry in deliveries:
             product_id = entry["product_id"]
             incoming[product_id] = incoming.get(product_id, 0) + entry["quantity"]
-        plan["items"] = [
-            procurement_item(
-                dataset["rows"], product, body.target_date, body.cutoff,
-                body.method, body.target_is_open, assumptions.get(product["product_id"]),
-                incoming.get(product["product_id"], 0),
-                prediction=predictions.get(product["product_id"]), model_id=model_id,
-            )
-            for product in products
-        ]
+        items = []
+        for item in prepared:
+            product_id = item.product["product_id"]
+            items.append(item.order(assumptions.get(product_id), incoming.get(product_id, 0)))
+        plan["items"] = items
         insert_plan(con, plan)
     return plan
 

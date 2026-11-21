@@ -70,31 +70,38 @@ def worker(checkout, directory, action):
     print(json.dumps({"seconds": elapsed, "methods": methods, "sha256": hashlib.sha256(encoded).hexdigest()}))
 
 
-def compare(before, repeats):
+def paired_runs(before, repeats, script, workload):
+    """Run both checkouts against one seeded database, alternating measured order."""
     if repeats < 1:
         raise ValueError("At least one measured run is required")
     with TemporaryDirectory() as temp:
         def run(checkout, action):
-            args = [sys.executable, __file__, "--worker", str(checkout), temp, action]
+            args = [sys.executable, script, "--worker", str(checkout), temp, action]
             env = {**os.environ, "OPENBLAS_NUM_THREADS": "1", "MKL_NUM_THREADS": "1", "OMP_NUM_THREADS": "1"}
             return subprocess.check_output(args, cwd=checkout, env=env, text=True)
 
         run(before, "seed")
         # Warm the database and file caches for both checkouts before timing.
-        run(before, "forecast")
-        run(ROOT, "forecast")
+        run(before, workload)
+        run(ROOT, workload)
         checkouts = {"before": before, "after": ROOT}
-        timings = {"before": [], "after": []}
+        results = {"before": [], "after": []}
         for trial in range(repeats):
             order = ("before", "after") if trial % 2 == 0 else ("after", "before")
             for label in order:
-                result = json.loads(run(checkouts[label], "forecast"))
-                timings[label].append(result["seconds"])
-        summary = {label: median(values) for label, values in timings.items()}
-        print(json.dumps({
-            "seconds": timings, "median_seconds": summary, "speedup": summary["before"] / summary["after"],
-            "methods": result["methods"], "complete_forecast_sha256": result["sha256"],
-        }, indent=2))
+                results[label].append(json.loads(run(checkouts[label], workload)))
+        return results
+
+
+def compare(before, repeats):
+    results = paired_runs(before, repeats, __file__, "forecast")
+    timings = {label: [run["seconds"] for run in runs] for label, runs in results.items()}
+    summary = {label: median(values) for label, values in timings.items()}
+    first = results["before"][0]
+    print(json.dumps({
+        "seconds": timings, "median_seconds": summary, "speedup": summary["before"] / summary["after"],
+        "methods": first["methods"], "complete_forecast_sha256": first["sha256"],
+    }, indent=2))
 
 
 if __name__ == "__main__":
