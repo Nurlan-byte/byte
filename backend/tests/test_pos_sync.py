@@ -2,8 +2,10 @@
 
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import contextmanager
+import csv
 from datetime import UTC, date, datetime, timedelta
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from io import StringIO
 import json
 import math
 from queue import Queue
@@ -86,6 +88,84 @@ def register(client, **kwargs):
     return client.post(
         URL, json={"provider": "poster", "api_key": TOKEN, "days": 14, **kwargs}
     )
+
+
+def _order_for_snapshot(client, daily):
+    snapshot = daily["dataset"]
+    catalog = client.post(f"/api/datasets/{snapshot['id']}/order-catalog", json={"packs": {"9": 2}})
+    assert catalog.status_code == 201, catalog.text
+    dataset = catalog.json()
+    assert (dataset["source_dataset_id"], dataset["source_dataset_version"]) == (
+        snapshot["id"], snapshot["version"]
+    )
+    plan = client.post("/api/plans", json={
+        "dataset_id": dataset["id"], "target_date": daily["forecast"]["targetDate"],
+        "cutoff": daily["forecast"]["cutoff"], "lead_time_days": 1,
+        "usable_stock_assumption": {"9": 0},
+    })
+    assert plan.status_code == 201, plan.text
+    order = plan.json()
+    assert order["bakery_id"] == snapshot["bakery_id"]
+    assert order["dataset_id"] == dataset["id"] and order["dataset_version"] == dataset["version"]
+    (item,) = order["items"]
+    assert item["automatic_eligible"] and item["product_id"] == "9"
+    assert item["forecast_mean"] == daily["forecast"]["result"]["items"][0]["forecast_mean"]
+    return order
+
+
+def _export_then_refresh(client, shop, monkeypatch, late_units):
+    first = register(client).json()
+    order = _order_for_snapshot(client, first)
+    assert order["target_date"] == "2026-10-13" and order["cutoff"] == "2026-10-11"
+    url = f"/api/plans/{order['id']}"
+    quantity = order["items"][0]["recommended_qty"] + 2  # Operator adds one pack.
+    confirmed = client.post(url + "/confirm", json={
+        "revision": 0, "idempotency_key": "to-supplier", "quantities": {"9": quantity},
+    })
+    assert confirmed.status_code == 200, confirmed.text
+    assert (confirmed.json()["status"], confirmed.json()["revision"]) == ("confirmed", 1)
+    versions = client.get(url + "/revisions").json()
+    assert versions[-1] == confirmed.json()
+    exported = client.get(url + "/export", params={"revision": 1})
+    assert exported.status_code == 200, exported.text
+    (row,) = csv.DictReader(StringIO(exported.text.lstrip("\ufeff")))
+    assert int(row["confirmed_order_units"]) == quantity
+
+    shop["now"] += timedelta(days=1)
+    receipts = pos_providers.poster_sales
+
+    def next_window(reader, outlet, observed):
+        receipts(reader, outlet, observed)
+        if late_units:
+            observed.add(date(2026, 10, 11), "9", "Чай", late_units, True)
+
+    monkeypatch.setattr(pos_providers, "poster_sales", next_window)
+    pos_sync.run_due(shop["now"])
+    refreshed = client.get(f"{URL}/{first['connection']['id']}/latest").json()
+    assert refreshed["connection"]["status"] == "ready"
+    snapshot = refreshed["dataset"]
+    assert snapshot["bakery_id"] == first["dataset"]["bakery_id"] and snapshot["id"] != first["dataset"]["id"]
+    assert next(r["sold"] for r in snapshot["rows"] if r["date"] == "2026-10-11") == 9 + late_units
+    following = _order_for_snapshot(client, refreshed)
+    assert following["target_date"] == "2026-10-14" and following["cutoff"] == "2026-10-12"
+
+    assert client.get(f"/api/datasets/{first['dataset']['id']}").json() == first["dataset"]
+    assert client.get(url).json() == confirmed.json()
+    assert client.get(url + "/revisions").json() == versions
+    assert client.get(url + "/export", params={"revision": 1}).content == exported.content
+    assert client.get(url + "/export").content == exported.content
+    return following["items"][0]
+
+
+@pytest.mark.parametrize(("late_units", "expected"), [(0, 12), (8, 20)])
+def test_late_receipts_change_only_the_next_order(shop, monkeypatch, late_units, expected):
+    # A deterministic forecast that depends on both the corrected Sunday and the new Monday.
+    monkeypatch.setattr("backend.chronos_order._predict",
+                        lambda inputs, horizon: [float(sum(i["target"][-2:])) for i in inputs])
+    monkeypatch.setattr("backend.app.business_today", lambda: shop["now"].date())
+    with TestClient(app) as client:
+        item = _export_then_refresh(client, shop, monkeypatch, late_units)
+    assert (item["forecast_mean"], item["recommended_qty"]) == (expected, expected)
 
 
 @contextmanager
