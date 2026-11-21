@@ -2,14 +2,17 @@
 import argparse
 from contextlib import closing
 from datetime import UTC, date, datetime, time, timedelta
+from decimal import Decimal, InvalidOperation
+from fractions import Fraction
 import json
+from math import ceil
 from pathlib import Path
 import sqlite3
 
 from backend.pos_connection_store import BUSINESS_TZ
 
 
-def report(database, connection_id, start, end, deadline, weekdays, as_of):
+def report(database, connection_id, start, end, deadline, weekdays, as_of, *, target_percent=None):
     if start > end or as_of.utcoffset() is None or not weekdays or not set(weekdays) <= set(range(1, 8)):
         raise ValueError("Use an ordered date range, ISO weekdays 1–7 and an aware as-of instant")
     if deadline.tzinfo is not None:
@@ -40,10 +43,25 @@ def report(database, connection_id, start, end, deadline, weekdays, as_of):
             status = "missing"
         rows.append({"day": str(day), "status": status})
     counts = {s: sum(r["status"] == s for r in rows) for s in ("on_time", "late", "missing")}
-    return {"connection_id": connection_id, "deadline": str(deadline), "weekdays": sorted(weekdays),
-            "as_of": as_of.isoformat(), "expected_days": len(rows), **counts,
-            "on_time_pct": round(100 * counts["on_time"] / len(rows), 2) if rows else None,
-            "days": rows}
+    result = {"connection_id": connection_id, "deadline": str(deadline), "weekdays": sorted(weekdays),
+              "as_of": as_of.isoformat(), "expected_days": len(rows), **counts,
+              "on_time_pct": round(100 * counts["on_time"] / len(rows), 2) if rows else None,
+              "days": rows}
+    if target_percent is not None:
+        try:
+            target = Decimal(str(target_percent))
+        except InvalidOperation as exc:
+            raise ValueError("Target percent must be a number greater than 0 and at most 100") from exc
+        if not target.is_finite() or not 0 < target <= 100:
+            raise ValueError("Target percent must be a number greater than 0 and at most 100")
+        # Compare whole days to the exact target, before rounding the displayed percentage.
+        required = ceil(Fraction(target) * len(rows) / 100)
+        status = "no_due_days"
+        if rows:
+            status = "met_to_date" if counts["on_time"] >= required else "missed_to_date"
+        result["objective"] = {"target_percent": str(target), "status": status,
+                               "required_on_time_days": required, "allowed_misses": len(rows) - required}
+    return result
 
 
 def main():
@@ -55,10 +73,12 @@ def main():
     parser.add_argument("--deadline", type=time.fromisoformat, required=True)
     parser.add_argument("--weekdays", default="1,2,3,4,5,6,7")
     parser.add_argument("--as-of", type=datetime.fromisoformat)
+    parser.add_argument("--target-percent", help="Optional on-time objective for deadlines already due, e.g. 95")
     args = parser.parse_args()
     try:
         result = report(args.db, args.connection, args.start, args.end, args.deadline,
-                        {int(v) for v in args.weekdays.split(",")}, args.as_of or datetime.now(UTC))
+                        {int(v) for v in args.weekdays.split(",")}, args.as_of or datetime.now(UTC),
+                        target_percent=args.target_percent)
     except (ValueError, sqlite3.Error) as err:
         parser.error(str(err))
     print(json.dumps(result, ensure_ascii=False, indent=2))

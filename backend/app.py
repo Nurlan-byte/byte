@@ -24,7 +24,7 @@ from backend import deliveries
 from backend.pos import router as pos_router
 from backend.pos_order_setup import router as pos_order_router
 from backend.order_report import router as order_report_router
-from backend.pos_sync import router as pos_sync_router, scheduler
+from backend.pos_sync import scheduler
 from backend.ml_service import train_dataset, models_for_dataset, create_forecast
 from backend.services import (
     ServiceError,
@@ -60,7 +60,6 @@ app.include_router(context_router)
 app.include_router(pos_router)
 app.include_router(pos_order_router)
 app.include_router(order_report_router)
-app.include_router(pos_sync_router)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"],

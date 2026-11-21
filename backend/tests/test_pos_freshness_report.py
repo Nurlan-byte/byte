@@ -67,13 +67,26 @@ def test_deadline_cli_counts_silent_days_and_eligible_working_days(tmp_path):
         ])
     args = ["--db", str(path), "--connection", "branch", "--start", "2026-10-09", "--end", "2026-10-22",
             "--deadline", "09:00", "--weekdays", "1,2,3,4,5", "--as-of", "2026-10-22T00:00:00Z"]
-    result = subprocess.run([sys.executable, "-m", "tools.pos_freshness_report", *args],
+    result = subprocess.run([sys.executable, "-m", "tools.pos_freshness_report", *args, "--target-percent", "95"],
                             cwd=Path(__file__).resolve().parents[2], text=True, capture_output=True, check=True)
     measured = json.loads(result.stdout)
     assert [r["status"] for r in measured["days"]] == ["on_time", "late", "missing", "missing"]
     assert measured["expected_days"] == 4 and measured["on_time_pct"] == 25
+    assert measured["objective"] == {"target_percent": "95", "status": "missed_to_date",
+                                     "required_on_time_days": 4, "allowed_misses": 0}
     partial = report(path, "branch", date(2026,10,12), date(2026,10,14), time(9), {1,2,3}, datetime(2026,10,13,4,tzinfo=UTC))
     assert partial["late"] == 0 and partial["missing"] == partial["on_time"] == 1
+    assert "objective" not in partial
+    day = date(2026, 10, 12)
+    inputs = (path, "branch", day, date(2026, 10, 13), time(9), {1, 2})
+    as_of = datetime(2026, 10, 13, 5, tzinfo=UTC)
+    assert report(*inputs, as_of, target_percent="50")["objective"]["status"] == "met_to_date"
+    assert report(*inputs, as_of, target_percent="50.0001")["objective"]["status"] == "missed_to_date"
+    before_open = datetime(2026, 10, 12, 3, tzinfo=UTC)
+    assert report(*inputs, before_open, target_percent="95")["objective"]["status"] == "no_due_days"
+    for invalid in ("N/A", "NaN", "0", "101"):
+        with pytest.raises(ValueError, match="Target percent"):
+            report(*inputs, as_of, target_percent=invalid)
 
 
 @pytest.mark.parametrize(("ack", "accepted"), [(b"OK", True), (b"OK (not found)", False),

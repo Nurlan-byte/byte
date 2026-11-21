@@ -42,8 +42,10 @@ python -m tools.pilot_order_report private/pilot_order_pairs.csv --source pilot 
 Команда читает журнал SQLite. Передайте идентификатор сохранённого подключения из `GET /api/pos/connections`, период, местный срок и рабочие дни филиала. Пример ниже использует 09:00 по времени Казахстана и все дни недели. При установке на существующую базу мониторинг начинается с миграции. Для утра до начала наблюдений знаменатель пуст.
 
 ```powershell
-python -m tools.pos_freshness_report --db data/bakeplan.sqlite3 --connection UUID_подключения --start 2026-11-01 --end 2026-11-30 --deadline 09:00 --weekdays 1,2,3,4,5,6,7
+python -m tools.pos_freshness_report --db data/bakeplan.sqlite3 --connection UUID_подключения --start 2026-11-01 --end 2026-11-28 --deadline 09:00 --weekdays 1,2,3,4,5,6,7 --target-percent 95
 ```
+
+Параметр `--target-percent` включает сравнение с целью филиала на момент отчёта. При цели 95% и 28 наступивших сроках нужно успеть минимум в 27 дней. В поле `objective.status` значение `met_to_date` означает достижение цели к текущей дате, `missed_to_date` — отставание, `no_due_days` — отсутствие наступивших сроков. Порог сравнивается до округления отображаемого процента.
 
 ### Уведомления и диагностика
 

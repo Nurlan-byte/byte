@@ -7,6 +7,23 @@ on:
 permissions:
   contents: read
 jobs:
+  architecture:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: '3.14'
+      - name: Check Python dependency boundaries
+        run: |
+          python -m pip install -r tools/requirements-architecture.txt
+          lint-imports --no-cache
+      - name: Validate C4 model and published diagrams
+        run: |
+          export PATH="$JAVA_HOME_21_X64/bin:$PATH"
+          curl -fsSL --retry 3 https://download.structurizr.com/structurizr-2026.09.19.war -o "$RUNNER_TEMP/structurizr.war"
+          python docs/architecture/render.py "$RUNNER_TEMP/structurizr.war" --check
   forecast-tracking:
     runs-on: ubuntu-latest
     timeout-minutes: 10
@@ -137,3 +154,18 @@ jobs:
           python -m pytest backend/tests/test_deployment.py backend/tests/test_demo_replay.py backend/tests/test_pos_connection_store.py backend/tests/test_pos_sync.py backend/tests/test_pos_freshness_report.py -q
       - name: Build and exercise isolated controlled demo
         run: bash scripts/test_containers.sh
+      - name: Read confirmed orders during four branch refreshes
+        run: |
+          archive="$RUNNER_TEMP/k6.tar.gz"
+          curl -fsSL --retry 3 https://github.com/grafana/k6/releases/download/v2.4.0/k6-v2.4.0-linux-amd64.tar.gz -o "$archive"
+          echo "5a5ecf23529ccf93135bc7e5b0c1cd5126ecf5f2672e22eed1556a0ab74abb87  $archive" | sha256sum --check
+          tar -xzf "$archive" -C "$RUNNER_TEMP" k6-v2.4.0-linux-amd64/k6
+          python tools/load/confirmed_orders.py --k6 "$RUNNER_TEMP/k6-v2.4.0-linux-amd64/k6" --output test-results/order-load.json
+      - name: Save load test measurements
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: order-load-${{ github.sha }}-${{ github.run_attempt }}
+          path: test-results/order-load.json
+          retention-days: 14
+          if-no-files-found: warn

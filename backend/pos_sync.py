@@ -6,23 +6,18 @@ import os
 import threading
 from contextlib import asynccontextmanager
 from datetime import UTC, date, datetime, timedelta, timezone
-from typing import Annotated
-from uuid import UUID
 
-from fastapi import APIRouter, Path, Response
 from opentelemetry.trace import StatusCode
 
-from backend import pos, pos_connection_store as store, pos_monitoring, pos_providers, pos_vault
-from backend.context_routes import forecast_for_day
+from backend import pos_connection_store as store, pos_import, pos_monitoring, pos_providers, pos_vault
+from backend.daily_forecast import forecast_for_day
 from backend.dataset_identity import identity
 from backend.errors import ServiceError
 from backend.storage import get_dataset
 
-router = APIRouter(prefix="/api/pos/connections")
 LOCAL_TIME = timezone(timedelta(hours=5))
 DAILY_HOUR = 5
 POLL_SECONDS = 60
-ConnectionID = Annotated[UUID, Path()]
 ERROR_MESSAGES = {
     "unauthorized": "Касса отклонила доступ. Проверьте права или подключите точку заново с новым ключом.",
     "branch_changed": "Ключ больше не открывает сохранённую торговую точку. Проверьте подключение филиала.",
@@ -80,14 +75,14 @@ def _update_stages(claim, day, clock, verified):
                 claim["provider"], store.claim_key(claim)
             )
             failure = "branch_changed"
-            outlet, _ = pos.select_outlet(reader, claim["location_id"])
-            if pos.branch_id(reader.provider, outlet) != claim["bakery_id"]:
+            outlet, _ = pos_import.select_outlet(reader, claim["location_id"])
+            if pos_import.branch_id(reader.provider, outlet) != claim["bakery_id"]:
                 raise ServiceError(422, "Изменилась учётная запись кассы.")
         else:
             reader, outlet = verified
         failure = "sync_failed"
         with pos_monitoring.span("pos.import"):
-            imported = pos.import_outlet(reader, outlet, claim["days"], claim["city"], day, require_last_day=True)
+            imported = pos_import.import_outlet(reader, outlet, claim["days"], claim["city"], day, require_last_day=True)
             dataset = imported["dataset"]
             dataset_id = dataset["id"]
             observed = max((r["date"] for r in dataset["rows"]), default=None)
@@ -100,7 +95,7 @@ def _update_stages(claim, day, clock, verified):
                 raise ServiceError(422, "Нет подтверждения за нужную дату")
         failure = "forecast_unavailable"
         with pos_monitoring.span("pos.forecast"):
-            forecast = forecast_for_day(dataset_id, day)
+            forecast = forecast_for_day(dataset, day)
             forecast["observed_through"] = observed
             forecast["warnings"] = list(
                 dict.fromkeys(imported["context_warnings"] + forecast["warnings"])
@@ -108,9 +103,9 @@ def _update_stages(claim, day, clock, verified):
         with pos_monitoring.span("pos.publish"):
             published = store.finish(claim, dataset_id, forecast, day, clock())
         return published, "fresh" if published else "superseded"
-    except pos.NoSales:
+    except pos_import.NoSales:
         failure = "no_sales"
-    except pos.StaleSales:
+    except pos_import.StaleSales:
         failure = "freshness_unverified"
     except ServiceError as error:
         if failure in {"branch_changed", "sync_failed"}:
@@ -125,26 +120,24 @@ def _update_stages(claim, day, clock, verified):
     return store.fail(claim, failure, clock()), failure
 
 
-@router.post("")
-def connect(body: pos.PosRequest):
-    pos.require_enabled()
+def register_connection(provider, key, location_id, days, city):
+    pos_import.require_enabled()
     if not pos_vault.available():
         raise ServiceError(
             503, "Для ежедневного подключения настройте ключ шифрования на сервере."
         )
-    key = body.api_key.get_secret_value()
-    reader = pos_providers.VendorReader(body.provider, key)
-    selected, choices = pos.select_outlet(reader, body.location_id)
+    reader = pos_providers.VendorReader(provider, key)
+    selected, choices = pos_import.select_outlet(reader, location_id)
     if selected is None:
         return choices
     now = now_utc()
     claim = store.start_connection(
-        body.provider,
+        provider,
         selected.id,
         selected.name,
-        pos.branch_id(body.provider, selected),
-        body.days,
-        body.city,
+        pos_import.branch_id(provider, selected),
+        days,
+        city,
         key,
         now,
     )
@@ -162,12 +155,6 @@ def connect(body: pos.PosRequest):
     }
 
 
-@router.get("")
-def connections():
-    pos.require_enabled()
-    return [public_connection(row) for row in store.list_connections()]
-
-
 def connection_result(ident):
     row, forecast = store.connection_result(ident)
     return {
@@ -179,25 +166,9 @@ def connection_result(ident):
     }
 
 
-@router.get("/{ident}/latest")
-def latest(ident: ConnectionID):
-    pos.require_enabled()
-    result = connection_result(str(ident))
-    if result["forecast"] is None:
-        raise ServiceError(409, "Первый прогноз ещё не готов.")
-    return result
-
-
-@router.delete("/{ident}", status_code=204)
-def disconnect(ident: ConnectionID):
-    pos.require_enabled()
-    store.revoke(str(ident), now_utc())
-    return Response(status_code=204)
-
-
 def run_due(now=None, stop=None):
     """Catch up to the latest scheduled day. Independent app processes share leases."""
-    if not pos.enabled() or not os.getenv("BAKEPLAN_POS_MASTER_KEY_FILE"):
+    if not pos_import.enabled() or not os.getenv("BAKEPLAN_POS_MASTER_KEY_FILE"):
         return
     clock = now_utc if now is None else lambda: now
     while stop is None or not stop.is_set():
@@ -222,7 +193,7 @@ def _loop(stop):
 
 @asynccontextmanager
 async def scheduler():
-    if not pos.enabled() or not os.getenv("BAKEPLAN_POS_MASTER_KEY_FILE"):
+    if not pos_import.enabled() or not os.getenv("BAKEPLAN_POS_MASTER_KEY_FILE"):
         yield
         return
     stop = threading.Event()

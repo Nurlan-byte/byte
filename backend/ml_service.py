@@ -295,9 +295,15 @@ def forecast_items(dataset, target, cutoff, model_id=None, method="ML"):
 def create_forecast(body, today):
     if body.cutoff >= today or body.cutoff >= body.target_date:
         raise ServiceError(422, "Срез должен быть раньше целевой даты и сегодня")
-    dataset = identity(get_dataset(body.dataset_id))
-    method = body.method or (
-        "AUTO" if body.model_id is None and uses_automatic_sales_forecast(dataset) else "ML"
+    return forecast_from_dataset(
+        get_dataset(body.dataset_id), body.target_date, body.cutoff, body.method, body.model_id
+    )
+
+
+def forecast_from_dataset(dataset, target, cutoff, method, model_id):
+    dataset = identity(dataset)
+    method = method or (
+        "AUTO" if model_id is None and uses_automatic_sales_forecast(dataset) else "ML"
     )
     if method == "AUTO":
         from backend.chronos_order import PROTOCOL_VERSION
@@ -305,15 +311,15 @@ def create_forecast(body, today):
         if dataset.get("catalog"):
             products = [p["product_id"] for p in dataset["catalog"]]
         else:
-            products = sorted({r["product_id"] for r in dataset["rows"] if r["date"] <= str(body.cutoff)})
-        predictions = automatic_forecasts(dataset, body.target_date, body.cutoff, products, body.model_id)
+            products = sorted({r["product_id"] for r in dataset["rows"] if r["date"] <= str(cutoff)})
+        predictions = automatic_forecasts(dataset, target, cutoff, products, model_id)
         result = {
             "items": [dict(predictions[p], product_id=p) for p in products],
             "model_id": None, "protocol_version": PROTOCOL_VERSION,
         }
     else:
         result = forecast_items(
-            dataset, body.target_date, body.cutoff, body.model_id, method
+            dataset, target, cutoff, model_id, method
         )
     return {
         key: dataset[key]
@@ -321,8 +327,8 @@ def create_forecast(body, today):
     } | {
         "dataset_id": dataset["id"],
         "dataset_version": dataset["version"],
-        "target_date": str(body.target_date),
-        "cutoff": str(body.cutoff),
+        "target_date": str(target),
+        "cutoff": str(cutoff),
         "model_id": result["model_id"],
         "items": result["items"],
         **{key: result[key] for key in ("evaluation_applicability", "protocol_version") if key in result},

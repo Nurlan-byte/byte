@@ -9,6 +9,7 @@ import math
 from queue import Queue
 import threading
 from time import monotonic, sleep
+from unittest.mock import patch
 from uuid import uuid4
 
 from fastapi.testclient import TestClient
@@ -203,7 +204,18 @@ def test_heartbeat_is_per_outlet_and_never_replays_yesterdays_signal(shop, monke
         shop["stale_shops"] = {"1"}
         shop["new_item"] = True
         shop["now"] += timedelta(days=1)
+        calculate = pos_sync.forecast_for_day
+        forecast_reads = []
+
+        def measured_forecast(snapshot, day):
+            with patch.object(storage, "fetch", wraps=storage.fetch) as fetch:
+                result = calculate(snapshot, day)
+            forecast_reads.append([c.args[2] for c in fetch.call_args_list if c.args[1] == "datasets"])
+            return result
+
+        monkeypatch.setattr(pos_sync, "forecast_for_day", measured_forecast)
         pos_sync.run_due(shop["now"])
+        assert forecast_reads == [[]]  # Only the fresh branch ran; its snapshot was already in memory.
         assert sent == [check2]
         first_saved = client.get(f"{URL}/{first}/latest").json()
         second_saved = client.get(f"{URL}/{second}/latest").json()
@@ -216,7 +228,7 @@ def test_heartbeat_is_per_outlet_and_never_replays_yesterdays_signal(shop, monke
 
 
 @pytest.mark.parametrize("provider", ["poster", "moysklad"])
-def test_once_then_daily_after_restart_without_key_or_browser(shop, provider):
+def test_once_then_daily_after_restart_without_key_or_browser(shop, provider, monkeypatch):
     shop["shops"].append("2")
     with TestClient(app) as client:
         assert client.get("/api/pos/status").json()["daily_enabled"] is True
@@ -255,6 +267,16 @@ def test_once_then_daily_after_restart_without_key_or_browser(shop, provider):
         assert max(row["date"] for row in new["dataset"]["rows"]) == "2026-10-13"
         assert new["forecast"]["result"]["dataset_id"] == new["dataset"]["id"]
         assert new["forecast"]["targetDate"] == "2026-10-15"
+        # The operator opens exactly the snapshot published by the daily worker.
+        monkeypatch.setattr("backend.context_routes.business_today", lambda: date(2026, 10, 14))
+        dataset_id = new["dataset"]["id"]
+        with patch.object(storage, "fetch", wraps=storage.fetch) as fetch:
+            manual = client.post(f"/api/datasets/{dataset_id}/first-forecast")
+        assert manual.status_code == 200, manual.text
+        assert manual.json() == {
+            key: value for key, value in new["forecast"].items() if key != "observed_through"
+        }
+        assert [c.args[1:] for c in fetch.call_args_list] == [("datasets", dataset_id)]
         assert (
             new["forecast"]["result"]["items"][0]["forecast_mean"]
             != original["forecast"]["result"]["items"][0]["forecast_mean"]

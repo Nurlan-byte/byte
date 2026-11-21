@@ -119,6 +119,8 @@ BakePlan оценивает ожидаемое количество продаж
 
 ### Архитектура
 
+[Схемы C4](docs/architecture/diagrams.md) показывают, где исполняются прогноз и ежедневное обновление. [Карта смены](docs/architecture/daily-order.md) связывает продажи, подтверждение заказа и приёмку поставки.
+
 ```mermaid
 flowchart TB
     UI["React 19 + TypeScript<br/>русский интерфейс"] --> GW["Caddy · HTTPS<br/>защищённый доступ"]

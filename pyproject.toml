@@ -4,3 +4,27 @@ extend-exclude = [".deps", ".deps-evaluation", ".venv", ".venv-evaluation", "nod
 
 [tool.ruff.lint]
 select = ["E4", "E7", "E9", "F"]
+
+[tool.importlinter]
+root_package = "backend"
+include_external_packages = true
+
+[[tool.importlinter.contracts]]
+id = "daily-worker"
+name = "The daily scheduler can run without the HTTP adapters"
+type = "forbidden"
+source_modules = ["backend.pos_sync"]
+forbidden_modules = [
+    "fastapi", "backend.app", "backend.context_routes", "backend.pos",
+    "backend.pos_order_setup", "backend.order_report",
+]
+
+[[tool.importlinter.contracts]]
+id = "shared-use-cases"
+name = "Shared forecast and POS import do not depend on their callers"
+type = "forbidden"
+source_modules = ["backend.daily_forecast", "backend.pos_import"]
+forbidden_modules = [
+    "backend.pos_sync", "fastapi", "backend.app", "backend.context_routes",
+    "backend.pos", "backend.pos_order_setup", "backend.order_report",
+]

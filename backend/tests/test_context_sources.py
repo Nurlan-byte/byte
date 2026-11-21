@@ -397,7 +397,7 @@ def test_first_forecast_temporary_training_failure_only(client, monkeypatch):
     def fail(*args):
         raise ServiceError(status, "private detail")
 
-    monkeypatch.setattr(context_routes, "train_dataset", fail)
+    monkeypatch.setattr("backend.daily_forecast.train_dataset", fail)
     status = 503
     fallback = client.post(route)
     assert (
