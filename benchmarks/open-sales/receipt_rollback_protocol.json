@@ -1,0 +1,39 @@
+{
+  "id": "receipt-legacy-rollback-1",
+  "baseline_commit": "082a53504b75fb950a33069a8fce4e50bf43d10c",
+  "candidate": "Existing history-only procurement Ridge with its original per-product B1 fallback. No new fitted coefficients, parameters or thresholds are selected from the evaluation.",
+  "refit": "At each two-day issue cutoff use the latest Monday on or before the cutoff. Fit the fixed algorithm only on records through that Monday. Use observations through the issue cutoff to predict the target. The held-out outcome is never available to its own prediction.",
+  "horizon": 2,
+  "cafe_protocol": "receipt-incidence-1",
+  "cafe_holdout": ["2025-09-03", "2025-09-30"],
+  "historical_week": ["2025-09-24", "2025-09-30"],
+  "historical_outcomes": {
+    "actual_sum": 102,
+    "data_sha256": "30caa1eebd76f2aa1350a16fca6741eb13fb99ddfb98f33d9f66dfd931917a75"
+  },
+  "uci_holdout": ["2011-09-01", "2011-09-28"],
+  "uci": {
+    "archive_sha256": "f5385cbb54bbebf7196389109c6b0621faab0c304e3702548165e71c84aede8b",
+    "rank_start": "2011-06-01",
+    "rank_end": "2011-08-31",
+    "first_origin": "2011-08-30",
+    "end": "2011-09-28",
+    "top_n": 6,
+    "outcomes": {
+      "trading_days": 24,
+      "actual_sum": 940,
+      "zero_actuals": 2,
+      "data_sha256": "c94adeef093e4a7b44d091d1c0eff09d0c02bb24110b9329da4b4f9ae35cbddc"
+    },
+    "unit": "Number of distinct positive merchandise invoices containing an item per trading day of the single retailer",
+    "source": "Chen, D. (2015). Online Retail. UCI Machine Learning Repository. https://doi.org/10.24432/C5BW33",
+    "license": "CC BY 4.0"
+  },
+  "gate": {
+    "max_historical_prediction_difference": 1e-10,
+    "min_mae_improvement_pct": 1.0,
+    "max_absolute_bias_increase_pp": 2.0,
+    "coverage": "All expected pairs in each cohort",
+    "all_required": ["cafe", "snacks", "uci"]
+  }
+}

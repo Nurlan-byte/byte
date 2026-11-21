@@ -25,6 +25,7 @@ export function ForecastResult({
   unitLabel: string;
 }) {
   const items = snapshot.result.items;
+  const receiptCounts = snapshot.result.target === "item_line_count";
   return (
     <div
       data-testid="forecast-result"
@@ -33,7 +34,11 @@ export function ForecastResult({
       <div className="section-heading">
         <h3>Прогноз по истории продаж на {snapshot.targetDate}</h3>
         <span className="badge">
-          {procurement ? "Для проверки заказа" : "Для проверки плана"}
+          {receiptCounts
+            ? "Прогноз строк продаж"
+            : procurement
+              ? "Для проверки заказа"
+              : "Для проверки плана"}
         </span>
       </div>
       {stale && (
@@ -87,6 +92,15 @@ export function ForecastResult({
                   </td>
                   <td>
                     <strong>{methodText(item.method)}</strong>
+                    {receiptCounts &&
+                      item.selection &&
+                      item.selection.observed_days > 0 && (
+                        <small>
+                          Дни без продаж за последние 8 недель —{" "}
+                          {item.selection.zero_days} из{" "}
+                          {item.selection.observed_days} с данными.
+                        </small>
+                      )}
                     {snapshot.method === "AUTO" && item.reason && (
                       <small>{reasonText(item.reason)}</small>
                     )}

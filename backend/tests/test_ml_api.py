@@ -5,13 +5,15 @@ import importlib
 import io
 import json
 import math
+import os
+from pathlib import Path
 import subprocess
 from datetime import date, timedelta
 
 import pytest
 from fastapi.testclient import TestClient
 
-from backend import ml_service
+from backend import chronos_assets, ml_service
 from backend.app import app
 from backend.imports import REQUIRED
 from backend.storage import connection
@@ -137,6 +139,41 @@ def database(tmp_path, monkeypatch):
 def client(database):
     with TestClient(app) as active:
         yield active
+
+
+def test_daily_receipt_forecast_serves_the_evaluated_incumbent(client, monkeypatch):
+    if not (chronos_assets.model_directory() / "model.safetensors").exists() and not os.environ.get("CI"):
+        pytest.skip("Provision the pinned test checkpoint with python -m backend.chronos_assets")
+    cutoff = date(2026, 10, 9)
+    target = cutoff + timedelta(days=2)
+    monkeypatch.setattr("backend.context_routes.business_today", lambda: cutoff + timedelta(days=1))
+    rows = ["date,product_id,item_line_count"]
+    for offset in range(70):
+        day = cutoff - timedelta(days=69 - offset)
+        rows.append(f"{day},tea,{9 if day.weekday() == target.weekday() else 1}")
+    dataset = import_dataset(client, "\n".join(rows), sales_only=True)
+    preview = client.post(f"/api/datasets/{dataset['id']}/first-forecast")
+    assert preview.status_code == 200, preview.text
+    assert preview.json()["method"] == "AUTO"
+    response = client.post("/api/forecasts", json={
+        "dataset_id": dataset["id"], "cutoff": str(cutoff), "target_date": str(target),
+    })
+    assert response.status_code == 200, response.text
+    result = response.json()
+    assert result == preview.json()["result"]
+
+    report_path = Path(__file__).resolve().parents[2] / "benchmarks/open-sales/results/receipt_quality.json"
+    evaluation = json.loads(report_path.read_text(encoding="utf-8"))
+    assert evaluation["gate"]["passed"] is False
+    assert result["protocol_version"] == evaluation["baseline_protocol"]
+    assert result["target"] == evaluation["target"] == "item_line_count"
+    assert result["unit"] == "item_line" and result["dataset_version"] == dataset["version"]
+    assert result["provenance"] == dataset["provenance"]
+    (item,) = result["items"]
+    assert (item["product_id"], item["method"], item["b1_mean"]) == ("tea", "Chronos-2", 9.0)
+    # Reference from the pinned checkpoint and the active policy at 082a535.
+    # A 50/50 blend with the 28-day mean (15/7) would return 5.75 instead.
+    assert item["forecast_mean"] == pytest.approx(9.36216, abs=0.01)
 
 
 def test_train_status_and_forecast_complete_synthetic_lifecycle(client):

@@ -60,6 +60,11 @@ python -m tools.pos_freshness_report --db data/bakeplan.sqlite3 --connection UUI
 ```powershell
 python -m pip install -r tools/requirements-tracking.txt
 python -m tools.track_forecast benchmarks/open-sales/results/volume_quality.json --database data/forecast-experiments.sqlite3
+python -m tools.track_forecast benchmarks/open-sales/results/receipt_quality.json --database data/forecast-experiments.sqlite3
 ```
+
+В одной базе MLflow создаёт два эксперимента. В `BakePlan purchase forecasts` хранится оценка закупки, в `BakePlan receipt counts` — оценка числа строк чеков. Для просмотра откройте `mlflow ui --backend-store-uri sqlite:///data/forecast-experiments.sqlite3` из корня проекта и выберите нужный эксперимент.
+
+В отчёте по чекам группа `original_week` воспроизводит сравнение за 24–30 сентября 2025 года. В `all` записаны средняя абсолютная ошибка (MAE) и её изменение в процентах относительно прежнего метода Ridge/B1. Положительное изменение означает рост ошибки. В группах `zero` и `positive` хранятся число наблюдений (`n`) и суммы абсолютных ошибок (`baseline_ae_sum`, `candidate_ae_sum`, `legacy_ae_sum`) для дней с нулём строк чеков и с одной или более строками соответственно. По разности сумм можно проверить вклад каждой группы в результат. Эти показатели агрегированы за неделю. Решение о выпуске хранится отдельно в теге `gate` и опирается на основной контрольный период.
 
 Для нового эксперимента сначала запустите расчёт на исходных данных по инструкции сравнения. Загрузка прошлого отчёта в MLflow сохраняет именно тот результат и его контрольную сумму. В GitHub Actions задача `forecast-tracking` прикладывает SQLite с агрегатами как артефакт проверки. [Протокол и воспроизведение](../benchmarks/open-sales/README.md)

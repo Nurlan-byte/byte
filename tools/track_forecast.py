@@ -10,15 +10,45 @@ from pathlib import Path
 import re
 import sqlite3
 
-EXPERIMENT = "BakePlan purchase forecasts"
 METRICS = ("n", "actual_sum", "baseline_mae", "candidate_mae", "baseline_bias_pct", "candidate_bias_pct")
+
+
+def original_week_metrics(week):
+    """Track the published pooled comparison and its zero/positive demand breakdown."""
+    metrics = {}
+    for group in ("all", "zero", "positive"):
+        values = week[group]
+        n = values["n"]
+        if type(n) is not int or n < 0 or (group == "all" and n == 0):
+            raise ValueError(f"Invalid original_week.{group}.n")
+        metrics[f"original_week.{group}.n"] = float(n)
+        for model in ("baseline", "candidate", "legacy"):
+            key = f"{model}_ae_sum"
+            error = values[key]
+            if type(error) not in (int, float) or not math.isfinite(error) or error < 0 or (n == 0 and error != 0):
+                raise ValueError(f"Invalid original_week.{group}.{key}")
+            metrics[f"original_week.{group}.{key}"] = float(error)
+
+    totals = week["all"]
+    if week["zero"]["n"] + week["positive"]["n"] != totals["n"]:
+        raise ValueError("Original week group counts do not add up")
+    for model in ("baseline", "candidate", "legacy"):
+        key = f"{model}_ae_sum"
+        if not math.isclose(week["zero"][key] + week["positive"][key], totals[key], rel_tol=1e-10, abs_tol=1e-10):
+            raise ValueError(f"Original week group errors do not add up for {model}")
+        metrics[f"original_week.all.{model}_mae"] = totals[key] / totals["n"]
+        if totals["legacy_ae_sum"] > 0:
+            metrics[f"original_week.all.{model}_mae_change_vs_legacy_pct"] = (
+                100 * (totals[key] - totals["legacy_ae_sum"]) / totals["legacy_ae_sum"]
+            )
+    return metrics
 
 
 def summary_fields(report):
     if report.get("schema_version") != 1 or type(report["gate"]["passed"]) is not bool:
         raise ValueError("Invalid quality report schema or gate decision")
     fields = {"baseline_protocol": report["baseline_protocol"], "candidate": report["candidate"]}
-    for name in ("protocol", "baseline_commit"):
+    for name in ("protocol", "baseline_commit", "target"):
         if name in report:
             fields[name] = report[name]
     for path, fingerprint in report.get("fingerprints", {}).items():
@@ -63,6 +93,13 @@ def summary_fields(report):
                     raise ValueError(f"Invalid number of observations in {source}")
                 metrics[f"{prefix}.{name}"] = float(value)
             metrics[f"{prefix}.mae_delta"] = record["candidate_mae"] - record["baseline_mae"]
+    if "original_week" in report:
+        week = report["original_week"]
+        if date.fromisoformat(week["start"]) > date.fromisoformat(week["end"]):
+            raise ValueError("Inverted original week dates")
+        for name in ("start", "end"):
+            fields[f"original_week.{name}"] = week[name]
+        metrics.update(original_week_metrics(week))
     return fields, metrics
 
 
@@ -85,16 +122,18 @@ def record_run(report_path, database):
     from time import time_ns
 
     client = MlflowClient(tracking_uri="sqlite:///" + database.as_posix())
-    experiment = client.get_experiment_by_name(EXPERIMENT)
+    experiment_name = ("BakePlan receipt counts" if report.get("target") == "item_line_count"
+                       else "BakePlan purchase forecasts")
+    experiment = client.get_experiment_by_name(experiment_name)
     if experiment:
         experiment_id = experiment.experiment_id
     else:
         try:
-            experiment_id = client.create_experiment(EXPERIMENT, artifact_location=(database.parent / "mlflow-artifacts").as_uri())
+            experiment_id = client.create_experiment(experiment_name, artifact_location=(database.parent / "mlflow-artifacts").as_uri())
         except MlflowException as exc:
             if exc.error_code != "RESOURCE_ALREADY_EXISTS":
                 raise
-            experiment_id = client.get_experiment_by_name(EXPERIMENT).experiment_id
+            experiment_id = client.get_experiment_by_name(experiment_name).experiment_id
     fingerprint = sha256(raw.replace(b"\r\n", b"\n")).hexdigest()
     tags = {"report_sha256": fingerprint, "gate": "passed" if report["gate"]["passed"] else "rejected"}
     run = client.create_run(experiment_id, run_name=params["candidate"], tags=tags)

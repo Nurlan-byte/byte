@@ -21,6 +21,19 @@ def report():
                            for split, day in (("development", "2025-01-01"), ("holdout", "2025-02-01"))}}
 
 
+def receipt_report():
+    path = Path(__file__).resolve().parents[2] / "benchmarks/open-sales/results/receipt_quality.json"
+    return json.loads(path.read_bytes())
+
+
+def track_using_cli(source, database):
+    process = subprocess.run(
+        [sys.executable, "-m", "tools.track_forecast", str(source), "--database", str(database)],
+        capture_output=True, text=True, check=True,
+    )
+    return json.loads(process.stdout)
+
+
 class ForecastTracking(unittest.TestCase):
     def test_holdout_cannot_include_the_last_development_date(self):
         data = report()
@@ -41,6 +54,26 @@ class ForecastTracking(unittest.TestCase):
                 record_run(file, database)
             self.assertEqual(database.read_bytes(), previous)
 
+    def test_inconsistent_original_week_groups_are_rejected_before_storage(self):
+        for key, message in (("n", "counts"), ("legacy_ae_sum", "errors")):
+            with self.subTest(key=key), TemporaryDirectory() as folder:
+                data = receipt_report()
+                data["original_week"]["zero"][key] += 1
+                source = Path(folder) / "report.json"
+                source.write_text(json.dumps(data), encoding="utf-8")
+                database = Path(folder) / "tracking.sqlite3"
+                with self.assertRaisesRegex(ValueError, message):
+                    record_run(source, database)
+                self.assertFalse(database.exists())
+
+    def test_perfect_reference_has_no_relative_error_denominator(self):
+        data = receipt_report()
+        for group in ("all", "zero", "positive"):
+            data["original_week"][group]["legacy_ae_sum"] = 0
+        _, metrics = summary_fields(data)
+        self.assertEqual(metrics["original_week.all.legacy_mae"], 0.0)
+        self.assertFalse(any("vs_legacy_pct" in key for key in metrics))
+
     @unittest.skipUnless(find_spec("mlflow") is not None, "MLflow runs in the tracking environment")
     def test_rejected_forecast_is_recorded_as_a_completed_experiment(self):
         with TemporaryDirectory() as folder:
@@ -48,11 +81,7 @@ class ForecastTracking(unittest.TestCase):
             file = path / "report.json"
             file.write_text(json.dumps(report()), encoding="utf-8")
             database = path / "tracking.sqlite3"
-            process = subprocess.run(
-                [sys.executable, "-m", "tools.track_forecast", str(file), "--database", str(database)],
-                capture_output=True, text=True, check=True,
-            )
-            saved = json.loads(process.stdout)
+            saved = track_using_cli(file, database)
             with closing(sqlite3.connect(database)) as db:
                 status, = db.execute("SELECT status FROM runs WHERE run_uuid=?", (saved["run_id"],)).fetchone()
                 improvement, = db.execute(
@@ -63,3 +92,34 @@ class ForecastTracking(unittest.TestCase):
             self.assertEqual(improvement, -100.0)
             self.assertEqual(saved["gate"], "rejected")
             self.assertEqual(saved["metrics_verified"], 15)
+
+    @unittest.skipUnless(find_spec("mlflow") is not None, "MLflow runs in the tracking environment")
+    def test_receipt_root_cause_is_retrievable_separately_from_purchase_quality(self):
+        with TemporaryDirectory() as folder:
+            path = Path(folder)
+            database = path / "tracking.sqlite3"
+            source = path / "report.json"
+            source.write_text(json.dumps(report()), encoding="utf-8")
+            purchase = track_using_cli(source, database)
+            source.write_text(json.dumps(receipt_report()), encoding="utf-8")
+            receipt = track_using_cli(source, database)
+            with closing(sqlite3.connect(database)) as db:
+                experiments = dict(db.execute("SELECT e.name, r.run_uuid FROM experiments e JOIN runs r USING(experiment_id)"))
+                self.assertEqual(experiments, {"BakePlan purchase forecasts": purchase["run_id"],
+                                               "BakePlan receipt counts": receipt["run_id"]})
+                self.assertIsNone(db.execute(
+                    "SELECT 1 FROM metrics WHERE run_uuid=? AND key LIKE 'original_week.%'", (purchase["run_id"],),
+                ).fetchone())
+                params = dict(db.execute("SELECT key, value FROM params WHERE run_uuid=?", (receipt["run_id"],)))
+                metrics = dict(db.execute("SELECT key, value FROM metrics WHERE run_uuid=?", (receipt["run_id"],)))
+            self.assertEqual(params["original_week.start"], "2025-09-24")
+            self.assertEqual(params["original_week.end"], "2025-09-30")
+            self.assertEqual([metrics[f"original_week.{g}.n"] for g in ("all", "zero", "positive")],
+                             [126, 59, 67])
+            for model, expected in (("baseline", 4.27), ("candidate", 0.22), ("legacy", 0.0)):
+                self.assertAlmostEqual(metrics[f"original_week.all.{model}_mae_change_vs_legacy_pct"],
+                                       expected, places=2)
+            zero = metrics["original_week.zero.baseline_ae_sum"] - metrics["original_week.zero.legacy_ae_sum"]
+            total = metrics["original_week.all.baseline_ae_sum"] - metrics["original_week.all.legacy_ae_sum"]
+            self.assertAlmostEqual(100 * zero / total, 97.65, places=2)
+            self.assertEqual(receipt["metrics_verified"], 40)

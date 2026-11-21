@@ -1,0 +1,11 @@
+{
+  "id": "branch-weekday-receipts-1",
+  "target": "item_line_count",
+  "candidate": "pooled_weekday",
+  "choice": "One estimator fixed before scoring June. No tuning or selection on these windows. Known September numbers are regression tests.",
+  "formula": "At origin t-2, take the last 56 calendar days. Among SKUs in the imported assortment, use only dates on which all SKUs have observed counts. Use incumbent if fewer than two SKUs, 28 complete dates, four complete target weekdays, or zero pooled volume. The forecast is the SKU mean on the complete dates multiplied by the pooled target-weekday/global rate ratio. Shrink the weekday rate with one pseudo-day at the global rate. Preserve missing incumbent forecasts.",
+  "fresh": {"assortment_cutoff": "2025-05-30", "dates": ["2025-06-01", "2025-06-28"]},
+  "regression": {"assortment_cutoff": "2025-08-04", "dates": ["2025-09-03", "2025-09-30"]},
+  "assortments": "For each branch and each cutoff independently: six leading tea/coffee SKUs and all snacks, as specified in receipt_quality_protocol.json. Each assortment is a separate imported series group. All three branches.",
+  "acceptance": "On June AND September, for each assortment separately: at least 1 percent lower MAE than current Chronos-2/B1, no more than 2 percentage points higher absolute volume bias and no lost coverage. The September 24-30 original 126 drink forecasts must also be at least as accurate on average as the legacy weekly model. If any condition fails retain incumbent. No additional variants in this study."
+}

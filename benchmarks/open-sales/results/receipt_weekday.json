@@ -1,0 +1,137 @@
+{
+  "fresh": {
+    "cafe": {
+      "expected": 504,
+      "n": 504,
+      "actual_sum": 508,
+      "zero_actuals": 205,
+      "negative_actuals": 0,
+      "start": "2025-06-01",
+      "end": "2025-06-28",
+      "data_sha256": "1f24dc8ffa2dfe7e6f632b22d3a44c013df1188efe91d27e0d341f7e3070ec6b",
+      "baseline_covered": 504,
+      "baseline_ae_sum": 424.45523074284193,
+      "baseline_mae": 0.8421730768707181,
+      "baseline_bias_pct": -10.732754963325466,
+      "candidate_covered": 504,
+      "candidate_ae_sum": 422.21992573486006,
+      "candidate_mae": 0.8377379478866271,
+      "candidate_bias_pct": -20.09084801899763
+    },
+    "snacks": {
+      "expected": 756,
+      "n": 756,
+      "actual_sum": 792,
+      "zero_actuals": 277,
+      "negative_actuals": 0,
+      "start": "2025-06-01",
+      "end": "2025-06-28",
+      "data_sha256": "42afe384c4a81bc744dc3fe7e45fc3e89f937a65b9e6d2a047a3c5381f40c9db",
+      "baseline_covered": 756,
+      "baseline_ae_sum": 604.1600995533169,
+      "baseline_mae": 0.7991535708377208,
+      "baseline_bias_pct": -21.270701545902117,
+      "candidate_covered": 756,
+      "candidate_ae_sum": 595.6413773497044,
+      "candidate_mae": 0.7878854197747412,
+      "candidate_bias_pct": -28.69994588744589
+    }
+  },
+  "regression": {
+    "cafe": {
+      "expected": 504,
+      "n": 504,
+      "actual_sum": 401,
+      "zero_actuals": 240,
+      "negative_actuals": 0,
+      "start": "2025-09-03",
+      "end": "2025-09-30",
+      "data_sha256": "bb739ad4d7309f90ff7c67dc846410ae4dd46ac47e7d9aeaf1904a0ff1dcbb48",
+      "baseline_covered": 504,
+      "baseline_ae_sum": 372.5580140095949,
+      "baseline_mae": 0.7392024087491962,
+      "baseline_bias_pct": 3.985945353484216,
+      "candidate_covered": 504,
+      "candidate_ae_sum": 360.54532101482596,
+      "candidate_mae": 0.715367700426242,
+      "candidate_bias_pct": 5.131021652218656
+    },
+    "snacks": {
+      "expected": 756,
+      "n": 756,
+      "actual_sum": 498,
+      "zero_actuals": 402,
+      "negative_actuals": 0,
+      "start": "2025-09-03",
+      "end": "2025-09-30",
+      "data_sha256": "322db2367ce63af9426d1f948f52bfbac390823fcc9a0ebe483a42ac227788ee",
+      "baseline_covered": 756,
+      "baseline_ae_sum": 515.155601400882,
+      "baseline_mae": 0.6814227531757698,
+      "baseline_bias_pct": 15.800476605902961,
+      "candidate_covered": 756,
+      "candidate_ae_sum": 531.4768535866104,
+      "candidate_mae": 0.7030117110934001,
+      "candidate_bias_pct": 23.837014725568952
+    }
+  },
+  "original_week": {
+    "start": "2025-09-24",
+    "end": "2025-09-30",
+    "all": {
+      "n": 126,
+      "baseline_ae_sum": 90.83450814306735,
+      "candidate_ae_sum": 84.84477872953249,
+      "legacy_ae_sum": 87.11688965148196
+    },
+    "zero": {
+      "n": 59,
+      "baseline_ae_sum": 42.611747087836264,
+      "candidate_ae_sum": 38.827793114551476,
+      "legacy_ae_sum": 38.981364642203005
+    },
+    "positive": {
+      "n": 67,
+      "baseline_ae_sum": 48.222761055231096,
+      "candidate_ae_sum": 46.01698561498101,
+      "legacy_ae_sum": 48.13552500927896
+    },
+    "by_outlet": {
+      "SHOP001": {
+        "n": 42,
+        "baseline_ae_sum": 35.725643876791,
+        "candidate_ae_sum": 33.78776299969358,
+        "legacy_ae_sum": 35.43605896438102
+      },
+      "SHOP002": {
+        "n": 42,
+        "baseline_ae_sum": 26.814876995682717,
+        "candidate_ae_sum": 24.050346516381715,
+        "legacy_ae_sum": 23.90200550613506
+      },
+      "SHOP003": {
+        "n": 42,
+        "baseline_ae_sum": 28.293987270593643,
+        "candidate_ae_sum": 27.006669213457194,
+        "legacy_ae_sum": 27.77882518096588
+      }
+    }
+  },
+  "protocol": "branch-weekday-receipts-1",
+  "protocol_sha256": "5ed0ff8cac0e8903fde7e11c80d7d950a47dc13bf2b8ada2584f8b2c1bfea4de",
+  "script_sha256": "33bacbd9ecb5b5d453d1884f5b4131295eb268aa066a2d229970ece894245d8e",
+  "source_sha256": {
+    "Transactions.csv": "36f2412969f8241e72b5f3eb395e5af13a7ba042de1e6ecdbe32bee23723ef90",
+    "Products.csv": "09e3d91530797fb0c2c5a214f5660a6e2235521b1cf332382343c75e7708d047"
+  },
+  "gate": {
+    "passed": false,
+    "reasons": [
+      "fresh/cafe:mae",
+      "fresh/cafe:volume_bias",
+      "fresh/snacks:volume_bias",
+      "regression/snacks:mae",
+      "regression/snacks:volume_bias"
+    ]
+  }
+}

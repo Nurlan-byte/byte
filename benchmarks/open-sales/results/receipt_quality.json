@@ -1,0 +1,583 @@
+{
+  "schema_version": 1,
+  "protocol": "receipt-incidence-1",
+  "target": "item_line_count",
+  "baseline_commit": "082a53504b75fb950a33069a8fce4e50bf43d10c",
+  "baseline_protocol": "chronos-2-29ec3766d36d-expected-volume-sparse-b1-v1",
+  "fingerprints": {
+    "benchmarks/open-sales/receipt_quality_protocol.json": "5f647e61861c201aa89d221082688eba9c8bf34058a98b20b5be3c190d9257c4",
+    "benchmarks/open-sales/scripts/evaluate_receipts.py": "470022da69c7247588b3b3c8b15dfb9e6c94f600bc62486c20c07ef024b04f29",
+    "benchmarks/open-sales/results/cafe/forecasts.csv": "b96f7ba0a5d18cc01c16a983ee08d393764d8b2f6080c6026ea3afe5616745ba",
+    "benchmarks/open-sales/scripts/receipt_candidates.py": "c48bd5ad9f1e8f9065beb2479ca238da3c656d269441996a3718a2151f4a9c9a",
+    "backend/chronos_order.py": "57caa1622a4b2b7c57affd89a10be12ce8d41584aa198ec5d36852e4ac55b597",
+    "backend/chronos_assets.py": "6c22ca8c3e2dcad1fc327921430caef8e2e4a395ac10165fd37533cf1d50f375",
+    "backend/forecasting.py": "82854f8841c836d222b9cae07d40c8eba26bcf7b52bdb1ccf1eb90da7ca16794",
+    "backend/demand_context.py": "d4e09952a3f60051e9434715c10f9a2a1d9e1b9c72c75a8f8abb0c2bac9ec034"
+  },
+  "source_sha256": {
+    "Transactions.csv": "36f2412969f8241e72b5f3eb395e5af13a7ba042de1e6ecdbe32bee23723ef90",
+    "Products.csv": "09e3d91530797fb0c2c5a214f5660a6e2235521b1cf332382343c75e7708d047"
+  },
+  "assortments": {
+    "cafe": {
+      "SHOP001": [
+        "Not Tiramisu Latte",
+        "Americano (Hot Arabica)",
+        "Basic Latte (Ice Arabica)",
+        "Basic Latte (Ice Houseblend)",
+        "Jasmine (Hot)",
+        "Friendly Coffee (Hot double shot)"
+      ],
+      "SHOP002": [
+        "Shakencano",
+        "Americano (Hot Arabica)",
+        "Americano (Ice Houesblend)",
+        "Sitrus Cafe",
+        "Cold Brew",
+        "Matcha Espresso"
+      ],
+      "SHOP003": [
+        "Butterscotch",
+        "Jasmine (Ice)",
+        "Apple Pie Latte",
+        "Friendly Coffee (Ice)",
+        "Americano (Ice Houesblend)",
+        "Friendly Coffee (Ice double shot)"
+      ]
+    },
+    "snacks": {
+      "SHOP001": [
+        "Banana Bread (Chocolate)",
+        "Banana Bread (Original)",
+        "Burnt Sugar",
+        "Croffle",
+        "Donat Polos",
+        "Gula Gula",
+        "Nutella Meses",
+        "Pisang Coklat",
+        "Waffle"
+      ],
+      "SHOP002": [
+        "Banana Bread (Chocolate)",
+        "Banana Bread (Original)",
+        "Burnt Sugar",
+        "Croffle",
+        "Donat Polos",
+        "Gula Gula",
+        "Nutella Meses",
+        "Pisang Coklat",
+        "Waffle"
+      ],
+      "SHOP003": [
+        "Banana Bread (Chocolate)",
+        "Banana Bread (Original)",
+        "Burnt Sugar",
+        "Croffle",
+        "Donat Polos",
+        "Gula Gula",
+        "Nutella Meses",
+        "Pisang Coklat",
+        "Waffle"
+      ]
+    }
+  },
+  "candidate": "blended_mean",
+  "development_scores": {
+    "recent_mean": {
+      "expected": 378,
+      "n": 378,
+      "actual_sum": 287,
+      "zero_actuals": 174,
+      "negative_actuals": 0,
+      "start": "2025-08-06",
+      "end": "2025-08-26",
+      "data_sha256": "8152bde8c453011c5a484d7ab00e4ac585d7a2575265a5dcda69f718bb097bdb",
+      "baseline_covered": 378,
+      "baseline_ae_sum": 256.31573933541773,
+      "baseline_mae": 0.6780839664958141,
+      "baseline_bias_pct": 23.01920334740383,
+      "candidate_covered": 378,
+      "candidate_ae_sum": 259.42857142857144,
+      "candidate_mae": 0.6863189720332578,
+      "candidate_bias_pct": 21.72722747635639
+    },
+    "blended_mean": {
+      "expected": 378,
+      "n": 378,
+      "actual_sum": 287,
+      "zero_actuals": 174,
+      "negative_actuals": 0,
+      "start": "2025-08-06",
+      "end": "2025-08-26",
+      "data_sha256": "8152bde8c453011c5a484d7ab00e4ac585d7a2575265a5dcda69f718bb097bdb",
+      "baseline_covered": 378,
+      "baseline_ae_sum": 256.31573933541773,
+      "baseline_mae": 0.6780839664958141,
+      "baseline_bias_pct": 23.01920334740383,
+      "candidate_covered": 378,
+      "candidate_ae_sum": 256.69146488581384,
+      "candidate_mae": 0.67907794943337,
+      "candidate_bias_pct": 22.37321541188011
+    },
+    "blended_weekday": {
+      "expected": 378,
+      "n": 378,
+      "actual_sum": 287,
+      "zero_actuals": 174,
+      "negative_actuals": 0,
+      "start": "2025-08-06",
+      "end": "2025-08-26",
+      "data_sha256": "8152bde8c453011c5a484d7ab00e4ac585d7a2575265a5dcda69f718bb097bdb",
+      "baseline_covered": 378,
+      "baseline_ae_sum": 256.31573933541773,
+      "baseline_mae": 0.6780839664958141,
+      "baseline_bias_pct": 23.01920334740383,
+      "candidate_covered": 378,
+      "candidate_ae_sum": 259.9077333123485,
+      "candidate_mae": 0.6875865960644141,
+      "candidate_bias_pct": 29.285443717836646
+    }
+  },
+  "partitions": {
+    "development": {
+      "sources": {
+        "cafe": {
+          "expected": 378,
+          "n": 378,
+          "actual_sum": 287,
+          "zero_actuals": 174,
+          "negative_actuals": 0,
+          "start": "2025-08-06",
+          "end": "2025-08-26",
+          "data_sha256": "8152bde8c453011c5a484d7ab00e4ac585d7a2575265a5dcda69f718bb097bdb",
+          "baseline_covered": 378,
+          "baseline_ae_sum": 256.31573933541773,
+          "baseline_mae": 0.6780839664958141,
+          "baseline_bias_pct": 23.01920334740383,
+          "candidate_covered": 378,
+          "candidate_ae_sum": 256.69146488581384,
+          "candidate_mae": 0.67907794943337,
+          "candidate_bias_pct": 22.37321541188011
+        }
+      },
+      "outlets": {
+        "SHOP001": {
+          "expected": 126,
+          "n": 126,
+          "actual_sum": 136,
+          "zero_actuals": 36,
+          "negative_actuals": 0,
+          "start": "2025-08-06",
+          "end": "2025-08-26",
+          "data_sha256": "3706fb260859c5e4f8bd7e35634e08070f6ab4dbaeba9601229f56d75d8aa0ea",
+          "baseline_covered": 126,
+          "baseline_ae_sum": 99.96944687843323,
+          "baseline_mae": 0.7934083085589939,
+          "baseline_bias_pct": 20.029092849177466,
+          "candidate_covered": 126,
+          "candidate_ae_sum": 96.64565680827414,
+          "candidate_mae": 0.76702902228789,
+          "candidate_bias_pct": 15.752466592655962
+        },
+        "SHOP002": {
+          "expected": 126,
+          "n": 126,
+          "actual_sum": 55,
+          "zero_actuals": 84,
+          "negative_actuals": 0,
+          "start": "2025-08-06",
+          "end": "2025-08-26",
+          "data_sha256": "d668dee83e179ee6b1b96060c125b3e08a4cbb70cf4721f3784f7e2d133f57d5",
+          "baseline_covered": 126,
+          "baseline_ae_sum": 74.96090556234121,
+          "baseline_mae": 0.5949278219233429,
+          "baseline_bias_pct": 33.70167692737146,
+          "candidate_covered": 126,
+          "candidate_ae_sum": 77.71259563831346,
+          "candidate_mae": 0.6167666320501068,
+          "candidate_bias_pct": 42.79239690524416
+        },
+        "SHOP003": {
+          "expected": 126,
+          "n": 126,
+          "actual_sum": 96,
+          "zero_actuals": 54,
+          "negative_actuals": 0,
+          "start": "2025-08-06",
+          "end": "2025-08-26",
+          "data_sha256": "94fa4037cb2865b01e1c79eaa7d3276e8f19d72cc91ac6582e12742e04b92c8c",
+          "baseline_covered": 126,
+          "baseline_ae_sum": 81.3853868946433,
+          "baseline_mae": 0.6459157690051056,
+          "baseline_bias_pct": 21.135026064701382,
+          "candidate_covered": 126,
+          "candidate_ae_sum": 82.33321243922626,
+          "candidate_mae": 0.6534381939621131,
+          "candidate_bias_pct": 20.05412017520783
+        }
+      }
+    },
+    "holdout": {
+      "sources": {
+        "cafe": {
+          "expected": 504,
+          "n": 504,
+          "actual_sum": 401,
+          "zero_actuals": 240,
+          "negative_actuals": 0,
+          "start": "2025-09-03",
+          "end": "2025-09-30",
+          "data_sha256": "bb739ad4d7309f90ff7c67dc846410ae4dd46ac47e7d9aeaf1904a0ff1dcbb48",
+          "baseline_covered": 504,
+          "baseline_ae_sum": 372.5580140992999,
+          "baseline_mae": 0.7392024089271824,
+          "baseline_bias_pct": 3.985945344640131,
+          "candidate_covered": 504,
+          "candidate_ae_sum": 364.65163508732405,
+          "candidate_mae": 0.7235151489827858,
+          "candidate_bias_pct": 0.41655656971942845
+        },
+        "snacks": {
+          "expected": 756,
+          "n": 756,
+          "actual_sum": 498,
+          "zero_actuals": 402,
+          "negative_actuals": 0,
+          "start": "2025-09-03",
+          "end": "2025-09-30",
+          "data_sha256": "322db2367ce63af9426d1f948f52bfbac390823fcc9a0ebe483a42ac227788ee",
+          "baseline_covered": 756,
+          "baseline_ae_sum": 515.155601400882,
+          "baseline_mae": 0.6814227531757698,
+          "baseline_bias_pct": 15.800476605902961,
+          "candidate_covered": 756,
+          "candidate_ae_sum": 510.516596257974,
+          "candidate_mae": 0.6752865029867381,
+          "candidate_bias_pct": 12.866532049365714
+        }
+      },
+      "outlets": {
+        "cafe": {
+          "SHOP001": {
+            "expected": 168,
+            "n": 168,
+            "actual_sum": 207,
+            "zero_actuals": 50,
+            "negative_actuals": 0,
+            "start": "2025-09-03",
+            "end": "2025-09-30",
+            "data_sha256": "33ea2e7734e6cad8762af582a7d403aeef7376d058b50a72d7a8a97d2a7657be",
+            "baseline_covered": 168,
+            "baseline_ae_sum": 149.42935379505158,
+            "baseline_mae": 0.8894604392562594,
+            "baseline_bias_pct": 0.7804132630859568,
+            "candidate_covered": 168,
+            "candidate_ae_sum": 144.87873510999339,
+            "candidate_mae": 0.8623734232737702,
+            "candidate_bias_pct": -2.9310494071043576
+          },
+          "SHOP002": {
+            "expected": 168,
+            "n": 168,
+            "actual_sum": 71,
+            "zero_actuals": 108,
+            "negative_actuals": 0,
+            "start": "2025-09-03",
+            "end": "2025-09-30",
+            "data_sha256": "b961491cf27e701f6d9b1ec59bfce24394483708c87df618e218ff2ed61bde52",
+            "baseline_covered": 168,
+            "baseline_ae_sum": 101.1027073597908,
+            "baseline_mae": 0.6018018295225642,
+            "baseline_bias_pct": 8.3782778659337,
+            "candidate_covered": 168,
+            "candidate_ae_sum": 97.33706796560969,
+            "candidate_mae": 0.5793873093191053,
+            "candidate_bias_pct": 4.088535311236471
+          },
+          "SHOP003": {
+            "expected": 168,
+            "n": 168,
+            "actual_sum": 123,
+            "zero_actuals": 82,
+            "negative_actuals": 0,
+            "start": "2025-09-03",
+            "end": "2025-09-30",
+            "data_sha256": "77b7cc274a2e1365b20d75196ba4df64cce5dabc4e3c8b856d9c62304096a636",
+            "baseline_covered": 168,
+            "baseline_ae_sum": 122.02595294445753,
+            "baseline_mae": 0.7263449580027234,
+            "baseline_bias_pct": 6.845209831387048,
+            "candidate_covered": 168,
+            "candidate_ae_sum": 122.43583201172096,
+            "candidate_mae": 0.7287847143554819,
+            "candidate_bias_pct": 3.930734996994337
+          }
+        },
+        "snacks": {
+          "SHOP001": {
+            "expected": 252,
+            "n": 252,
+            "actual_sum": 226,
+            "zero_actuals": 100,
+            "negative_actuals": 0,
+            "start": "2025-09-03",
+            "end": "2025-09-30",
+            "data_sha256": "3d793fe7575953f408b8fbc2bf116dc79436de32d9a847a37acf74b76956de65",
+            "baseline_covered": 252,
+            "baseline_ae_sum": 201.18773664325477,
+            "baseline_mae": 0.79836403429863,
+            "baseline_bias_pct": 29.532375920794706,
+            "candidate_covered": 252,
+            "candidate_ae_sum": 195.9612353077318,
+            "candidate_mae": 0.7776239496338564,
+            "candidate_bias_pct": 24.793052688589526
+          },
+          "SHOP002": {
+            "expected": 252,
+            "n": 252,
+            "actual_sum": 106,
+            "zero_actuals": 165,
+            "negative_actuals": 0,
+            "start": "2025-09-03",
+            "end": "2025-09-30",
+            "data_sha256": "3c1682854bbde0c5a3517d567c6d338f9a62d4ab8cbf30274eb5ab43e7f890c1",
+            "baseline_covered": 252,
+            "baseline_ae_sum": 136.48119450107217,
+            "baseline_mae": 0.5415920416709213,
+            "baseline_bias_pct": 0.19017981147428836,
+            "candidate_covered": 252,
+            "candidate_ae_sum": 136.3298829648218,
+            "candidate_mae": 0.5409915990667531,
+            "candidate_bias_pct": -1.4042362398154107
+          },
+          "SHOP003": {
+            "expected": 252,
+            "n": 252,
+            "actual_sum": 166,
+            "zero_actuals": 137,
+            "negative_actuals": 0,
+            "start": "2025-09-03",
+            "end": "2025-09-30",
+            "data_sha256": "bd85b3cca425d25d86652ddfa77a8b9c00e1874eb38e23f0ec864dcdc0afdbeb",
+            "baseline_covered": 252,
+            "baseline_ae_sum": 177.48667025655507,
+            "baseline_mae": 0.7043121835577583,
+            "baseline_bias_pct": 7.073261033878271,
+            "candidate_covered": 252,
+            "candidate_ae_sum": 178.22547798542038,
+            "candidate_mae": 0.7072439602596047,
+            "candidate_bias_pct": 5.741880086646532
+          }
+        }
+      }
+    }
+  },
+  "gate": {
+    "passed": false,
+    "reasons": [
+      "snacks:mae"
+    ],
+    "thresholds": {
+      "min_mae_improvement_pct": 1.0,
+      "max_absolute_bias_increase_pp": 2.0,
+      "coverage": "No decrease for either cohort. Report zero and negative outcomes, branch and aggregate scores. Both holdout cohorts independently must meet every threshold. Never tune on released holdouts."
+    },
+    "mean_relative_mae_improvement_pct": 1.511346480402842
+  },
+  "original_week": {
+    "start": "2025-09-24",
+    "end": "2025-09-30",
+    "all": {
+      "n": 126,
+      "baseline_ae_sum": 90.83450814306735,
+      "candidate_ae_sum": 87.31011121439083,
+      "legacy_ae_sum": 87.11688965148196
+    },
+    "zero": {
+      "n": 59,
+      "baseline_ae_sum": 42.611747087836264,
+      "candidate_ae_sum": 40.05587354391813,
+      "legacy_ae_sum": 38.981364642203005
+    },
+    "positive": {
+      "n": 67,
+      "baseline_ae_sum": 48.222761055231096,
+      "candidate_ae_sum": 47.25423767047269,
+      "legacy_ae_sum": 48.13552500927896
+    },
+    "by_outlet": {
+      "SHOP001": {
+        "n": 42,
+        "baseline_ae_sum": 35.725643876791,
+        "candidate_ae_sum": 34.2378219383955,
+        "legacy_ae_sum": 35.43605896438102
+      },
+      "SHOP002": {
+        "n": 42,
+        "baseline_ae_sum": 26.814876995682717,
+        "candidate_ae_sum": 25.139581354984216,
+        "legacy_ae_sum": 23.90200550613506
+      },
+      "SHOP003": {
+        "n": 42,
+        "baseline_ae_sum": 28.293987270593643,
+        "candidate_ae_sum": 27.932707921011108,
+        "legacy_ae_sum": 27.77882518096588
+      }
+    }
+  },
+  "pos_trailing_sensitivity": {
+    "cafe": {
+      "all": {
+        "expected": 504,
+        "n": 504,
+        "actual_sum": 401,
+        "zero_actuals": 240,
+        "negative_actuals": 0,
+        "start": "2025-09-03",
+        "end": "2025-09-30",
+        "data_sha256": "bb739ad4d7309f90ff7c67dc846410ae4dd46ac47e7d9aeaf1904a0ff1dcbb48",
+        "baseline_covered": 504,
+        "baseline_ae_sum": 372.64677450209854,
+        "baseline_mae": 0.7393785208374971,
+        "baseline_bias_pct": 6.863081652698966,
+        "candidate_covered": 504,
+        "candidate_ae_sum": 365.32814617991033,
+        "candidate_mae": 0.7248574328966475,
+        "candidate_bias_pct": 3.4459600064599893
+      },
+      "outlets": {
+        "SHOP001": {
+          "expected": 168,
+          "n": 168,
+          "actual_sum": 207,
+          "zero_actuals": 50,
+          "negative_actuals": 0,
+          "start": "2025-09-03",
+          "end": "2025-09-30",
+          "data_sha256": "33ea2e7734e6cad8762af582a7d403aeef7376d058b50a72d7a8a97d2a7657be",
+          "baseline_covered": 168,
+          "baseline_ae_sum": 152.0469873380661,
+          "baseline_mae": 0.9050415912980124,
+          "baseline_bias_pct": 4.241642606431168,
+          "candidate_covered": 168,
+          "candidate_ae_sum": 146.66464574979017,
+          "candidate_mae": 0.873003843748751,
+          "candidate_bias_pct": -0.3094637279411158
+        },
+        "SHOP002": {
+          "expected": 168,
+          "n": 168,
+          "actual_sum": 71,
+          "zero_actuals": 108,
+          "negative_actuals": 0,
+          "start": "2025-09-03",
+          "end": "2025-09-30",
+          "data_sha256": "b961491cf27e701f6d9b1ec59bfce24394483708c87df618e218ff2ed61bde52",
+          "baseline_covered": 168,
+          "baseline_ae_sum": 99.02877279222011,
+          "baseline_mae": 0.5894569809060721,
+          "baseline_bias_pct": 10.378797949199956,
+          "candidate_covered": 168,
+          "candidate_ae_sum": 96.44448228526201,
+          "candidate_mae": 0.5740742993170358,
+          "candidate_bias_pct": 8.754368735939016
+        },
+        "SHOP003": {
+          "expected": 168,
+          "n": 168,
+          "actual_sum": 123,
+          "zero_actuals": 82,
+          "negative_actuals": 0,
+          "start": "2025-09-03",
+          "end": "2025-09-30",
+          "data_sha256": "77b7cc274a2e1365b20d75196ba4df64cce5dabc4e3c8b856d9c62304096a636",
+          "baseline_covered": 168,
+          "baseline_ae_sum": 121.57101437181234,
+          "baseline_mae": 0.7236369903084068,
+          "baseline_bias_pct": 9.24537454315317,
+          "candidate_covered": 168,
+          "candidate_ae_sum": 122.21901814485814,
+          "candidate_mae": 0.7274941556241556,
+          "candidate_bias_pct": 6.701859951403213
+        }
+      }
+    },
+    "snacks": {
+      "all": {
+        "expected": 756,
+        "n": 756,
+        "actual_sum": 498,
+        "zero_actuals": 402,
+        "negative_actuals": 0,
+        "start": "2025-09-03",
+        "end": "2025-09-30",
+        "data_sha256": "322db2367ce63af9426d1f948f52bfbac390823fcc9a0ebe483a42ac227788ee",
+        "baseline_covered": 756,
+        "baseline_ae_sum": 525.4630979292094,
+        "baseline_mae": 0.6950570078428696,
+        "baseline_bias_pct": 20.33495580710201,
+        "candidate_covered": 756,
+        "candidate_ae_sum": 519.279657361651,
+        "candidate_mae": 0.6868778536529775,
+        "candidate_bias_pct": 17.309461906502914
+      },
+      "outlets": {
+        "SHOP001": {
+          "expected": 252,
+          "n": 252,
+          "actual_sum": 226,
+          "zero_actuals": 100,
+          "negative_actuals": 0,
+          "start": "2025-09-03",
+          "end": "2025-09-30",
+          "data_sha256": "3d793fe7575953f408b8fbc2bf116dc79436de32d9a847a37acf74b76956de65",
+          "baseline_covered": 252,
+          "baseline_ae_sum": 205.84654772847892,
+          "baseline_mae": 0.8168513798749164,
+          "baseline_bias_pct": 34.43186520963117,
+          "candidate_covered": 252,
+          "candidate_ae_sum": 199.96256707253335,
+          "candidate_mae": 0.7935022502878307,
+          "candidate_bias_pct": 28.811573046983536
+        },
+        "SHOP002": {
+          "expected": 252,
+          "n": 252,
+          "actual_sum": 106,
+          "zero_actuals": 165,
+          "negative_actuals": 0,
+          "start": "2025-09-03",
+          "end": "2025-09-30",
+          "data_sha256": "3c1682854bbde0c5a3517d567c6d338f9a62d4ab8cbf30274eb5ab43e7f890c1",
+          "baseline_covered": 252,
+          "baseline_ae_sum": 139.74551211819053,
+          "baseline_mae": 0.5545456830086926,
+          "baseline_bias_pct": 2.4039601994291777,
+          "candidate_covered": 252,
+          "candidate_ae_sum": 139.05143136971566,
+          "candidate_mae": 0.5517913943242685,
+          "candidate_bias_pct": 2.8791902568910723
+        },
+        "SHOP003": {
+          "expected": 252,
+          "n": 252,
+          "actual_sum": 166,
+          "zero_actuals": 137,
+          "negative_actuals": 0,
+          "start": "2025-09-03",
+          "end": "2025-09-30",
+          "data_sha256": "bd85b3cca425d25d86652ddfa77a8b9c00e1874eb38e23f0ec864dcdc0afdbeb",
+          "baseline_covered": 252,
+          "baseline_ae_sum": 179.87103808254003,
+          "baseline_mae": 0.7137739606450001,
+          "baseline_bias_pct": 12.592690803738959,
+          "candidate_covered": 252,
+          "candidate_ae_sum": 180.2656589194019,
+          "candidate_mae": 0.7153399163468329,
+          "candidate_bias_pct": 10.864472009576614
+        }
+      }
+    }
+  }
+}

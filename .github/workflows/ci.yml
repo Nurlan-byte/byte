@@ -37,6 +37,7 @@ jobs:
           python -m pip install -r tools/requirements-tracking.txt
           python -m unittest tools.tests.test_track_forecast
           python -m tools.track_forecast benchmarks/open-sales/results/volume_quality.json --database test-results/forecast-experiments.sqlite3
+          python -m tools.track_forecast benchmarks/open-sales/results/receipt_quality.json --database test-results/forecast-experiments.sqlite3
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: forecast-experiment-${{ github.sha }}
@@ -74,6 +75,9 @@ jobs:
           $PSNativeCommandUseErrorActionPreference = $true
           .\.venv\Scripts\python.exe -m ruff check backend tools
           .\.venv\Scripts\python.exe benchmarks/open-sales/scripts/evaluate_volume_quality.py --verify-report benchmarks/open-sales/results/volume_quality.json
+          .\.venv\Scripts\python.exe benchmarks/open-sales/scripts/evaluate_receipts.py --verify-report benchmarks/open-sales/results/receipt_quality.json
+          .\.venv\Scripts\python.exe benchmarks/open-sales/scripts/evaluate_receipt_rollback.py --verify-report benchmarks/open-sales/results/receipt_rollback.json
+          .\.venv\Scripts\python.exe benchmarks/open-sales/scripts/evaluate_receipt_weekday.py --verify-report benchmarks/open-sales/results/receipt_weekday.json
           .\.venv\Scripts\python.exe -m pytest backend/tests -q
           .\.venv\Scripts\python.exe -m unittest discover -s tools/tests -v
       - name: Frontend

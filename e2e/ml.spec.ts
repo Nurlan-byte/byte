@@ -15,7 +15,10 @@ function historyCsv(salesOnly = false, days = 84) {
     const day = new Date(end - index * 86400000);
     const date = day.toISOString().slice(0, 10);
     for (let product = 1; product <= 5; product++) {
-      const value = 25 + day.getUTCDay() * 3 + product * 4;
+      // For the first receipt series Sundays are observed zeros, Mondays are missing.
+      if (salesOnly && product === 1 && day.getUTCDay() === 1) continue;
+      const value = salesOnly && product === 1 && day.getUTCDay() === 0
+        ? 0 : 25 + day.getUTCDay() * 3 + product * 4;
       lines.push(salesOnly
         ? `${date},p${product},${value}`
         : `${date},p${product},true,0,${value + 5},${value},5,0,0,none`);
@@ -139,6 +142,8 @@ test('sales-only forecast cannot expose production controls or inherit a units m
   await calculateAutomatically(page, '/forecasts', page.getByRole('button', { name: 'Проверить прогноз' }));
   await expect(page.getByTestId('forecast-result')).toContainText('Прогноз по истории продаж');
   await expect(page.getByTestId('forecast-table').locator('tbody tr').first()).toContainText('Прогноз по истории продаж');
+  await expect(page.getByTestId('forecast-table').locator('tbody tr').first()).toContainText('Дни без продаж за последние 8 недель — 8 из 48 с данными.');
+  await expect(page.getByTestId('forecast-result')).toContainText('Прогноз строк продаж');
   await expect(page.getByRole('button', { name: 'Подготовить экспериментальный расчёт', exact: true })).toHaveCount(0);
   await expect(page.getByRole('spinbutton')).toHaveCount(0);
   const blocked = await request.post(`${base}/plans`, { data: { dataset_id: sales.id, target_date: target, cutoff, method: 'ML', mode: 'replay' } });

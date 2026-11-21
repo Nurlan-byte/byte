@@ -1,0 +1,33 @@
+{
+  "id": "receipt-incidence-1",
+  "baseline_commit": "082a53504b75fb950a33069a8fce4e50bf43d10c",
+  "baseline_engine_sha256": "57caa1622a4b2b7c57affd89a10be12ce8d41584aa198ec5d36852e4ac55b597",
+  "source": "Mendeley kcgf45y24m.2",
+  "source_sha256": {
+    "Transactions.csv": "36f2412969f8241e72b5f3eb395e5af13a7ba042de1e6ecdbe32bee23723ef90",
+    "Products.csv": "09e3d91530797fb0c2c5a214f5660a6e2235521b1cf332382343c75e7708d047"
+  },
+  "outlets": ["SHOP001", "SHOP002", "SHOP003"],
+  "assortment_cutoff": "2025-08-04",
+  "original_assortment": "Rank Coffee and Tea variants per outlet by receipt incidence through assortment_cutoff, descending; break ties by full SKU name. Select first six.",
+  "unseen_assortment": "All Snacks variants with at least one receipt at that outlet by assortment_cutoff. Never score this category in development.",
+  "development": ["2025-08-06", "2025-08-26"],
+  "holdout": ["2025-09-03", "2025-09-30"],
+  "historical_diagnostic": ["2025-09-24", "2025-09-30"],
+  "target": "Recorded receipts listing the SKU, in item lines. One incidence per receipt per SKU.",
+  "horizon": 2,
+  "known_day": "Shop has receipts and SKU has appeared at least once by this day. Missing SKU on known day is zero. Days without shop receipts and dates before first SKU appearance are missing.",
+  "sensitivity": "Repeat both held-out cohorts for the frozen winner and incumbent with known history restricted per SKU to its first and last observed positive sale as of each cutoff. Keep outcomes and eligible cohort fixed. Isolate POS trailing-day semantics only. This diagnostic cannot choose a candidate.",
+  "candidates": ["recent_mean", "blended_mean", "blended_weekday"],
+  "estimators": {
+    "recent_mean": "Mean over recorded nonnegative counts in 28 calendar days through origin; retain incumbent below seven observed days.",
+    "blended_mean": "Equal blend of the incumbent and recent_mean.",
+    "blended_weekday": "Over 56 calendar days through origin, target-weekday sum plus seven times the all-weekday mean divided by target-weekday count plus seven. Blend equally with incumbent. Retain incumbent below seven observed days."
+  },
+  "selection": "Development only: lowest pooled MAE among candidates whose absolute aggregate signed-volume bias is at most 2 percentage points worse than incumbent; ties prefer listed order. Retain incumbent if no candidate qualifies.",
+  "gate": {
+    "min_mae_improvement_pct": 1.0,
+    "max_absolute_bias_increase_pp": 2.0,
+    "coverage": "No decrease for either cohort. Report zero and negative outcomes, branch and aggregate scores. Both holdout cohorts independently must meet every threshold. Never tune on released holdouts."
+  }
+}
