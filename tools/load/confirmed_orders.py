@@ -89,6 +89,13 @@ def checked_refresh(client, outlet, ident, previous):
     assert forecast["result"]["dataset_id"] == dataset["id"], "forecast does not reference the new dataset"
     items = forecast["result"]["items"]
     assert len(items) == 1 and items[0]["method"] == "Chronos-2" and math.isfinite(items[0]["forecast_mean"]), "invalid prediction"
+    day = forecast["targetDate"]
+    report = client.get("/api/reports/issued-forecasts", params={
+        "bakery_id": dataset["bakery_id"], "start": day, "end": day,
+        "source": dataset["source"], "unit": dataset["unit"], "horizon_days": 2,
+    }).raise_for_status().json()
+    assert report["issued_product_days"] == len(items), "daily forecasts were not recorded"
+    assert set(report["by_product"]) == {item["product_id"] for item in items}, "wrong forecast cohort"
     return {"outlet": outlet, "observed": conn["last_observed_day"],
             "target": forecast["targetDate"], "forecast_mean": items[0]["forecast_mean"]}
 

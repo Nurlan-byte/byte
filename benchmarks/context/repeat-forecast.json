@@ -1,0 +1,23 @@
+{
+  "reference_commit": "8012cffd0f7e462c1870539921aa3e7fc08c2993",
+  "protocol": "chronos-2-29ec3766d36d-expected-volume-sparse-b1-v1",
+  "data": "Surabaya cafe POS receipt item lines, calendar and archived GFS forecast vintages",
+  "target": "2025-09-30",
+  "cutoff": "2025-09-28",
+  "cafes": 3,
+  "products": 18,
+  "receipt_item_day_rows": 4888,
+  "input_sha256": "50d069148a851a63fa9514b579661062810e1fc435c3732c6933b6b00e227412",
+  "complete_response_sha256": "fc159ca32355215d67308c346c7a490ea313d527b3a4ab68792ebaf1e0282026",
+  "all_responses_identical": true,
+  "repeat_runs": 21,
+  "python": "3.14.3",
+  "first_three_cafes_ms": {
+    "before": 56584.991,
+    "after": 54039.946
+  },
+  "repeat_three_cafes_median_ms": {
+    "before": 107.847,
+    "after": 12.418
+  }
+}

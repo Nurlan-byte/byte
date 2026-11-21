@@ -38,11 +38,24 @@ jobs:
           python -m unittest tools.tests.test_track_forecast
           python -m tools.track_forecast benchmarks/open-sales/results/volume_quality.json --database test-results/forecast-experiments.sqlite3
           python -m tools.track_forecast benchmarks/open-sales/results/receipt_quality.json --database test-results/forecast-experiments.sqlite3
+          python -m tools.track_forecast benchmarks/open-sales/results/sparse_tsb.json --database test-results/forecast-experiments.sqlite3
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: forecast-experiment-${{ github.sha }}
           path: test-results/forecast-experiments.sqlite3
           retention-days: 14
+  sparse-data:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: '3.12'
+      - name: Validate observations and sparse-demand estimator
+        run: |
+          python -m pip install -r benchmarks/open-sales/requirements-sparse.lock
+          python -m pytest benchmarks/open-sales/tests/test_prepare_m5.py tools/tests/test_sparse_tsb.py -q
   verify:
     runs-on: windows-latest
     timeout-minutes: 40
@@ -80,6 +93,7 @@ jobs:
           .\.venv\Scripts\python.exe benchmarks/open-sales/scripts/evaluate_receipts.py --verify-report benchmarks/open-sales/results/receipt_quality.json
           .\.venv\Scripts\python.exe benchmarks/open-sales/scripts/evaluate_receipt_rollback.py --verify-report benchmarks/open-sales/results/receipt_rollback.json
           .\.venv\Scripts\python.exe benchmarks/open-sales/scripts/evaluate_receipt_weekday.py --verify-report benchmarks/open-sales/results/receipt_weekday.json
+          .\.venv\Scripts\python.exe benchmarks/open-sales/scripts/evaluate_sparse_tsb.py --verify-report benchmarks/open-sales/results/sparse_tsb.json
           .\.venv\Scripts\python.exe -m pytest backend/tests -q
           .\.venv\Scripts\python.exe -m unittest discover -s tools/tests -v
       - name: Frontend

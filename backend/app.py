@@ -20,7 +20,7 @@ from backend.imports import REQUIRED as REQUIRED
 from backend.forecast_contract import ForecastResponse
 from backend.plan_contract import PlanResponse
 from backend.schemas import (
-    ErrorResponse,
+    error_responses,
     ImportRequest,
     PlanRequest,
     ConfirmRequest,
@@ -32,6 +32,7 @@ from backend import deliveries
 from backend.pos import router as pos_router
 from backend.pos_order_setup import router as pos_order_router
 from backend.order_report import router as order_report_router
+from backend.issued_report import router as issued_report_router
 from backend.pos_sync import scheduler
 from backend.ml_service import train_dataset, models_for_dataset, create_forecast
 from backend.services import (
@@ -68,6 +69,7 @@ app.include_router(context_router)
 app.include_router(pos_router)
 app.include_router(pos_order_router)
 app.include_router(order_report_router)
+app.include_router(issued_report_router)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"],
@@ -245,10 +247,6 @@ def train(ident: str, body: TrainRequest, response: Response):
 @app.get("/api/datasets/{ident}/models")
 def model_status(ident: str):
     return models_for_dataset(ident)
-
-
-def error_responses(*statuses: int):
-    return {status: {"model": ErrorResponse} for status in statuses}
 
 
 @app.post("/api/forecasts", response_model=ForecastResponse, response_model_exclude_unset=True,

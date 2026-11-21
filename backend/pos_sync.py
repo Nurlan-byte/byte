@@ -94,8 +94,14 @@ def _update_stages(claim, day, clock, verified):
                 failure = "freshness_unverified"
                 raise ServiceError(422, "Нет подтверждения за нужную дату")
         failure = "forecast_unavailable"
-        with pos_monitoring.span("pos.forecast"):
+        with pos_monitoring.span("pos.forecast") as forecast_span:
             forecast = forecast_for_day(dataset, day)
+            if forecast_span.is_recording():
+                items = forecast["result"]["items"]
+                forecast_span.set_attribute("bakeplan.forecast.items", len(items))
+                forecast_span.set_attribute("bakeplan.forecast.comparable_b1", sum(
+                    item.get("forecast_mean") is not None and item.get("b1_mean") is not None for item in items
+                ))
             forecast["observed_through"] = observed
             forecast["warnings"] = list(
                 dict.fromkeys(imported["context_warnings"] + forecast["warnings"])

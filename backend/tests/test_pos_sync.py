@@ -92,6 +92,37 @@ def register(client, **kwargs):
     )
 
 
+def test_successful_daily_forecast_scored_after_following_pos_import(shop, monkeypatch):
+    monkeypatch.setattr("backend.issued_report.business_today", lambda: shop["now"].date())
+    with TestClient(app) as client:
+        response = register(client)
+        assert response.is_success, response.text
+        first = response.json()
+        target = first["forecast"]["targetDate"]
+        url = "/api/reports/issued-forecasts"
+        query = {"bakery_id": first["dataset"]["bakery_id"], "start": target, "end": target}
+        upcoming = client.get(url, params=query).json()
+        assert upcoming["issued_predictions"] == upcoming["excluded"]["pending"] == 1
+        shop["now"] += timedelta(days=1)
+        shop["stale"] = True
+        pos_sync.run_due(shop["now"])
+        days = {**query, "end": str(shop["now"].date() + timedelta(days=1))}
+        assert client.get(url, params=days).json()["issued_predictions"] == 1
+        shop["now"] += timedelta(days=1)
+        shop["stale"] = False
+        pos_sync.run_due(shop["now"])
+        latest = client.get(f"{URL}/{first['connection']['id']}/latest").json()
+        paired = client.get(url, params=query).json()
+        assert paired["matched_product_days"] == paired["availability_unknown_days"] == 1
+        assert paired["actual_selection"] == "latest_observation" and paired["actual_dataset_id"] == latest["dataset"]["id"]
+        item = first["forecast"]["result"]["items"][0]
+        actual = next(r["sold"] for r in latest["dataset"]["rows"] if r["date"] == target)
+        sku = paired["by_product"]["9"]
+        assert sku["b1_bias"] == item["b1_mean"] - actual and sku["model_bias"] == item["forecast_mean"] - actual
+        assert client.get(url, params={**days, "end": latest["forecast"]["targetDate"]}).json()["issued_predictions"] == 2
+        assert client.get(url, params={**query, "source": "synthetic"}).json()["issued_predictions"] == 0
+
+
 @pytest.mark.parametrize("provider", ["poster", "moysklad"])
 def test_operator_looks_up_branch_ids_without_saving_keys_or_reading_sales(shop, provider, monkeypatch, capsys):
     shop["shops"] = ["1", "2"]
@@ -298,6 +329,13 @@ def test_stale_http_success_keeps_last_pair_and_exports_safe_spans(shop, monkeyp
         for stage in (s for s in spans if s.name != "pos.daily"):
             assert parents[stage.parent_span_id].trace_id == stage.trace_id
         assert sorted(s.status.code for s in parents.values()) == [0, 2]
+        forecast_span = next(s for s in spans if s.name == "pos.forecast")
+        counters = {a.key: a.value.int_value for a in forecast_span.attributes}
+        items = good["forecast"]["result"]["items"]
+        assert counters["bakeplan.forecast.items"] == len(items)
+        assert counters["bakeplan.forecast.comparable_b1"] == sum(
+            i["forecast_mean"] is not None and i["b1_mean"] is not None for i in items
+        )
         assert not any(s.events for s in spans)
 
 

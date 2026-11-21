@@ -9,10 +9,11 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from backend.branch_access import current_branch
+from backend.forecast_journal import capture_actuals
 
 SCHEMA_VERSION = "history-1"
 MAX_SQLITE_INTEGER = 2**63 - 1
-SQLITE_SCHEMA_VERSION = 7
+SQLITE_SCHEMA_VERSION = 8
 SQLITE_V3_COLUMNS = {
     "datasets": {
         "id", "payload", "schema_version", "source", "content_hash", "created_at",
@@ -52,11 +53,18 @@ SQLITE_V6_COLUMNS = {
     "pos_fresh_days": {"connection_id", "business_day", "observed_through", "fresh_at",
                        "pinged_at", "ping_token", "next_ping_at"},
 }
-SQLITE_SCHEMA_COLUMNS = {
+SQLITE_V7_COLUMNS = {
     **SQLITE_V6_COLUMNS,
     "datasets": SQLITE_V6_COLUMNS["datasets"] | {"branch_id"},
     "plans": SQLITE_V6_COLUMNS["plans"] | {"branch_id"},
     "branch_accounts": {"username", "bakery_id", "password_hash"},
+}
+SQLITE_SCHEMA_COLUMNS = {
+    **SQLITE_V7_COLUMNS,
+    "issued_forecasts": {"issue_id", "dataset_id", "bakery_id", "source", "unit", "protocol", "issued_on",
+                         "cutoff", "target_date", "product_id", "method", "forecast", "b1", "frequency"},
+    "forecast_actuals": {"observation_id", "dataset_id", "bakery_id", "source", "unit", "target_date", "product_id",
+                         "quantity", "stockout_status", "observed_on"},
 }
 
 
@@ -121,7 +129,7 @@ def initialize_database(path=None):
         if con.execute("PRAGMA user_version").fetchone()[0] == SQLITE_SCHEMA_VERSION:
             return
         migrations = ((2, _migrate_v2), (3, _migrate_v3), (4, _migrate_v4), (5, _migrate_v5),
-                      (6, _migrate_v6), (7, _migrate_v7))
+                      (6, _migrate_v6), (7, _migrate_v7), (8, _migrate_v8))
         while True:
             con.execute("BEGIN IMMEDIATE")
             version = con.execute("PRAGMA user_version").fetchone()[0]
@@ -356,6 +364,30 @@ def _migrate_v7(con):
     con.execute("PRAGMA user_version=7")
 
 
+def _migrate_v8(con):
+    # Historical predictions without durable proof of issuance do not enter the prospective cohort.
+    con.execute("""CREATE TABLE issued_forecasts(
+        issue_id INTEGER PRIMARY KEY,
+        dataset_id TEXT NOT NULL REFERENCES datasets(id), bakery_id TEXT NOT NULL, source TEXT NOT NULL,
+        unit TEXT NOT NULL, protocol TEXT NOT NULL, issued_on TEXT NOT NULL, cutoff TEXT NOT NULL,
+        target_date TEXT NOT NULL, product_id TEXT NOT NULL, method TEXT NOT NULL,
+        forecast REAL CHECK(forecast>=0), b1 REAL CHECK(b1>=0), frequency TEXT NOT NULL,
+        CHECK(cutoff < issued_on AND issued_on < target_date),
+        UNIQUE(dataset_id,protocol,cutoff,target_date,product_id))""")
+    con.execute("CREATE INDEX issued_branch_dates ON issued_forecasts(bakery_id,source,unit,target_date,product_id)")
+    con.execute("""CREATE TABLE forecast_actuals(
+        observation_id INTEGER PRIMARY KEY,
+        dataset_id TEXT NOT NULL REFERENCES datasets(id), bakery_id TEXT NOT NULL, source TEXT NOT NULL,
+        unit TEXT NOT NULL, target_date TEXT NOT NULL, product_id TEXT NOT NULL,
+        quantity INTEGER NOT NULL CHECK(quantity>=0), stockout_status TEXT NOT NULL
+        CHECK(stockout_status IN ('none','unknown','occurred','closed')),
+        observed_on TEXT NOT NULL CHECK(target_date < observed_on),
+        UNIQUE(dataset_id,target_date,product_id))""")
+    con.execute("CREATE INDEX actual_branch_dates ON forecast_actuals("
+                "bakery_id,source,unit,target_date,product_id,observed_on,observation_id)")
+    con.execute("PRAGMA user_version=8")
+
+
 def fetch(con, table, ident):
     if table not in {"datasets", "plans"}:
         raise ValueError("Unsupported object table")
@@ -391,7 +423,7 @@ def get_plan(ident, revision=None):
         return json.loads(row[0])
 
 
-def save_dataset(dataset):
+def save_dataset(dataset, *, observed_on=None):
     schema, source, content_hash, created_at, count = dataset_metadata(dataset)
     owner = _dataset_owner(dataset)
     branch = current_branch()
@@ -407,14 +439,18 @@ def save_dataset(dataset):
         ).fetchone()
         if existing:
             if existing[1] == owner:
-                return fetch(con, "datasets", existing[0]), False
-            # Current imports hash the branch into their content. Older hashes can collide.
-            match = con.execute("""
-                SELECT id FROM datasets WHERE branch_id IS ? AND source=?
-                AND schema_version=? AND content_hash=? ORDER BY rowid LIMIT 1
-            """, (owner, source, schema, content_hash)).fetchone()
+                match = existing
+            else:
+                # Current imports hash the branch into their content. Older hashes can collide.
+                match = con.execute("""
+                    SELECT id FROM datasets WHERE branch_id IS ? AND source=?
+                    AND schema_version=? AND content_hash=? ORDER BY rowid LIMIT 1
+                """, (owner, source, schema, content_hash)).fetchone()
             if match:
-                return fetch(con, "datasets", match[0]), False
+                saved = fetch(con, "datasets", match[0])
+                if observed_on is not None and owner is not None:
+                    capture_actuals(con, saved, observed_on)
+                return saved, False
         ident = dataset["id"]
         con.execute(
             "INSERT INTO datasets(id,payload,schema_version,source,content_hash,created_at,row_count,canonical_dataset_id,branch_id) VALUES (?,?,?,?,?,?,?,?,?)",
@@ -434,6 +470,8 @@ def save_dataset(dataset):
             "INSERT OR IGNORE INTO dataset_import_keys VALUES (?,?,?,?)",
             (source, schema, content_hash, ident),
         )
+        if observed_on is not None and owner is not None:
+            capture_actuals(con, dataset, observed_on)
         return dataset, True
 
 

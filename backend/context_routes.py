@@ -9,6 +9,7 @@ from backend.context_sources import CITIES, WEATHER_SOURCE, load_demand_context
 from backend.daily_forecast import forecast_for_day
 from backend.demand_context import with_demand_context
 from backend.errors import ServiceError
+from backend.ml_service import remember_issued
 from backend.storage import get_dataset, save_dataset, timestamp
 
 router = APIRouter()
@@ -70,7 +71,8 @@ def add_context(ident: str, choice: ContextChoice, response: Response):
     snapshot = with_demand_context(dataset, context)
     if snapshot["version"] == dataset["version"]:
         return {"dataset": dataset, "warnings": warnings}
-    snapshot.update(id=str(uuid4()), created_at=timestamp())
+    snapshot.update(id=str(uuid4()), created_at=timestamp(),
+                    actual_sales_dataset_id=dataset.get("actual_sales_dataset_id", dataset.get("source_dataset_id", ident)))
     result, created = save_dataset(snapshot)
     response.status_code = 201 if created else 200
     return {"dataset": result, "warnings": warnings}
@@ -79,4 +81,7 @@ def add_context(ident: str, choice: ContextChoice, response: Response):
 @router.post("/api/datasets/{ident}/first-forecast")
 def first_forecast(ident: str):
     today = business_today()
-    return forecast_for_day(get_dataset(ident), today)
+    forecast = forecast_for_day(get_dataset(ident), today)
+    if forecast["method"] == "AUTO":
+        remember_issued(forecast["result"], today)
+    return forecast

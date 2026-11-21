@@ -1,26 +1,44 @@
-"""Generate or check the frontend contract from BakePlan's actual POST routes."""
+"""Generate the frontend contract for order workflows from the published OpenAPI schema."""
 import argparse
 import json
 from pathlib import Path
 import subprocess
 
-from fastapi.openapi.utils import get_openapi
-from fastapi.routing import APIRoute
-
 from backend.app import app
 
 ROOT = Path(__file__).resolve().parents[1]
-SUCCESS = {"/api/forecasts": "200", "/api/plans": "201", "/api/plans/{ident}/confirm": "200"}
+OPERATIONS = {
+    "/api/forecasts": ("post", "200"),
+    "/api/plans": ("post", "201"),
+    "/api/plans/{ident}/confirm": ("post", "200"),
+    "/api/reports/issued-forecasts": ("get", "200"),
+}
 
 
 def order_openapi():
-    routes = [r for r in app.routes if isinstance(r, APIRoute) and r.path in SUCCESS and "POST" in r.methods]
-    schema = get_openapi(title=app.title, version=app.version, openapi_version=app.openapi_version, routes=routes)
-    for path, status in SUCCESS.items():
-        response = schema["paths"][path]["post"]["responses"][status]
+    public = app.openapi()
+    paths = {}
+    for path, (method, status) in OPERATIONS.items():
+        operation = public["paths"][path][method]
+        response = operation["responses"][status]
         if not response["content"]["application/json"]["schema"].get("$ref"):
-            raise ValueError(f"POST {path} needs a typed {status} response")
-    return schema
+            raise ValueError(f"{method.upper()} {path} needs a typed {status} response")
+        paths[path] = {method: operation}
+    schemas = {}
+    pending = [paths]
+    while pending:
+        node = pending.pop()
+        if isinstance(node, list):
+            pending.extend(node)
+        elif isinstance(node, dict):
+            pending.extend(node.values())
+            if "$ref" in node:
+                name = node["$ref"].removeprefix("#/components/schemas/")
+                if name not in schemas:
+                    schemas[name] = public["components"]["schemas"][name]
+                    pending.append(schemas[name])
+    components = {"schemas": {name: schemas[name] for name in sorted(schemas)}}
+    return {"openapi": public["openapi"], "info": public["info"], "paths": paths, "components": components}
 
 
 def main():

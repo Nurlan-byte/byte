@@ -7,6 +7,7 @@ import pytest
 
 from backend import storage
 from backend.branch_access import branch_scope
+from scripts.sqlite_snapshot import inspect_database
 
 
 @pytest.fixture
@@ -96,6 +97,29 @@ def test_concurrent_import_retry_and_metadata_only(db):
     assert storage.list_datasets()[0] == summary
 
 
+def test_v7_migration_preserves_orders_without_inventing_issued_forecasts(db):
+    with storage.connection(db) as con:
+        for version in range(2, 8):
+            getattr(storage, f"_migrate_v{version}")(con)
+    history = {**dataset(), "bakery_id": "A", "metadata_declared": True, "unit": "physical_unit"}
+    storage.save_dataset(history)
+    order = {"id": "p", "dataset_id": history["id"], "bakery_id": "A", "revision": 1, "status": "confirmed",
+             "source": "synthetic", "requested_method": "AUTO", "target_date": "2026-01-11",
+             "items": [{"product_id": "tea", "forecast_mean": 4, "b1_mean": 3}]}
+    storage.save_plan(order)
+    before = inspect_database(db)
+    assert before["schema_version"] == 7 and before["table_counts"]["plans"] == 1
+    storage.initialize_database(db)
+    assert inspect_database(str(db) + ".pre-v8.bak") == before
+    after = inspect_database(db)
+    assert after["schema_version"] == 8
+    assert after["table_counts"] == {**before["table_counts"], "issued_forecasts": 0, "forecast_actuals": 0}
+    assert storage.get_plan("p") == order
+    with storage.connection(db) as live, storage.connection(str(db) + ".pre-v8.bak") as backup:
+        for table in ("plans", "revisions", "datasets"):
+            assert live.execute(f"SELECT payload FROM {table}").fetchall() == backup.execute(f"SELECT payload FROM {table}").fetchall()
+
+
 @pytest.mark.parametrize("existing", [False, True])
 def test_concurrent_database_startup_preserves_snapshots(db, existing):
     if existing:
@@ -115,7 +139,7 @@ def test_concurrent_database_startup_preserves_snapshots(db, existing):
         assert con.execute("PRAGMA user_version").fetchone()[0] == storage.SQLITE_SCHEMA_VERSION
     backups = list(db.parent.glob("*.bak"))
     if existing:
-        assert {p.name for p in backups} == {f"{db.name}.pre-v{n}.bak" for n in (2, 3, 4, 5, 6, 7)}
+        assert {p.name for p in backups} == {f"{db.name}.pre-v{n}.bak" for n in (2, 3, 4, 5, 6, 7, 8)}
         for backup in backups:
             with storage.connection(backup) as con:
                 assert storage.fetch(con, "datasets", "legacy") == dataset("legacy")

@@ -1,15 +1,11 @@
 .venv
 .venv-evaluation/
+/.venv-sparse/
 .deps-evaluation/
 .deps/
 .test-tmp-*/
 .test-storage/
-*.pre-v2.bak
-*.pre-v3.bak
-*.pre-v4.bak
-*.pre-v5.bak
-*.pre-v6.bak
-*.pre-v6.bak
+*.pre-v*.bak
 *.key
 *.sqlite3
 *.sqlite3-shm

@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect } from "react";
 import { OrderAdjustmentReport } from "./OrderAdjustmentReport";
+import { IssuedForecastReport } from "./IssuedForecastReport";
 import {
   savedDataset,
   forPlanningKind,
@@ -289,6 +290,7 @@ export function App() {
   );
   const selectedDataset = forPlanningKind(dataset, planningKind);
   const selectedPlan = forPlanningKind(plan, planningKind);
+  const reportBranch = assignedBranch ?? selectedDataset?.bakery_id ?? selectedPlan?.bakery_id;
   const hiddenUnsaved = unsaved && !selectedPlan;
   const sectionProps = {
     planningKind,
@@ -557,6 +559,10 @@ export function App() {
           )}
         </div>
         <div id="panel-history" hidden={view !== "history"}>
+          {reportBranch && (
+            <IssuedForecastReport key={`${reportBranch}:${selectedDataset?.id}:${selectedPlan?.source}`}
+              branch={reportBranch} initialSource={selectedDataset?.source ?? selectedPlan?.source ?? "local"} dataset={selectedDataset} />
+          )}
           {planningKind === "procurement" && (selectedDataset?.bakery_id || selectedPlan?.bakery_id) && (
             <OrderAdjustmentReport
               key={`${selectedDataset?.id}:${selectedPlan?.id}:${selectedPlan?.revision}`}

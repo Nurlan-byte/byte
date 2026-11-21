@@ -19,6 +19,10 @@ class ErrorResponse(BaseModel):
     error: ErrorDetail
 
 
+def error_responses(*statuses: int):
+    return {status: {"model": ErrorResponse} for status in statuses}
+
+
 class ProcurementProduct(BaseModel):
     product_id: str = Field(min_length=1, max_length=64, pattern=r"^[a-zA-Z0-9_-]+$")
     name: str = Field(min_length=1, max_length=100)

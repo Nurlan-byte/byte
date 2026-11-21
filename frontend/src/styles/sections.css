@@ -1,4 +1,18 @@
 /* Source selection and saved imports */
+.issued-forecast-report fieldset {
+  min-width: 0;
+  border: 0;
+  padding: 0;
+  margin: 0 0 1rem;
+}
+.issued-score-scroll {
+  max-width: 100%;
+  overflow-x: auto;
+}
+.issued-score-scroll caption {
+  text-align: left;
+  font-weight: 600;
+}
 .data-workspace,
 .quality-workspace,
 .archive-workspace {

@@ -10,6 +10,7 @@ from backend.branch_access import current_branch, require_branch
 from backend.config import CATALOG, VERSION
 from backend.demand_context import with_demand_context
 from backend.errors import ServiceError
+from backend.forecast_journal import record_issue
 from backend.dataset_identity import identity, parse_sales_csv
 from backend.deliveries import outstanding_deliveries
 from backend.imports import parse_csv
@@ -135,7 +136,7 @@ def import_history(body: ImportRequest, today: date, *, pos_metadata=None):
             "отсутствие строки означает ноль зарегистрированных продаж.",
             "Возвраты не вычтены. Складские остатки, списания и упущенный спрос неизвестны.",
         ]
-    return save_dataset(dataset)
+    return save_dataset(dataset, observed_on=today)
 
 
 def create_plan(body: PlanRequest, today: date):
@@ -354,6 +355,8 @@ def _create_procurement_plan(body: PlanRequest, today: date, dataset: dict):
             items.append(item.order(assumptions.get(product_id), incoming.get(product_id, 0)))
         plan["items"] = items
         insert_plan(con, plan)
+        if method == "AUTO" and body.mode == "operational":
+            record_issue(con, plan, predictions.values(), today)
     return plan
 
 

@@ -55,6 +55,28 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/reports/issued-forecasts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Issued Forecasts
+         * @description Compare forecasts issued before the target day using completed history through the cutoff.
+         *
+         *     A live issue needs a business day between cutoff and target, so the minimum horizon is two days.
+         */
+        get: operations["issued_forecasts_api_reports_issued_forecasts_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -113,6 +135,19 @@ export interface components {
             evaluated_horizon_days: number | null;
             /** Requested Horizon Days */
             requested_horizon_days: number;
+        };
+        /** Exclusions */
+        Exclusions: {
+            /** Pending */
+            pending: number;
+            /** Missing Actual */
+            missing_actual: number;
+            /** Closed */
+            closed: number;
+            /** Stockout */
+            stockout: number;
+            /** Missing Pair */
+            missing_pair: number;
         };
         /** ExpectedDelivery */
         ExpectedDelivery: {
@@ -241,6 +276,92 @@ export interface components {
             b1_mae: number | null;
             /** Chronos Mae */
             chronos_mae: number | null;
+        };
+        /** IssuedForecastReport */
+        IssuedForecastReport: {
+            /** Issued Product Days */
+            issued_product_days: number;
+            /** Matched Product Days */
+            matched_product_days: number;
+            /** Model Mae */
+            model_mae: number | null;
+            /** B1 Mae */
+            b1_mae: number | null;
+            /** Model Bias */
+            model_bias: number | null;
+            /** B1 Bias */
+            b1_bias: number | null;
+            /** Overforecast Total */
+            overforecast_total: number;
+            /** Underforecast Total */
+            underforecast_total: number;
+            /** Bakery Id */
+            bakery_id: string;
+            /**
+             * Start
+             * Format: date
+             */
+            start: string;
+            /**
+             * End
+             * Format: date
+             */
+            end: string;
+            /**
+             * Source
+             * @enum {string}
+             */
+            source: "local" | "synthetic" | "external";
+            /**
+             * Unit
+             * @enum {string}
+             */
+            unit: "physical_unit" | "item_line";
+            /** Horizon Days */
+            horizon_days: number;
+            /**
+             * Actual Selection
+             * @enum {string}
+             */
+            actual_selection: "selected_dataset" | "latest_observation";
+            /** Actual Dataset Id */
+            actual_dataset_id: string | null;
+            /** Actual Dataset Count */
+            actual_dataset_count: number;
+            /** Issued Predictions */
+            issued_predictions: number;
+            /** Coverage */
+            coverage: number | null;
+            excluded: components["schemas"]["Exclusions"];
+            /** Availability Unknown Days */
+            availability_unknown_days: number;
+            /** By Product */
+            by_product: {
+                [key: string]: components["schemas"]["IssuedMetrics"];
+            };
+            /** By Frequency */
+            by_frequency: {
+                [key: string]: components["schemas"]["IssuedMetrics"];
+            };
+        };
+        /** IssuedMetrics */
+        IssuedMetrics: {
+            /** Issued Product Days */
+            issued_product_days: number;
+            /** Matched Product Days */
+            matched_product_days: number;
+            /** Model Mae */
+            model_mae: number | null;
+            /** B1 Mae */
+            b1_mae: number | null;
+            /** Model Bias */
+            model_bias: number | null;
+            /** B1 Bias */
+            b1_bias: number | null;
+            /** Overforecast Total */
+            overforecast_total: number;
+            /** Underforecast Total */
+            underforecast_total: number;
         };
         /** PlanItemResponse */
         PlanItemResponse: {
@@ -669,6 +790,61 @@ export interface operations {
             };
             /** @description Content Too Large */
             413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Content */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    issued_forecasts_api_reports_issued_forecasts_get: {
+        parameters: {
+            query: {
+                bakery_id: string;
+                start: string;
+                end: string;
+                source?: "local" | "synthetic" | "external";
+                unit?: "physical_unit" | "item_line";
+                horizon_days?: number;
+                actual_dataset_id?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IssuedForecastReport"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
                 headers: {
                     [name: string]: unknown;
                 };

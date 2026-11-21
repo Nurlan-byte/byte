@@ -11,6 +11,8 @@ import re
 import sqlite3
 
 METRICS = ("n", "actual_sum", "baseline_mae", "candidate_mae", "baseline_bias_pct", "candidate_bias_pct")
+PAIRED_METRICS = ("b1_mae", "coverage_pct", "baseline_bias_units", "candidate_bias_units", "b1_bias_units",
+                  "changed_pairs", "changed_positive_days", "total_downward_units")
 
 
 def original_week_metrics(week):
@@ -55,20 +57,36 @@ def summary_fields(report):
         if not re.fullmatch(r"[0-9a-f]{64}", fingerprint):
             raise ValueError(f"Invalid code fingerprint for {path}")
         fields[f"code/{path}"] = fingerprint
-    gate = report["gate"]
-    improvement = gate["mean_relative_mae_improvement_pct"]
-    if type(improvement) not in (int, float) or not math.isfinite(improvement):
-        raise ValueError("Invalid holdout MAE improvement")
-    metrics = {"holdout.mean_relative_mae_improvement_pct": float(improvement)}
-    fields["gate.reasons"] = json.dumps(gate["reasons"], separators=(",", ":"))
-    for name, value in gate["thresholds"].items():
-        if name != "description":
-            fields[f"gate.threshold.{name}"] = str(value)
+    metrics = {}
+    fields["gate.reasons"] = json.dumps(report["gate"]["reasons"], separators=(",", ":"))
     partitions = report["partitions"]
-    dev, holdout = (partitions[p]["sources"] for p in ("development", "holdout"))
-    if not dev or not holdout:
-        raise ValueError("Both development and holdout need scored sources")
-    for split, sources in (("development", dev), ("holdout", holdout)):
+    if set(partitions) == {"regression", "confirmation"}:
+        gates = {split: group["gate"] for split, group in partitions.items()}
+        if (partitions["regression"]["sources"].keys() & partitions["confirmation"]["sources"].keys()
+                or any(type(g["passed"]) is not bool for g in gates.values())
+                or all(g["passed"] for g in gates.values()) != report["gate"]["passed"]):
+            raise ValueError("Independent panels need distinct sources and consistent gate decisions")
+    elif set(partitions) == {"development", "holdout"}:
+        gates = {"holdout": report["gate"]}
+    else:
+        raise ValueError("Unknown evaluation partitions")
+    for split, gate in gates.items():
+        improvement = gate["mean_relative_mae_improvement_pct"]
+        if type(improvement) not in (int, float) or not math.isfinite(improvement):
+            raise ValueError(f"Invalid {split} MAE improvement")
+        metrics[f"{split}.mean_relative_mae_improvement_pct"] = float(improvement)
+        prefix = "gate" if split == "holdout" else f"{split}.gate"
+        if split != "holdout":
+            fields[f"{prefix}.passed"] = str(gate["passed"])
+            fields[f"{prefix}.reasons"] = json.dumps(gate["reasons"], separators=(",", ":"))
+        for name, value in gate["thresholds"].items():
+            if name != "description":
+                fields[f"{prefix}.threshold.{name}"] = str(value)
+    dev = partitions.get("development", {}).get("sources", {})
+    for split, partition in partitions.items():
+        sources = partition["sources"]
+        if not sources:
+            raise ValueError(f"{split} needs scored sources")
         for source, record in sources.items():
             if not re.fullmatch(r"[a-zA-Z0-9_-]+", source):
                 raise ValueError("Invalid source label")
@@ -81,7 +99,8 @@ def summary_fields(report):
                 raise ValueError(f"Missing dataset digest for {source}")
             for name in ("start", "end", "data_sha256"):
                 fields[f"{prefix}.{name}"] = record[name]
-            for name in METRICS:
+            metric_names = list(METRICS) + [name for name in PAIRED_METRICS if name in record]
+            for name in metric_names:
                 value = record[name]
                 if value is None and name.endswith("bias_pct") and record["actual_sum"] == 0:
                     continue
@@ -91,6 +110,12 @@ def summary_fields(report):
                     raise ValueError(f"Negative {prefix}.{name}")
                 if name == "n" and (type(value) is not int or value < 1):
                     raise ValueError(f"Invalid number of observations in {source}")
+                if name == "coverage_pct" and not 0 <= value <= 100:
+                    raise ValueError(f"Invalid coverage in {source}")
+                if name in ("changed_pairs", "changed_positive_days") and (type(value) is not int or not 0 <= value <= record["n"]):
+                    raise ValueError(f"Invalid changed count in {source}")
+                if name == "total_downward_units" and value < 0:
+                    raise ValueError(f"Negative downward adjustment in {source}")
                 metrics[f"{prefix}.{name}"] = float(value)
             metrics[f"{prefix}.mae_delta"] = record["candidate_mae"] - record["baseline_mae"]
     if "original_week" in report:

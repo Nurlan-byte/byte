@@ -13,6 +13,7 @@ from pathlib import Path
 from backend.dataset_identity import identity
 from backend.errors import ServiceError
 from backend.forecasting import baseline
+from backend.forecast_journal import record_issue
 from backend.ml_core import evaluation_applicability, prepare_forecast, protocol_for_dataset
 from backend.model_storage import (
     InvalidArtifact,
@@ -23,7 +24,7 @@ from backend.model_storage import (
     previous_training,
     save_training,
 )
-from backend.storage import get_dataset
+from backend.storage import connection, get_dataset
 
 TRAINING_TIMEOUT_SECONDS = 60
 TRAINING_SLOTS = threading.BoundedSemaphore(1)
@@ -193,16 +194,23 @@ def uses_automatic_sales_forecast(dataset):
 
 
 def automatic_forecasts(dataset, target, cutoff, product_ids, model_id=None):
-    from backend import chronos_order
+    from backend import chronos_order, forecast_cache
 
     if not uses_automatic_sales_forecast(dataset) or model_id is not None:
         raise ServiceError(422, "Автоматический прогноз продаж рассчитывается без сохранённой модели Ridge.")
     if not 1 <= (target - cutoff).days <= chronos_order.MAX_HORIZON:
         raise ServiceError(422, f"Для прогноза продаж укажите дату от 1 до {chronos_order.MAX_HORIZON} дней после среза.")
+    products = tuple(product_ids)
+    key = forecast_cache.forecast_key(dataset, target, cutoff, products, chronos_order.PROTOCOL_VERSION)
+    cached = forecast_cache.lookup(key)
+    if cached is not None:
+        return cached
     try:
-        return chronos_order.forecast_order(dataset, target, cutoff, product_ids)
+        predictions = chronos_order.forecast_order(dataset, target, cutoff, products)
     except chronos_order.ChronosUnavailable:
         raise ServiceError(503, "Сервис прогноза продаж временно недоступен. Повторите расчёт после восстановления сервиса.") from None
+    forecast_cache.remember(key, predictions)
+    return predictions
 
 
 def forecast_items(dataset, target, cutoff, model_id=None, method="ML"):
@@ -295,9 +303,17 @@ def forecast_items(dataset, target, cutoff, model_id=None, method="ML"):
 def create_forecast(body, today):
     if body.cutoff >= today or body.cutoff >= body.target_date:
         raise ServiceError(422, "Срез должен быть раньше целевой даты и сегодня")
-    return forecast_from_dataset(
-        get_dataset(body.dataset_id), body.target_date, body.cutoff, body.method, body.model_id
-    )
+    dataset = get_dataset(body.dataset_id)
+    result = forecast_from_dataset(dataset, body.target_date, body.cutoff, body.method, body.model_id)
+    if body.method == "AUTO" or (body.method is None and body.model_id is None and uses_automatic_sales_forecast(dataset)):
+        remember_issued(result, today)
+    return result
+
+
+def remember_issued(result, today):
+    if result["target_date"] > today.isoformat():
+        with connection() as con:
+            record_issue(con, result, result["items"], today)
 
 
 def forecast_from_dataset(dataset, target, cutoff, method, model_id):

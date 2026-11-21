@@ -35,6 +35,34 @@ def track_using_cli(source, database):
 
 
 class ForecastTracking(unittest.TestCase):
+    def test_new_stores_are_logged_as_independent_confirmation(self):
+        data = report()
+        gate = data["gate"]
+        development, holdout = (data["partitions"][p] for p in ("development", "holdout"))
+        data["partitions"] = {
+            "regression": {**development, "gate": gate},
+            "confirmation": {"sources": {"another_store": holdout["sources"]["cafe"]}, "gate": gate},
+        }
+        data["gate"] = {"passed": False, "reasons": ["regression", "confirmation"]}
+        fields, metrics = summary_fields(data)
+        self.assertEqual(fields["confirmation.gate.passed"], "False")
+        self.assertIn("confirmation.another_store.baseline_mae", metrics)
+        self.assertNotIn("holdout.mean_relative_mae_improvement_pct", metrics)
+        data["partitions"]["confirmation"]["sources"] = development["sources"]
+        with self.assertRaisesRegex(ValueError, "distinct sources"):
+            summary_fields(data)
+
+    def test_sparse_experiment_tracks_coverage_and_errors_against_b1(self):
+        data = report()
+        record = data["partitions"]["holdout"]["sources"]["cafe"]
+        record.update(b1_mae=0.75, coverage_pct=100.0, baseline_bias_units=3, candidate_bias_units=-2, b1_bias_units=1)
+        _, metrics = summary_fields(data)
+        for name in ("b1_mae", "coverage_pct", "baseline_bias_units", "candidate_bias_units", "b1_bias_units"):
+            self.assertEqual(metrics[f"holdout.cafe.{name}"], record[name])
+        record["coverage_pct"] = 101
+        with self.assertRaises(ValueError):
+            summary_fields(data)
+
     def test_holdout_cannot_include_the_last_development_date(self):
         data = report()
         data["partitions"]["holdout"]["sources"]["cafe"]["start"] = "2025-01-01"

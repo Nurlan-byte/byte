@@ -124,6 +124,8 @@ def test_backup_restore_preserves_all_state_and_retry_keys(
     summary = snapshots.create_backup(database, backup)
     assert summary["table_counts"] == {
         "branch_accounts": 0,
+        "issued_forecasts": 0,
+        "forecast_actuals": 0,
         "datasets": 1,
         "plans": 1,
         "models": 1,

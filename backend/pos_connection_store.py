@@ -7,6 +7,7 @@ from uuid import uuid4
 
 from backend import pos_vault, storage
 from backend.branch_access import current_branch, require_branch
+from backend.forecast_journal import record_issue
 
 LEASE_DURATION = timedelta(minutes=10)
 RETRY_DELAY = timedelta(minutes=15)
@@ -225,6 +226,10 @@ def finish(claim, dataset_id, forecast, day, now):
         )
         if cursor.rowcount != 1:
             return False
+        if forecast.get("method") == "AUTO":
+            if result["bakery_id"] != claim["bakery_id"]:
+                raise ValueError("Forecast must match the verified POS branch")
+            record_issue(db, result, result["items"], now.astimezone(BUSINESS_TZ).date())
         db.execute("""
             INSERT OR IGNORE INTO pos_fresh_days(connection_id,business_day,observed_through,fresh_at)
             VALUES(?,?,?,?)

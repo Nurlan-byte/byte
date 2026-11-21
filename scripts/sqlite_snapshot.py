@@ -20,7 +20,7 @@ from pathlib import Path
 from backend import model_storage
 from backend.storage import SQLITE_SCHEMA_COLUMNS as COLUMNS
 from backend.storage import SQLITE_SCHEMA_VERSION as SCHEMA_VERSION
-from backend.storage import SQLITE_V3_COLUMNS, SQLITE_V4_COLUMNS, SQLITE_V5_COLUMNS, SQLITE_V6_COLUMNS
+from backend.storage import SQLITE_V3_COLUMNS, SQLITE_V4_COLUMNS, SQLITE_V5_COLUMNS, SQLITE_V6_COLUMNS, SQLITE_V7_COLUMNS
 
 FORMAT = "bakeplan-sqlite-snapshot-1"
 
@@ -73,7 +73,7 @@ def inspect_database(path):
                 raise SnapshotError("SQLite integrity_check failed")
             version = con.execute("PRAGMA user_version").fetchone()[0]
             expected_columns = {3: SQLITE_V3_COLUMNS, 4: SQLITE_V4_COLUMNS, 5: SQLITE_V5_COLUMNS,
-                                6: SQLITE_V6_COLUMNS, SCHEMA_VERSION: COLUMNS}.get(version)
+                                6: SQLITE_V6_COLUMNS, 7: SQLITE_V7_COLUMNS, SCHEMA_VERSION: COLUMNS}.get(version)
             if expected_columns is None:
                 raise SnapshotError(f"Unsupported BakePlan schema version {version}")
             tables = {
@@ -184,6 +184,14 @@ def inspect_database(path):
                         SELECT 1 FROM pos_connections c WHERE c.id=e.connection_id) LIMIT 1
                 """).fetchone():
                     raise SnapshotError("Inconsistent POS monitoring period")
+            if "issued_forecasts" in expected_columns:
+                for table in ("issued_forecasts", "forecast_actuals"):
+                    if con.execute(f"""
+                        SELECT 1 FROM {table} f LEFT JOIN datasets d ON d.id=f.dataset_id
+                        WHERE f.bakery_id IS NOT d.branch_id OR f.source IS NOT d.source
+                        OR f.unit IS NOT json_extract(d.payload,'$.unit') LIMIT 1
+                    """).fetchone():
+                        raise SnapshotError("Forecast journal does not match its dataset scope")
             counts = {
                 table: con.execute(f"SELECT count(*) FROM {table}").fetchone()[0]
                 for table in sorted(expected_columns)
