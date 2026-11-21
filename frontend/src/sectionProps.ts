@@ -33,6 +33,7 @@ export type SectionProps = {
   confirmation: RefObject<{ signature: string; key: string } | null>;
   invalid: boolean | undefined;
   run: (fn: () => Promise<void>) => Promise<void>;
+  runReplacingPlan?: (fn: () => Promise<void>) => Promise<void>;
   show: (plan: Plan) => void;
   refreshHistory: () => Promise<void>;
 };

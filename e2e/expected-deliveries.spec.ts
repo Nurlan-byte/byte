@@ -1,0 +1,38 @@
+import { expect, test } from "@playwright/test";
+
+test("deliveries due by opening reduce the suggested order and survive reload", async ({ page }) => {
+  await page.goto("/");
+  await page.getByLabel("Как пополняем товары").selectOption("procurement");
+  await page.getByRole("button", { name: "Простой пример — 2 товара" }).click();
+  await page.getByRole("button", { name: "Проверить и импортировать закупку" }).click();
+  await page.getByRole("button", { name: "Перейти к плану", exact: true }).click();
+  await page.getByLabel("Дата продаж", { exact: true }).fill("2026-09-01");
+  await page.getByLabel("Данные доступны до", { exact: true }).fill("2026-08-23");
+  await page.getByLabel("Срок поставки, дней").fill("2");
+  await page.getByLabel("Доступный остаток: Чай в бутылке", { exact: true }).fill("0");
+  await page.getByText("Товары в пути (0)", { exact: true }).click();
+  const add = page.getByRole("button", { name: "Добавить поставку" });
+  const calculate = page.getByRole("button", { name: "Рассчитать заказ", exact: true });
+  await add.click();
+  await expect(calculate).toBeDisabled();
+  await page.getByLabel("Количество, шт.", { exact: true }).fill("12");
+  await add.click();
+  const later = page.getByRole("group", { name: "Поставка 2" });
+  await later.getByLabel("Дата поступления").fill("2026-09-02");
+  await later.getByLabel("Количество, шт.", { exact: true }).fill("120");
+  await calculate.click();
+  const tea = page.getByLabel("Заказ: Чай в бутылке", { exact: true });
+  await expect(tea).toHaveValue("12");
+  const row = page.getByRole("row").filter({ has: tea });
+  await expect(row).toContainText("В пути к дате продаж: 12");
+  await expect(row).not.toContainText("До прогноза не хватает");
+  await page.getByRole("button", { name: "Подтвердить заказ", exact: true }).click();
+  await expect(page.getByLabel("Текст заказа для поставщика")).toHaveValue(/Чай в бутылке — 12 шт/);
+  await page.reload();
+  await expect(tea).toHaveValue("12");
+  await page.getByText("Товары в пути (2)", { exact: true }).click();
+  await expect(later.getByLabel("Дата поступления")).toHaveValue("2026-09-02");
+  await later.getByLabel("Количество, шт.", { exact: true }).fill("6");
+  await expect(page.getByTestId("stale-plan")).toBeVisible();
+  await expect(page.getByLabel("Текст заказа для поставщика")).toBeHidden();
+});

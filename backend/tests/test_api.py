@@ -126,6 +126,41 @@ def test_batch_max_and_strict_integer(client):
     assert client.post(f"/api/plans/{p['id']}/confirm", json=b).status_code == 200
 
 
+def test_export_uses_the_requested_saved_revision(client):
+    draft = plan(client)
+    endpoint = f"/api/plans/{draft['id']}"
+    first = client.post(endpoint + "/confirm", json=body(draft)).json()
+    edited = body(first, "adjusted")
+    edited["quantities"]["p1"] = 96
+    assert client.post(endpoint + "/confirm", json=edited).status_code == 200
+
+    def exported(query):
+        response = client.get(endpoint + "/export" + query)
+        assert response.status_code == 200
+        return list(csv.DictReader(io.StringIO(response.text.lstrip("\ufeff"))))[0]
+
+    assert exported("?revision=0")["confirmed_qty"] == ""
+    assert exported("?revision=1")["confirmed_qty"] == str(first["items"][0]["confirmed_qty"])
+    assert exported("?revision=2") == exported("")
+    assert exported("")["confirmed_qty"] == "96"
+    assert client.get(endpoint + "/export?revision=3").status_code == 404
+    for bad_revision in (-1, 2**63):
+        assert client.get(endpoint + f"/export?revision={bad_revision}").status_code == 422
+    # Retrying the original confirmation must leave the edited version current.
+    assert client.post(endpoint + "/confirm", json=body(draft)).json() == first
+    assert [p["revision"] for p in client.get(endpoint + "/revisions").json()] == [0, 1, 2]
+    assert client.get(endpoint).json()["revision"] == 2
+
+
+def test_invalid_confirmation_identity_leaves_the_plan_untouched(client):
+    draft = plan(client)
+    endpoint = f"/api/plans/{draft['id']}"
+    for changed in ({"revision": -1}, {"idempotency_key": "  "}):
+        response = client.post(endpoint + "/confirm", json={**body(draft), **changed})
+        assert response.status_code == 422
+    assert client.get(endpoint + "/revisions").json() == [draft]
+
+
 def test_missing_stockout_and_future(client):
     text = sample()
     text += "2026-10-12,p1,true,0,999,999,0,0,0,none\n"

@@ -29,6 +29,7 @@ from backend.services import (
 )
 from backend.storage import (
     MAX_SQLITE_INTEGER,
+    SQLITE_SCHEMA_COLUMNS,
     NotFound,
     initialize_database,
     database_path,
@@ -125,8 +126,8 @@ def health():
         with closing(sqlite3.connect(uri, uri=True, timeout=3)) as con:
             # A plain SELECT 1 also succeeds against an empty/wrong SQLite file.
             # Compile reads from the core persisted objects without scanning them.
-            for table in ("datasets", "plans", "models"):
-                con.execute(f"SELECT id,payload FROM {table} LIMIT 0")
+            for table, columns in SQLITE_SCHEMA_COLUMNS.items():
+                con.execute(f"SELECT {','.join(sorted(columns))} FROM {table} LIMIT 0")
     except OSError, sqlite3.Error:
         raise HTTPException(503, "Хранилище недоступно") from None
     return {"status": "ok", "app_version": "0.3.0", "db_status": "ok"}
@@ -141,7 +142,7 @@ def catalog():
 def import_dataset(body: ImportRequest, response: Response):
     dataset, created = import_history(body, business_today())
     response.status_code = 201 if created else 200
-    return dataset
+    return identity(dataset)
 
 
 @app.get("/api/datasets")
@@ -211,9 +212,10 @@ def revisions(ident: str):
 
 
 @app.get("/api/plans/{ident}/export")
-def export(ident: str):
+def export(ident: str, revision: int | None = Query(None, ge=0, le=MAX_SQLITE_INTEGER)):
+    filename = f"plan-{ident}" if revision is None else f"plan-{ident}-r{revision}"
     return Response(
-        export_csv(ident),
+        export_csv(ident, revision),
         media_type="text/csv; charset=utf-8",
-        headers={"Content-Disposition": f'attachment; filename="plan-{ident}.csv"'},
+        headers={"Content-Disposition": f'attachment; filename="{filename}.csv"'},
     )

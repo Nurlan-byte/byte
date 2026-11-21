@@ -53,6 +53,12 @@ class ImportRequest(BaseModel):
         return self
 
 
+class ExpectedDelivery(BaseModel):
+    product_id: str = Field(min_length=1, max_length=64)
+    arrival_date: date
+    quantity: StrictInt = Field(gt=0, le=1_000_000_000)
+
+
 class PlanRequest(BaseModel):
     dataset_id: str
     target_date: date
@@ -63,6 +69,7 @@ class PlanRequest(BaseModel):
     target_is_open: bool = True
     lead_time_days: StrictInt | None = Field(default=None, ge=1, le=365)
     usable_stock_assumption: dict[str, StrictInt] | None = None
+    expected_deliveries: list[ExpectedDelivery] = Field(default_factory=list, max_length=500)
 
     @model_validator(mode="after")
     def nonnegative_stock(self):
@@ -75,8 +82,8 @@ class PlanRequest(BaseModel):
 
 
 class ConfirmRequest(BaseModel):
-    revision: StrictInt
-    idempotency_key: str = Field(min_length=1, max_length=100)
+    revision: StrictInt = Field(ge=0)
+    idempotency_key: str = Field(min_length=1, max_length=100, pattern=r"\S")
     quantities: dict[str, StrictInt]
 
 

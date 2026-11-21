@@ -1,6 +1,7 @@
 import json
 import sqlite3
 from concurrent.futures import ThreadPoolExecutor
+from threading import Barrier
 
 import pytest
 
@@ -92,6 +93,33 @@ def test_concurrent_import_retry_and_metadata_only(db):
             "UPDATE datasets SET payload='malformed' WHERE id=?", (summary["id"],)
         )
     assert storage.list_datasets()[0] == summary
+
+
+@pytest.mark.parametrize("existing", [False, True])
+def test_concurrent_database_startup_preserves_snapshots(db, existing):
+    if existing:
+        with sqlite3.connect(db) as con:
+            con.execute("CREATE TABLE datasets(id TEXT PRIMARY KEY,payload TEXT NOT NULL)")
+            con.execute("INSERT INTO datasets VALUES (?,?)", ("legacy", json.dumps(dataset("legacy"))))
+    callers = 6
+    start = Barrier(callers)
+
+    def initialize(_):
+        start.wait()
+        storage.initialize_database(db)
+
+    with ThreadPoolExecutor(callers) as pool:
+        list(pool.map(initialize, range(callers)))
+    with storage.connection(db) as con:
+        assert con.execute("PRAGMA user_version").fetchone()[0] == 3
+    backups = list(db.parent.glob("*.bak"))
+    if existing:
+        assert len(backups) == 2
+        for backup in backups:
+            with storage.connection(backup) as con:
+                assert storage.fetch(con, "datasets", "legacy") == dataset("legacy")
+    else:
+        assert backups == []
 
 
 def test_plan_metadata_updates_share_atomic_transaction(db):

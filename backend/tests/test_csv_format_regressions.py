@@ -8,6 +8,43 @@ from fastapi.testclient import TestClient
 from backend.app import app
 
 
+@pytest.mark.parametrize(
+    ("schema", "header", "row"),
+    [
+        ("history-1", "date,product_id,is_open,opening,produced,sold,waste,closing,other_out,stockout_status",
+         "2026-01-03,p1,true,0,7,7,0,0,0,none"),
+        ("procurement-1", "date,product_id,opening,received,sold,waste,closing", "2026-01-03,p1,0,7,7,0,0"),
+        ("sales-1", "date,product_id,item_line_count", "2026-01-03,p1,7"),
+    ],
+)
+def test_cr_only_csv_imports_as_one_observation(tmp_path, monkeypatch, schema, header, row):
+    monkeypatch.setenv("BAKEPLAN_DB", str(tmp_path / "cr.sqlite3"))
+    sales_only = schema == "sales-1"
+    body = {
+        "source": "synthetic", "schema_version": schema, "bakery_id": "format-test",
+        "target": "item_line_count" if sales_only else "sold_units",
+        "unit": "item_line" if sales_only else "physical_unit", "provenance": "Parser regression",
+        "csv_text": f"{header}\r{row}\r",
+    }
+    if schema == "procurement-1":
+        body["catalog"] = [{"product_id": "p1", "name": "Tea", "pack_size": 1}]
+    with TestClient(app) as client:
+        response = client.post("/api/datasets", json=body)
+        assert response.status_code == 201, response.text
+        assert response.json()["row_count"] == 1
+        assert response.json()["rows"][0]["item_line_count" if sales_only else "sold"] == 7
+
+
+def test_procurement_row_limit_counts_invalid_records():
+    from datetime import date
+    from backend.imports import CsvValidationError
+    from backend.procurement_imports import parse_procurement_csv
+
+    text = "date,product_id,opening,received,sold,waste,closing\n" + "invalid-date,p1,0,0,0,0,0\n" * 10_001
+    with pytest.raises(CsvValidationError, match="At most 10000"):
+        parse_procurement_csv(text, date.max, {"p1"})
+
+
 @pytest.mark.parametrize("sales_only", [False, True])
 @pytest.mark.parametrize(
     "malformed", ['"unterminated', "x" * 140_000], ids=["unterminated", "oversized"]

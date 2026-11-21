@@ -1,4 +1,5 @@
 import type { CatalogItem } from "./types";
+import { MAX_QUANTITY, validQuantity } from "./quantities";
 
 export function parseCatalog(text: string): CatalogItem[] {
   const value: unknown = JSON.parse(text);
@@ -15,8 +16,11 @@ export function parseCatalog(text: string): CatalogItem[] {
       ids.has(item.product_id) ||
       !Number.isSafeInteger(item.pack_size) ||
       item.pack_size <= 0 ||
+      item.pack_size > MAX_QUANTITY ||
       (item.max_order_qty != null &&
-        (!Number.isSafeInteger(item.max_order_qty) || item.max_order_qty < 0))
+        (!Number.isSafeInteger(item.max_order_qty) ||
+          item.max_order_qty < 0 ||
+          item.max_order_qty > MAX_QUANTITY))
     ) {
       throw new Error(
         "Проверьте каталог: уникальный product_id, название, целая упаковка > 0, лимит — целое ≥ 0 или null.",
@@ -32,9 +36,9 @@ export function stockAssumptions(values: Record<string, string>) {
   const result: Record<string, number> = {};
   for (const [id, value] of Object.entries(values)) {
     if (!value.trim()) continue;
-    if (!/^\d+$/.test(value) || !Number.isSafeInteger(Number(value)))
+    if (!validQuantity(value, 1, MAX_QUANTITY))
       throw new Error(
-        "Доступный остаток должен быть целым числом ≥ 0 или пустым.",
+        "Введите целый остаток от 0 до 1 000 000 000 шт. или оставьте поле пустым.",
       );
     result[id] = Number(value);
   }

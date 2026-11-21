@@ -24,7 +24,7 @@ def parse_csv(
     max_rows: int = 10_000,
 ) -> list[dict]:
     """Validate whole input before returning rows; extra note columns are ignored."""
-    reader = csv.DictReader(io.StringIO(text.lstrip("\ufeff")), strict=True)
+    reader = csv.DictReader(io.StringIO(text.lstrip("\ufeff"), newline=""), strict=True)
     try:
         headers = reader.fieldnames
     except csv.Error as error:

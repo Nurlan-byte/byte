@@ -294,14 +294,18 @@ button.cta {
   width: 16px;
   height: 16px;
 }
-.actions {
+.actions,
+.order-review-filter,
+.supplier-copy-actions {
   display: flex;
   gap: 10px;
   align-items: center;
   flex-wrap: wrap;
   margin: 16px 0;
 }
-.actions > button {
+.actions > button,
+.order-review-filter > button,
+.supplier-copy-actions > button {
   margin: 0;
 }
 
@@ -1279,6 +1283,37 @@ details details {
 }
 .quantity-help > .muted {
   margin: 4px 0;
+}
+
+.order-review-filter {
+  margin: 12px 0;
+}
+.expected-deliveries fieldset {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  align-items: end;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  margin: 12px 0;
+}
+.expected-deliveries label {
+  display: grid;
+  gap: 4px;
+}
+.order-review-filter button[aria-pressed="true"] {
+  border-color: var(--primary);
+  background: var(--primary-soft);
+  color: var(--primary-ink);
+}
+.order-review-reasons {
+  margin: 0 0 6px;
+  padding-inline-start: 1.2em;
+  color: var(--warning-ink);
+  font-weight: 600;
+}
+.plan-table-scroll .order-reviewed {
+  color: var(--success-ink);
 }
 .quantity-guide {
   display: grid;

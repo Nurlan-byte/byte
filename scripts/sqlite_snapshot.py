@@ -18,44 +18,10 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from backend import model_storage
+from backend.storage import SQLITE_SCHEMA_COLUMNS as COLUMNS
+from backend.storage import SQLITE_SCHEMA_VERSION as SCHEMA_VERSION
 
 FORMAT = "bakeplan-sqlite-snapshot-1"
-SCHEMA_VERSION = 3
-COLUMNS = {
-    "datasets": {
-        "id",
-        "payload",
-        "schema_version",
-        "source",
-        "content_hash",
-        "created_at",
-        "row_count",
-        "canonical_dataset_id",
-    },
-    "plans": {
-        "id",
-        "payload",
-        "schema_version",
-        "source",
-        "created_at",
-        "target_date",
-        "revision",
-        "status",
-        "dataset_id",
-    },
-    "models": {
-        "id",
-        "dataset_id",
-        "training_cutoff",
-        "protocol_version",
-        "payload",
-        "artifact_hash",
-    },
-    "training_requests": {"dataset_id", "key", "body", "model_id"},
-    "revisions": {"plan_id", "revision", "payload"},
-    "confirmations": {"plan_id", "key", "body", "response"},
-    "dataset_import_keys": {"source", "schema_version", "content_hash", "dataset_id"},
-}
 
 
 class SnapshotError(ValueError):

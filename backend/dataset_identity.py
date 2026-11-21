@@ -24,7 +24,7 @@ def identity(dataset):
 
 
 def parse_sales_csv(text, today):
-    reader = csv.DictReader(io.StringIO(text.lstrip("\ufeff")), strict=True)
+    reader = csv.DictReader(io.StringIO(text.lstrip("\ufeff"), newline=""), strict=True)
     try:
         headers = reader.fieldnames
     except csv.Error as error:

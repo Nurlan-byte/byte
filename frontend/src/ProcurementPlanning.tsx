@@ -1,20 +1,28 @@
 import { useEffect, useState } from "react";
 import type { PlanningSection } from "./PlanningSection";
-import type { Plan } from "./types";
+import type { ExpectedDelivery, Plan } from "./types";
+import { ExpectedDeliveries } from "./ExpectedDeliveries";
 import { api } from "./api";
 import { businessDate } from "./dates";
 import { dayWord } from "./dayWord";
 import { stockAssumptions } from "./procurement";
-import { validQuantity } from "./quantities";
+import { reviewOrderItem } from "./orderReview";
+import { MAX_QUANTITY, validQuantity } from "./quantities";
 import { hasQuantityChanges } from "./workspace";
 import { methodText, procurementNotes } from "./explanations";
 import { Icon } from "./Icon";
+import { SupplierOrderText } from "./SupplierOrderText";
 
 export function ProcurementPlanning(p: Parameters<typeof PlanningSection>[0]) {
+  const runReplacingPlan = p.runReplacingPlan ?? p.run;
   useEffect(() => {
     if (p.method === "B0") p.setMethod("B1");
   }, [p.method, p.setMethod]);
   const plan = p.plan?.planning_kind === "procurement" ? p.plan : null;
+  const [reviewSelection, setReviewSelection] = useState<Set<string> | null>(
+    null,
+  );
+  useEffect(() => setReviewSelection(null), [plan?.id, plan?.revision]);
   const dataset = p.dataset?.planning_kind === "procurement" ? p.dataset : null;
   const [lead, setLead] = useState(String(plan?.lead_time_days ?? ""));
   const [stock, setStock] = useState<Record<string, string>>({});
@@ -36,6 +44,27 @@ export function ProcurementPlanning(p: Parameters<typeof PlanningSection>[0]) {
   const selectedDatasetDiffers =
     !!plan && !!dataset && dataset.id !== plan.dataset_id;
   const workingStock = selectedDatasetDiffers ? alternateStock : stock;
+  const [deliveryEdit, setDeliveryEdit] = useState<ExpectedDelivery[] | null>(
+    null,
+  );
+  useEffect(
+    () => setDeliveryEdit(null),
+    [dataset?.id, plan?.id, plan?.revision],
+  );
+  const savedDeliveries = selectedDatasetDiffers
+    ? []
+    : (plan?.expected_deliveries ?? []);
+  const deliveries = deliveryEdit ?? savedDeliveries;
+  const deliveriesChanged =
+    deliveries.length !== savedDeliveries.length ||
+    deliveries.some((row, i) => {
+      const saved = savedDeliveries[i];
+      return (
+        row.product_id !== saved.product_id ||
+        row.arrival_date !== saved.arrival_date ||
+        row.quantity !== saved.quantity
+      );
+    });
   let assumptions: Record<string, number> = {},
     inputError = "";
   try {
@@ -43,10 +72,19 @@ export function ProcurementPlanning(p: Parameters<typeof PlanningSection>[0]) {
   } catch (e) {
     inputError = (e as Error).message;
   }
-  const leadValid =
-    /^\d+$/.test(lead) &&
-    Number.isSafeInteger(Number(lead)) &&
-    Number(lead) > 0;
+  if (
+    deliveries.some(
+      (row) =>
+        !row.arrival_date ||
+        !Number.isSafeInteger(row.quantity) ||
+        row.quantity <= 0 ||
+        row.quantity > MAX_QUANTITY,
+    )
+  ) {
+    inputError =
+      "Для каждой поставки укажите дату и целое количество от 1 до 1 000 000 000 шт.";
+  }
+  const leadValid = validQuantity(lead, 1, 365) && Number(lead) > 0;
   const sameStock =
     JSON.stringify(Object.entries(assumptions).sort()) ===
     JSON.stringify(Object.entries(plan?.usable_stock_assumption ?? {}).sort());
@@ -56,15 +94,25 @@ export function ProcurementPlanning(p: Parameters<typeof PlanningSection>[0]) {
       p.cutoff !== plan.cutoff ||
       p.method !== plan.requested_method ||
       Number(lead) !== plan.lead_time_days ||
-      (!selectedDatasetDiffers && (!sameStock || !!inputError)));
-  const invalid = plan?.items.some(
-    (i) =>
-      !validQuantity(
-        p.quantities[i.product_id] ?? "",
-        i.pack_size ?? 1,
-        i.max_order_qty ?? Number.MAX_SAFE_INTEGER,
-      ),
-  );
+      (!selectedDatasetDiffers &&
+        (!sameStock || deliveriesChanged || !!inputError)));
+  const orderRows = (plan?.items ?? []).map((item) => {
+    const value = p.quantities[item.product_id] ?? "";
+    const stock =
+      item.usable_stock_assumption === undefined
+        ? plan?.usable_stock_assumption?.[item.product_id]
+        : item.usable_stock_assumption;
+    return { item, value, stock, ...reviewOrderItem(item, value, stock) };
+  });
+  const invalid = orderRows.some((row) => !row.valid);
+  const reviewRows = orderRows.filter((row) => row.reasons.length > 0);
+  // Keep corrected lines in the review until the operator leaves the filter.
+  const visibleRows = reviewSelection
+    ? orderRows.filter(
+        (row) =>
+          row.reasons.length > 0 || reviewSelection.has(row.item.product_id),
+      )
+    : orderRows;
   const dirty = hasQuantityChanges(plan, p.quantities);
   const generalNotes = plan?.items.length
     ? procurementNotes(plan.items[0]).slice(0, 2)
@@ -125,12 +173,18 @@ export function ProcurementPlanning(p: Parameters<typeof PlanningSection>[0]) {
             id="proc-lead"
             type="number"
             min={1}
+            max={365}
             step={1}
             value={lead}
             aria-invalid={!leadValid}
             disabled={p.busy}
             onChange={(e) => setLead(e.target.value)}
           />
+          {lead !== "" && !leadValid && (
+            <small className="field-error">
+              Укажите срок от 1 до 365 дней.
+            </small>
+          )}
         </div>
         <details className="control-field">
           <summary>Настройки прогноза</summary>
@@ -149,9 +203,8 @@ export function ProcurementPlanning(p: Parameters<typeof PlanningSection>[0]) {
       <div className="data-guide stock-guide">
         <h3>Допущение о доступном остатке</h3>
         <p>
-          Укажите пригодный к продаже остаток на целевую дату, учитывая
-          ожидаемые поступления и выбытия. Исторический остаток не переносится
-          автоматически.
+          Укажите, сколько единиц останется к открытию в день продаж. Поставки,
+          перечисленные ниже, BakePlan добавит отдельно.
         </p>
         <p className="stock-rule">
           Пустое поле = остаток неизвестен: автоматический заказ отключён,
@@ -183,6 +236,7 @@ export function ProcurementPlanning(p: Parameters<typeof PlanningSection>[0]) {
                   id={`stock-${i.product_id}`}
                   type="number"
                   min={0}
+                  max={MAX_QUANTITY}
                   step={1}
                   placeholder="Неизвестен"
                   value={workingStock[i.product_id] ?? ""}
@@ -199,6 +253,15 @@ export function ProcurementPlanning(p: Parameters<typeof PlanningSection>[0]) {
               </div>
             ))}
           </div>
+        )}
+        {!!dataset?.catalog?.length && (
+          <ExpectedDeliveries
+            catalog={dataset.catalog}
+            deliveries={deliveries}
+            onChange={setDeliveryEdit}
+            target={p.target}
+            disabled={p.busy}
+          />
         )}
       </div>
       {inputError && (
@@ -222,7 +285,7 @@ export function ProcurementPlanning(p: Parameters<typeof PlanningSection>[0]) {
           !!inputError
         }
         onClick={() =>
-          void p.run(async () =>
+          void runReplacingPlan(async () =>
             p.show(
               await api<Plan>("/plans", {
                 dataset_id: dataset?.id,
@@ -231,6 +294,7 @@ export function ProcurementPlanning(p: Parameters<typeof PlanningSection>[0]) {
                 method: p.method,
                 mode: p.target <= businessDate() ? "replay" : "operational",
                 lead_time_days: Number(lead),
+                expected_deliveries: deliveries,
                 usable_stock_assumption: Object.fromEntries(
                   Object.entries(assumptions).filter(([productId]) =>
                     dataset?.catalog?.some(
@@ -312,6 +376,39 @@ export function ProcurementPlanning(p: Parameters<typeof PlanningSection>[0]) {
             ))}
           </details>
           <div
+            className="order-review-filter"
+            role="group"
+            aria-label="Позиции заказа"
+          >
+            <button
+              type="button"
+              className="secondary"
+              aria-pressed={!reviewSelection}
+              onClick={() => setReviewSelection(null)}
+            >
+              Все позиции ({orderRows.length})
+            </button>
+            <button
+              type="button"
+              className="secondary"
+              aria-pressed={!!reviewSelection}
+              onClick={() =>
+                setReviewSelection(
+                  new Set(reviewRows.map((row) => row.item.product_id)),
+                )
+              }
+            >
+              Требуют проверки ({reviewRows.length})
+            </button>
+          </div>
+          {reviewSelection && (
+            <p className="muted" role="status">
+              {reviewRows.length === 0
+                ? "Все позиции проверены."
+                : "Исправленные позиции останутся в списке до переключения."}
+            </p>
+          )}
+          <div
             className="table plan-table-scroll"
             role="region"
             aria-label="Прогноз продаж и заказ"
@@ -328,15 +425,14 @@ export function ProcurementPlanning(p: Parameters<typeof PlanningSection>[0]) {
                 </tr>
               </thead>
               <tbody>
-                {plan.items.map((i) => {
-                  const itemNotes = procurementNotes(i).slice(2);
+                {visibleRows.map((row) => {
+                  const { item: i, value, stock, valid, reasons } = row;
+                  // The saved cap warning concerns the suggested amount. Review reasons use the current edit.
+                  const itemNotes = procurementNotes({
+                    ...i,
+                    max_constraint_active: false,
+                  }).slice(2);
                   const pack = i.pack_size ?? 1;
-                  const value = p.quantities[i.product_id] ?? "";
-                  const valid = validQuantity(
-                    value,
-                    pack,
-                    i.max_order_qty ?? Number.MAX_SAFE_INTEGER,
-                  );
                   return (
                     <tr key={i.product_id}>
                       <td>
@@ -347,9 +443,13 @@ export function ProcurementPlanning(p: Parameters<typeof PlanningSection>[0]) {
                         </small>
                         <small>
                           Допущение об остатке:{" "}
-                          {plan.usable_stock_assumption?.[i.product_id] ??
-                            "неизвестен — ручное решение"}
+                          {stock ?? "неизвестен — ручное решение"}
                         </small>
+                        {!!i.incoming_units && (
+                          <small>
+                            В пути к дате продаж: {i.incoming_units} шт.
+                          </small>
+                        )}
                       </td>
                       <td
                         className="numeric-cell forecast-cell"
@@ -380,10 +480,14 @@ export function ProcurementPlanning(p: Parameters<typeof PlanningSection>[0]) {
                           type="number"
                           min={0}
                           step={pack}
-                          max={i.max_order_qty ?? undefined}
+                          max={
+                            i.target_is_open === false
+                              ? 0
+                              : (i.max_order_qty ?? MAX_QUANTITY)
+                          }
                           disabled={p.busy || stale}
                           aria-invalid={!valid}
-                          aria-describedby={`order-help-${i.product_id}`}
+                          aria-describedby={`order-help-${i.product_id}${reasons.length ? " order-review-" + i.product_id : ""}`}
                           value={value}
                           onChange={(e) =>
                             p.setQuantities({
@@ -406,22 +510,33 @@ export function ProcurementPlanning(p: Parameters<typeof PlanningSection>[0]) {
                               Есть несохранённое изменение
                             </small>
                           )}
-                        {!valid && (
-                          <small className="field-error">
-                            Введите 0 или кратное {pack}
-                            {i.max_order_qty != null &&
-                              `, не больше ${i.max_order_qty}`}{" "}
-                            шт.
-                          </small>
-                        )}
                       </td>
                       <td>
+                        {reasons.length > 0 ? (
+                          <ul
+                            className="order-review-reasons"
+                            id={`order-review-${i.product_id}`}
+                          >
+                            {reasons.map((reason) => (
+                              <li key={reason}>{reason}</li>
+                            ))}
+                          </ul>
+                        ) : (
+                          reviewSelection && (
+                            <small className="order-reviewed">Проверено</small>
+                          )
+                        )}
                         <strong className="actual-method">
                           Основа: {methodText(i.method)}
                         </strong>
-                        {itemNotes.map((w, n) => (
-                          <small key={n}>{w}</small>
-                        ))}
+                        {itemNotes.length > 0 && (
+                          <details>
+                            <summary>О расчёте</summary>
+                            {itemNotes.map((w, n) => (
+                              <small key={n}>{w}</small>
+                            ))}
+                          </details>
+                        )}
                       </td>
                     </tr>
                   );
@@ -491,7 +606,11 @@ export function ProcurementPlanning(p: Parameters<typeof PlanningSection>[0]) {
               </button>
               <a
                 className="button-link secondary"
-                href={p.busy ? undefined : `/api/plans/${plan.id}/export`}
+                href={
+                  p.busy
+                    ? undefined
+                    : `/api/plans/${encodeURIComponent(plan.id)}/export?revision=${plan.revision}`
+                }
                 aria-disabled={p.busy || undefined}
                 download
               >
@@ -500,6 +619,16 @@ export function ProcurementPlanning(p: Parameters<typeof PlanningSection>[0]) {
               </a>
             </div>
           </div>
+          {plan.status === "confirmed" &&
+            !dirty &&
+            !stale &&
+            !invalid &&
+            !p.busy && (
+              <SupplierOrderText
+                key={`${plan.id}-${plan.revision}`}
+                plan={plan}
+              />
+            )}
           <p className="muted">
             CSV содержит только сохранённые значения. Несохранённые изменения не
             попадут в экспорт.

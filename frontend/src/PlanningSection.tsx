@@ -23,7 +23,7 @@ export function PlanningSection(
     plan: forPlanningKind(props.plan, props.planningKind),
   };
   return props.planningKind === "procurement" ? (
-    <ProcurementPlanning {...selected} />
+    <ProcurementPlanning key={selected.dataset?.id ?? ""} {...selected} />
   ) : (
     <ProductionPlanning {...selected} />
   );
@@ -49,6 +49,7 @@ function ProductionPlanning({
   confirmation,
   invalid,
   run,
+  runReplacingPlan = run,
   show,
   refreshHistory,
 }: Pick<
@@ -71,10 +72,13 @@ function ProductionPlanning({
   | "confirmation"
   | "invalid"
   | "run"
+  | "runReplacingPlan"
   | "show"
   | "refreshHistory"
 > & { onImport?: () => void; onHistory?: () => void }) {
-  if (dataset?.target === "item_line_count" || dataset?.unit === "item_line") {
+  const salesOnly =
+    dataset?.target === "item_line_count" || dataset?.unit === "item_line";
+  if (salesOnly && (!plan || dataset.id === plan.dataset_id)) {
     return (
       <aside className="sales-only" data-testid="sales-only-notice">
         Строки продаж не преобразуются в физические штуки. Для производственного
@@ -213,9 +217,9 @@ function ProductionPlanning({
       )}
       <button
         className="cta"
-        disabled={busy || !dataset || !target || !cutoff}
+        disabled={busy || !dataset || salesOnly || !target || !cutoff}
         onClick={() =>
-          void run(async () =>
+          void runReplacingPlan(async () =>
             show(
               await api<Plan>("/plans", {
                 dataset_id: dataset?.id,
@@ -231,6 +235,12 @@ function ProductionPlanning({
       >
         Рассчитать план
       </button>
+      {salesOnly && (
+        <aside className="sales-only" data-testid="sales-only-notice">
+          Открыт сохранённый план выпуска. Для нового расчёта выберите историю
+          продаж в штуках с балансом остатков.
+        </aside>
+      )}
       <div className="hint-block">
         <p className="control-hint">
           План использует продажи из выбранной истории. Если последние продажи
@@ -576,7 +586,7 @@ function ProductionPlanning({
               </button>{" "}
               <a
                 className="button-link secondary"
-                href={busy ? undefined : `/api/plans/${plan.id}/export`}
+                href={busy ? undefined : `/api/plans/${encodeURIComponent(plan.id)}/export?revision=${plan.revision}`}
                 aria-disabled={busy || undefined}
                 download
               >

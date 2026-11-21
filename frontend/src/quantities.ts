@@ -1,3 +1,5 @@
+export const MAX_QUANTITY = 1_000_000_000;
+
 export function validQuantity(
   value: string,
   batch: number,
@@ -6,7 +8,7 @@ export function validQuantity(
   return (
     /^\d+$/.test(value) &&
     Number.isSafeInteger(Number(value)) &&
-    Number(value) <= max &&
+    Number(value) <= Math.min(max, MAX_QUANTITY) &&
     Number(value) % batch === 0
   );
 }

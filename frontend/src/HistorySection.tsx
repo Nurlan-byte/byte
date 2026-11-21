@@ -131,7 +131,7 @@ export function HistorySection({
                     href={
                       busy
                         ? undefined
-                        : `/api/plans/${encodeURIComponent(p.id)}/export`
+                        : `/api/plans/${encodeURIComponent(p.id)}/export?revision=${p.revision}`
                     }
                     aria-disabled={busy || undefined}
                   >

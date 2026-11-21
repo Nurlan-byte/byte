@@ -79,6 +79,7 @@ export type ImportProps = Pick<
   | "setError"
   | "setNotice"
   | "run"
+  | "runReplacingPlan"
 > & { onContinue?: () => void; active?: boolean };
 
 export function ImportSection(props: ImportProps) {
@@ -111,6 +112,7 @@ function ProductionImport({
   setError,
   setNotice,
   run,
+  runReplacingPlan = run,
   onContinue = () => {},
   active = true,
 }: ImportProps) {
@@ -324,7 +326,7 @@ function ProductionImport({
               className="secondary"
               disabled={busy || !savedId}
               onClick={() =>
-                void run(async () => {
+                void runReplacingPlan(async () => {
                   const result = await api<Dataset>(`/datasets/${savedId}`);
                   const stored = savedDataset(result);
                   setDataset(stored);
@@ -611,7 +613,7 @@ function ProductionImport({
           disabled={busy || !!missingImportFields}
           aria-describedby="import-readiness"
           onClick={() =>
-            void run(async () => {
+            void runReplacingPlan(async () => {
               let imported: Dataset;
               try {
                 imported = await api<Dataset>("/datasets", {

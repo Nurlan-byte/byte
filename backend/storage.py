@@ -10,6 +10,24 @@ from pathlib import Path
 
 SCHEMA_VERSION = "history-1"
 MAX_SQLITE_INTEGER = 2**63 - 1
+SQLITE_SCHEMA_VERSION = 3
+SQLITE_SCHEMA_COLUMNS = {
+    "datasets": {
+        "id", "payload", "schema_version", "source", "content_hash", "created_at",
+        "row_count", "canonical_dataset_id",
+    },
+    "plans": {
+        "id", "payload", "schema_version", "source", "created_at", "target_date",
+        "revision", "status", "dataset_id",
+    },
+    "models": {
+        "id", "dataset_id", "training_cutoff", "protocol_version", "payload", "artifact_hash",
+    },
+    "training_requests": {"dataset_id", "key", "body", "model_id"},
+    "revisions": {"plan_id", "revision", "payload"},
+    "confirmations": {"plan_id", "key", "body", "response"},
+    "dataset_import_keys": {"source", "schema_version", "content_hash", "dataset_id"},
+}
 
 
 class NotFound(Exception):
@@ -48,14 +66,16 @@ def dataset_metadata(dataset):
     )
 
 
-def _backup_database(con, path, version):
+def _backup_database(path, version):
     backup_path = path.with_name(path.name + f".pre-v{version}.bak")
     if backup_path.exists():
         raise RuntimeError(
             f"Migration backup already exists: {backup_path}; inspect it before retrying"
         )
-    with sqlite3.connect(backup_path) as backup:
-        con.backup(backup)
+    # The migration writer holds a reservation on the live database. A separate
+    # reader snapshots its last committed state while other writers must wait.
+    with connection(path) as source, connection(backup_path) as backup:
+        source.backup(backup)
 
 
 def initialize_database(path=None):
@@ -68,26 +88,27 @@ def initialize_database(path=None):
     path = database_path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
     with connection(path) as con:
-        version = con.execute("PRAGMA user_version").fetchone()[0]
-        if version > 3:
-            raise RuntimeError("Database schema is newer than this application")
-        if version == 3:
+        if con.execute("PRAGMA user_version").fetchone()[0] == SQLITE_SCHEMA_VERSION:
             return
-        existing_database = bool(
-            con.execute(
-                "SELECT 1 FROM sqlite_master WHERE type='table' LIMIT 1"
-            ).fetchone()
-        )
-        if version < 2:
-            if existing_database:
-                _backup_database(con, path, 2)
+        while True:
             con.execute("BEGIN IMMEDIATE")
+            version = con.execute("PRAGMA user_version").fetchone()[0]
+            if version > SQLITE_SCHEMA_VERSION:
+                raise RuntimeError("Database schema is newer than this application")
+            if version == SQLITE_SCHEMA_VERSION:
+                return
+            if version == 2:
+                _backup_database(path, 3)
+                break
+            existing_database = con.execute(
+                "SELECT 1 FROM sqlite_master WHERE type='table' LIMIT 1"
+            ).fetchone() is not None
+            if existing_database:
+                _backup_database(path, 2)
             _migrate_v2(con)
-            # Snapshotting a live write transaction would block SQLite backup.
+            if not existing_database:
+                break  # Initialize the entire empty database in one transaction.
             con.commit()
-        if existing_database:
-            _backup_database(con, path, 3)
-        con.execute("BEGIN IMMEDIATE")
         con.execute(
             "CREATE TABLE models("
             "id TEXT PRIMARY KEY,dataset_id TEXT NOT NULL,"
@@ -185,9 +206,21 @@ def get_dataset(ident):
         return fetch(con, "datasets", ident)
 
 
-def get_plan(ident):
+def get_plan(ident, revision=None):
     with connection() as con:
-        return fetch(con, "plans", ident)
+        if revision is None:
+            return fetch(con, "plans", ident)
+        row = con.execute(
+            "SELECT payload FROM revisions WHERE plan_id=? AND revision=?",
+            (ident, revision),
+        ).fetchone()
+        if row is None:
+            # Older databases can have a current plan without a history row.
+            current = fetch(con, "plans", ident)
+            if current.get("revision", 0) == revision:
+                return current
+            raise NotFound((ident, revision))
+        return json.loads(row[0])
 
 
 def save_dataset(dataset):

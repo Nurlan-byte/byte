@@ -64,7 +64,7 @@ test("history uses readable statuses and exact saved export paths, locking actio
       "редакция 1",
     ])
       expect(html).toContain(text);
-    expect(html.includes('href="/api/plans/plan-one/export"')).toBe(!busy);
+    expect(html.includes('href="/api/plans/plan-one/export?revision=1"')).toBe(!busy);
     if (busy) expect(html).toContain('aria-disabled="true"');
   }
 });

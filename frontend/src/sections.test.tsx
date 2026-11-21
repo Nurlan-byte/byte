@@ -92,6 +92,14 @@ test("sales-only target or item-line unit hides production even with a previous 
   }
 });
 
+test("a saved production order from history remains reviewable with a different sales-only dataset selected", () => {
+  const sales = { ...units, id: "receipt-lines", target: "item_line_count" as const, unit: "item_line" as const };
+  const html = renderToStaticMarkup(<PlanningSection {...planningProps(sales)} />);
+  expect(html).toContain('data-testid="plan-table"');
+  expect(html).toContain("Открыт сохранённый план выпуска");
+  expect(html).toMatch(/<button[^>]*disabled=""[^>]*>Рассчитать план<\/button>/);
+});
+
 test("units plan keeps batch constraints and explains fallback without model IDs", () => {
   const html = renderToStaticMarkup(
     <PlanningSection {...planningProps(units)} />,
@@ -238,7 +246,7 @@ test("saved quantities stay distinguishable from unsaved manual edits", () => {
   expect(html).toContain("Сохранено: 48 шт.");
   expect(html).toContain("Есть несохранённое изменение");
   expect(html).toContain("Несохранённые правки в файл не попадут");
-  expect(html).toContain('href="/api/plans/plan-1/export"');
+  expect(html).toContain('href="/api/plans/plan-1/export?revision=1"');
 });
 
 test("stale diagnostic snapshot retains its own dates and method with an actionable warning", () => {

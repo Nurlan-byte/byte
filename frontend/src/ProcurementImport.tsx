@@ -28,6 +28,7 @@ const editableCatalog = (items: CatalogItem[]): ProductDraft[] =>
   }));
 
 export function ProcurementImport(p: ImportProps) {
+  const runReplacingPlan = p.runReplacingPlan ?? p.run;
   const [catalog, setCatalog] = useState<ProductDraft[]>([emptyProduct()]);
   const [fileName, setFileName] = useState("");
   const fileInput = useRef<HTMLInputElement>(null);
@@ -135,7 +136,7 @@ export function ProcurementImport(p: ImportProps) {
           className="secondary"
           disabled={p.busy || !savedId}
           onClick={() =>
-            void p.run(async () => {
+            void runReplacingPlan(async () => {
               const d = await api<Dataset>(
                 `/datasets/${encodeURIComponent(savedId)}`,
               );
@@ -373,7 +374,7 @@ export function ProcurementImport(p: ImportProps) {
           p.busy || !p.csv.trim() || !p.provenance.trim() || !p.bakeryId.trim()
         }
         onClick={() =>
-          void p.run(async () => {
+          void runReplacingPlan(async () => {
             const products = parseCatalog(
               JSON.stringify(
                 catalog.map((item, index) => {

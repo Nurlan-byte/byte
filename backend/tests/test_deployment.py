@@ -338,7 +338,8 @@ def test_gateway_entrypoint_fails_closed_without_operator_secret():
     assert not process.stdout
 
 
-def test_health_rejects_missing_persistence_tables(tmp_path, monkeypatch):
+@pytest.mark.parametrize("table", ["models", "confirmations", "revisions", "dataset_import_keys", "training_requests"])
+def test_health_rejects_missing_persistence_tables(tmp_path, monkeypatch, table):
     from fastapi.testclient import TestClient
     from backend.app import app
 
@@ -347,7 +348,7 @@ def test_health_rejects_missing_persistence_tables(tmp_path, monkeypatch):
     with TestClient(app) as client:
         assert client.get("/api/health").status_code == 200
         with sqlite3.connect(database) as con:
-            con.execute("DROP TABLE models")
+            con.execute(f"DROP TABLE {table}")
         response = client.get("/api/health")
         assert response.status_code == 503
         assert response.json()["error"]["message"] == "Хранилище недоступно"

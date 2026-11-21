@@ -140,6 +140,8 @@ def test_legacy_plan_migration_confirm_export(tmp_path, monkeypatch):
         con.execute(
             "CREATE TABLE confirmations(plan_id TEXT,key TEXT,body TEXT,response TEXT,PRIMARY KEY(plan_id,key))"
         )
+        for key in ("planning_kind", "bakery_id", "target", "unit", "provenance", "metadata_declared"):
+            dataset.pop(key)
         duplicate = {**dataset, "id": "legacy-duplicate"}
         for item in [dataset, duplicate]:
             con.execute(
@@ -152,6 +154,9 @@ def test_legacy_plan_migration_confirm_export(tmp_path, monkeypatch):
     with TestClient(app) as client:
         assert client.get(f"/api/plans/{plan['id']}").json() == plan
         assert len(client.get("/api/datasets").json()) == 2
+        retry = client.post("/api/datasets", json={"csv_text": csv_text(), "source": "synthetic"})
+        assert retry.status_code == 200
+        assert retry.json() == client.get(f"/api/datasets/{dataset['id']}").json()
         body = {
             "revision": 0,
             "idempotency_key": "migrated",

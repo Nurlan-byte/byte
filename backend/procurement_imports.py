@@ -14,7 +14,7 @@ COUNT_FIELDS = ("opening", "received", "sold", "waste", "closing")
 
 
 def parse_procurement_csv(text: str, today: date, product_ids: set[str]):
-    reader = csv.DictReader(io.StringIO(text.lstrip("\ufeff")), strict=True)
+    reader = csv.DictReader(io.StringIO(text.lstrip("\ufeff"), newline=""), strict=True)
     try:
         headers = reader.fieldnames
     except csv.Error as error:
@@ -31,8 +31,8 @@ def parse_procurement_csv(text: str, today: date, product_ids: set[str]):
         ])
     rows, errors, seen, seen_products = [], [], set(), set()
     try:
-        for raw in reader:
-            if len(rows) >= 10_000:
+        for count, raw in enumerate(reader, 1):
+            if count > 10_000:
                 raise CsvValidationError(["At most 10000 rows are supported"])
             try:
                 if None in raw or any(value is None for value in raw.values()):

@@ -142,6 +142,15 @@ export function App() {
       setBusy(false);
     }
   }
+  async function runReplacingPlan(fn: () => Promise<void>) {
+    if (
+      unsaved &&
+      !window.confirm(
+        "Есть несохранённые количества. Продолжить и сбросить эти изменения после успешной операции?",
+      )
+    ) return;
+    await run(fn);
+  }
   function show(p: Plan) {
     setPlan(p);
     setPlanningKind(
@@ -222,6 +231,7 @@ export function App() {
     confirmation,
     invalid,
     run,
+    runReplacingPlan,
     show,
     refreshHistory: () => loadHistory(0),
   };
@@ -550,7 +560,7 @@ export function App() {
               busy={busy || hiddenUnsaved}
               onPage={(offset) => void run(() => loadHistory(offset))}
               onLoad={(id) =>
-                void run(async () => {
+                void runReplacingPlan(async () => {
                   const storedPlan = await api<Plan>(`/plans/${id}`);
                   // A history plan may belong to another saved dataset. Keep
                   // the current import selected; the plan holds its own

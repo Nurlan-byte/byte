@@ -1,4 +1,9 @@
 export type PlanningKind = "production" | "procurement";
+export type ExpectedDelivery = {
+  product_id: string;
+  arrival_date: string;
+  quantity: number;
+};
 export type CatalogItem = {
   product_id: string;
   name: string;
@@ -31,6 +36,7 @@ export type Item = {
   active_to?: string | null;
   automatic_eligible?: boolean;
   usable_stock_assumption?: number | null;
+  incoming_units?: number;
   unknown_open_n?: number;
   unknown_stockout_n?: number;
   max_constraint_active?: boolean;
@@ -45,6 +51,7 @@ export type PlanSummary = {
   order_date?: string;
   lead_time_days?: number;
   usable_stock_assumption?: Record<string, number>;
+  expected_deliveries?: ExpectedDelivery[];
   id: string;
   revision: number;
   status: string;
