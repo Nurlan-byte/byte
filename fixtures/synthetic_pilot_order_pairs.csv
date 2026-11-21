@@ -1,0 +1,5 @@
+branch_code,pair_id,manual_seconds,bakeplan_seconds,manual_status,bakeplan_status
+A,SYN-001,600,360,unaided,unaided
+A,SYN-002,480,420,unaided,assisted
+B,SYN-001,600,,unaided,failed
+B,SYN-002,,,pending,pending
