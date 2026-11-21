@@ -70,6 +70,7 @@ class PlanRequest(BaseModel):
     lead_time_days: StrictInt | None = Field(default=None, ge=1, le=365)
     usable_stock_assumption: dict[str, StrictInt] | None = None
     expected_deliveries: list[ExpectedDelivery] = Field(default_factory=list, max_length=500)
+    delivery_source: Literal["registry", "manual"] | None = None
 
     @model_validator(mode="after")
     def nonnegative_stock(self):

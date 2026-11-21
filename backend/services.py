@@ -9,6 +9,7 @@ from datetime import date, datetime, timedelta, timezone
 from backend.config import CATALOG, VERSION
 from backend.errors import ServiceError
 from backend.dataset_identity import identity, parse_sales_csv
+from backend.deliveries import outstanding_deliveries
 from backend.imports import parse_csv
 from backend.planning import plan_item
 from backend.procurement_imports import parse_procurement_csv
@@ -23,6 +24,7 @@ from backend.storage import (
     fetch,
     get_dataset,
     get_plan,
+    insert_plan,
     save_dataset,
     save_plan,
     update_plan,
@@ -119,7 +121,8 @@ def create_plan(body: PlanRequest, today: date):
     dataset = identity(get_dataset(body.dataset_id))
     if dataset["planning_kind"] == "procurement":
         return _create_procurement_plan(body, today, dataset)
-    if body.lead_time_days is not None or body.usable_stock_assumption is not None or body.expected_deliveries:
+    if (body.lead_time_days is not None or body.usable_stock_assumption is not None
+            or body.expected_deliveries or body.delivery_source is not None):
         raise ServiceError(422, "Procurement assumptions require a procurement dataset")
     if dataset["target"] != "sold_units" or dataset["unit"] != "physical_unit":
         raise ServiceError(
@@ -235,14 +238,19 @@ def _create_procurement_plan(body: PlanRequest, today: date, dataset: dict):
         raise ServiceError(422, "Target date is earlier than the explicit supplier lead time")
     if body.method == "B0":
         raise ServiceError(422, "Procurement supports B1 or ML, not B0")
-    incoming = {}
+    source = body.delivery_source
+    if source is None:
+        # An explicitly supplied list (even an empty one) is an existing client's manual scenario.
+        source = "manual" if body.mode == "replay" or "expected_deliveries" in body.model_fields_set else "registry"
+    if source == "registry" and body.mode == "replay":
+        raise ServiceError(422, "Для исторического расчёта укажите поставки на дату сценария вручную.")
+    if source == "registry" and body.expected_deliveries:
+        raise ServiceError(422, "Выберите один источник поставок: реестр или ручной ввод.")
     for delivery in body.expected_deliveries:
         if delivery.product_id not in by_id:
             raise ServiceError(422, "Поставка относится к товару вне выбранного каталога.")
         if delivery.arrival_date < order_date:
             raise ServiceError(422, "Дата ожидаемой поставки предшествует дате заказа. Проверьте остаток.")
-        if delivery.arrival_date <= body.target_date:
-            incoming[delivery.product_id] = incoming.get(delivery.product_id, 0) + delivery.quantity
     model = None
     model_id = None
     predictions = {}
@@ -253,34 +261,48 @@ def _create_procurement_plan(body: PlanRequest, today: date, dataset: dict):
         model = result.get("model")
         model_id = result["model_id"]
         predictions = {item["product_id"]: item for item in result["items"]}
-    items = [
-        procurement_item(
-            dataset["rows"], product, body.target_date, body.cutoff,
-            body.method, body.target_is_open, assumptions.get(product["product_id"]),
-            incoming.get(product["product_id"], 0),
-            prediction=predictions.get(product["product_id"]), model_id=model_id,
-        )
-        for product in products
-    ]
+    manual = [delivery.model_dump(mode="json") for delivery in body.expected_deliveries]
     plan = {
         "id": str(uuid.uuid4()), "revision": 0, "status": "draft",
         "planning_kind": "procurement", "dataset_id": dataset["id"],
         "target_date": str(body.target_date), "cutoff": str(body.cutoff),
         "order_date": str(order_date), "lead_time_days": body.lead_time_days,
         "usable_stock_assumption": assumptions, "source": dataset["source"],
-        "expected_deliveries": [delivery.model_dump(mode="json") for delivery in body.expected_deliveries],
+        "delivery_source": source, "expected_deliveries": manual,
         "provenance": dataset["provenance"],
         "bakery_id": dataset["bakery_id"], "target": dataset["target"],
         "unit": dataset["unit"], "requested_method": body.method,
         "model_id": model["id"] if model else None,
         "protocol_version": model["protocol_version"] if model else None,
-        "dataset_version": dataset["version"], "config_version": "procurement-3",
+        "dataset_version": dataset["version"], "config_version": "procurement-4",
         "config_hash": hashlib.sha256(json.dumps(products, sort_keys=True).encode()).hexdigest(),
-        "created_at": datetime.now(timezone.utc).isoformat(),
-        "items": items, "mode": body.mode, "timezone": "Asia/Qyzylorda",
+        "mode": body.mode, "timezone": "Asia/Qyzylorda",
         "availability_assumption": "Sales are observed units. Availability and stockouts remain unknown unless explicitly recorded; usable target-day stock is supplied as a scenario.",
     }
-    save_plan(plan)
+    # Save the very same quantities we read. A receipt cannot change the ledger
+    # between reading a delivery and recording it in the plan's first revision.
+    with connection() as con:
+        con.execute("BEGIN IMMEDIATE")
+        plan["created_at"] = datetime.now(timezone.utc).isoformat()
+        if source == "registry":
+            deliveries = outstanding_deliveries(con, dataset["bakery_id"], by_id, order_date, body.target_date)
+            plan["registry_deliveries"] = deliveries
+        else:
+            deliveries = [entry for entry in manual if entry["arrival_date"] <= plan["target_date"]]
+        incoming = {}
+        for entry in deliveries:
+            product_id = entry["product_id"]
+            incoming[product_id] = incoming.get(product_id, 0) + entry["quantity"]
+        plan["items"] = [
+            procurement_item(
+                dataset["rows"], product, body.target_date, body.cutoff,
+                body.method, body.target_is_open, assumptions.get(product["product_id"]),
+                incoming.get(product["product_id"], 0),
+                prediction=predictions.get(product["product_id"]), model_id=model_id,
+            )
+            for product in products
+        ]
+        insert_plan(con, plan)
     return plan
 
 
@@ -463,6 +485,11 @@ def _export_procurement_csv(plan: dict):
             "suggested_order_packs", "suggested_shortage_units", "suggested_constraint_reason",
             "confirmed_order_packs", "confirmed_shortage_units", "confirmed_constraint_reason",
         )
+    registry_by_product = {}
+    if "registry_deliveries" in plan:
+        columns += ("registry_deliveries",)
+        for delivery in plan["registry_deliveries"]:
+            registry_by_product.setdefault(delivery["product_id"], []).append(delivery)
     writer.writerow(columns)
     for item in plan["items"]:
         record = {
@@ -480,6 +507,10 @@ def _export_procurement_csv(plan: dict):
             "confirmed_order_packs": item.get("confirmed_packs"),
             "used_dates": ";".join(item.get("used_dates") or []),
         }
+        if "registry_deliveries" in plan:
+            record["registry_deliveries"] = json.dumps(
+                registry_by_product.get(item["product_id"], []), ensure_ascii=False, separators=(",", ":"),
+            )
         writer.writerow([
             "'" + value if isinstance(value, str) and value.lstrip().startswith(("=", "+", "-", "@")) else value
             for value in (record.get(column) for column in columns)

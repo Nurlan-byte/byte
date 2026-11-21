@@ -20,6 +20,7 @@ from pathlib import Path
 from backend import model_storage
 from backend.storage import SQLITE_SCHEMA_COLUMNS as COLUMNS
 from backend.storage import SQLITE_SCHEMA_VERSION as SCHEMA_VERSION
+from backend.storage import SQLITE_V3_COLUMNS
 
 FORMAT = "bakeplan-sqlite-snapshot-1"
 
@@ -63,24 +64,24 @@ def _connect(path, *, snapshot=False):
 
 
 def inspect_database(path):
-    """Validate a standalone v3 BakePlan DB without creating or migrating it."""
+    """Validate current and legacy v3 snapshots without migrating their contents."""
     path = _regular_file(path)
     _no_sidecars(path)
     try:
         with closing(_connect(path, snapshot=True)) as con:
             if con.execute("PRAGMA integrity_check").fetchall() != [("ok",)]:
                 raise SnapshotError("SQLite integrity_check failed")
-            if con.execute("PRAGMA user_version").fetchone()[0] != SCHEMA_VERSION:
-                raise SnapshotError(
-                    f"Expected BakePlan schema {SCHEMA_VERSION}; no implicit migrations"
-                )
+            version = con.execute("PRAGMA user_version").fetchone()[0]
+            expected_columns = {3: SQLITE_V3_COLUMNS, SCHEMA_VERSION: COLUMNS}.get(version)
+            if expected_columns is None:
+                raise SnapshotError(f"Unsupported BakePlan schema version {version}")
             tables = {
                 row[0]
                 for row in con.execute(
                     "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'"
                 )
             }
-            if tables != set(COLUMNS):
+            if tables != set(expected_columns):
                 raise SnapshotError(
                     "Snapshot does not have the expected BakePlan tables"
                 )
@@ -88,7 +89,7 @@ def inspect_database(path):
                 "SELECT 1 FROM sqlite_master WHERE type IN ('view','trigger') LIMIT 1"
             ).fetchone():
                 raise SnapshotError("Unexpected database views or triggers")
-            for table, required in COLUMNS.items():
+            for table, required in expected_columns.items():
                 columns = {r[1] for r in con.execute(f"PRAGMA table_info({table})")}
                 if columns != required:
                     raise SnapshotError(f"Unexpected schema for {table}")
@@ -132,9 +133,22 @@ def inspect_database(path):
                 "SELECT id,dataset_id,training_cutoff,protocol_version,payload,artifact_hash FROM models"
             ):
                 model_storage._decode(row)
+            if "deliveries" in expected_columns:
+                for delivery_id, response in con.execute("SELECT delivery_id, response FROM delivery_receipts"):
+                    decoded = json.loads(response)
+                    if not isinstance(decoded, dict) or decoded.get("id") != delivery_id:
+                        raise SnapshotError("Invalid delivery receipt response")
+                if con.execute("""
+                    SELECT 1 FROM deliveries d
+                    WHERE d.received_qty != (
+                        SELECT COALESCE(SUM(r.quantity), 0)
+                        FROM delivery_receipts r WHERE r.delivery_id = d.id
+                    ) LIMIT 1
+                """).fetchone():
+                    raise SnapshotError("Delivery receipt quantities do not match the received total")
             counts = {
                 table: con.execute(f"SELECT count(*) FROM {table}").fetchone()[0]
-                for table in sorted(COLUMNS)
+                for table in sorted(expected_columns)
             }
     except (
         sqlite3.Error,
@@ -143,7 +157,7 @@ def inspect_database(path):
         model_storage.InvalidArtifact,
     ) as exc:
         raise SnapshotError(f"Invalid BakePlan snapshot: {exc}") from exc
-    return {"schema_version": SCHEMA_VERSION, "table_counts": counts}
+    return {"schema_version": version, "table_counts": counts}
 
 
 def _fresh_destination(path):

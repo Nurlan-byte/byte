@@ -3,6 +3,7 @@
 import csv
 import importlib
 import io
+import json
 from copy import deepcopy
 from datetime import date, timedelta
 
@@ -214,6 +215,90 @@ def test_scheduled_deliveries_are_counted_once_by_target_and_saved_with_revision
     for change in ({"arrival_date": "2026-10-09"}, {"product_id": "other"}, {"quantity": 0}, {"quantity": True}):
         invalid = client.post("/api/plans", json={**body, "expected_deliveries": [{**deliveries[0], **change}]})
         assert invalid.status_code == 422
+
+
+def test_registry_plan_uses_branch_outstanding_at_calculation_time(client, monkeypatch):
+    monkeypatch.setattr("backend.app.business_today", lambda: date(2026, 10, 10))
+    shop = imported(client)["id"]
+    other = client.post("/api/datasets", json={**payload(), "bakery_id": "other-shop"}).json()["id"]
+    register = f"/api/datasets/{shop}/deliveries"
+    entry = {"number": "НК-12", "product_id": "tea", "arrival_date": "2026-10-11", "ordered_qty": 12}
+
+    def create(base, **changes):
+        response = client.post(base, json={**entry, **changes})
+        assert response.status_code == 201, response.text
+        return response.json()["id"]
+
+    ident = create(register)
+    create(register, number="late", arrival_date="2026-10-12")
+    create(register, number="overdue", arrival_date="2026-10-09")
+    create(f"/api/datasets/{other}/deliveries", ordered_qty=24)
+    params = {"dataset_id": shop, "target_date": "2026-10-11", "cutoff": "2026-10-09",
+              "lead_time_days": 1, "usable_stock_assumption": {"tea": 0}}
+
+    def calculate(**changes):
+        response = client.post("/api/plans", json={**params, **changes})
+        assert response.status_code == 201, response.text
+        return response.json()
+
+    before = calculate()
+    assert before["delivery_source"] == "registry" and before["items"][0]["incoming_units"] == 12
+    receipt = {"quantity": 5, "idempotency_key": "unload-1"}
+    for _ in range(2):
+        response = client.post(f"{register}/{ident}/receipts", json=receipt)
+        assert response.is_success, response.text
+
+    partial = calculate(method="ML", delivery_source="registry")
+    assert [(row["id"], row["number"], row["arrival_date"], row["quantity"]) for row in partial["registry_deliveries"]] == [
+        (ident, "НК-12", "2026-10-11", 7)
+    ]
+    line, = partial["items"]
+    assert (line["incoming_units"], line["available_stock_units"], line["recommended_qty"]) == (7, 7, 6)
+    with_stock = calculate(usable_stock_assumption={"tea": 5})
+    assert with_stock["items"][0]["available_stock_units"] == 12
+    assert calculate(dataset_id=other)["items"][0]["incoming_units"] == 24
+    confirm_url = f"/api/plans/{partial['id']}"
+    confirmed = client.post(confirm_url + "/confirm", json={
+        "revision": 0, "idempotency_key": "save-seven", "quantities": {"tea": 6},
+    })
+    assert confirmed.status_code == 200
+    csv_url = confirm_url + "/export?revision=1"
+    exported = client.get(csv_url).content
+    row, = csv.DictReader(io.StringIO(exported.decode("utf-8-sig")))
+    assert json.loads(row["registry_deliveries"]) == partial["registry_deliveries"]
+    assert row["incoming_units"] == "7"
+
+    moved = client.patch(f"{register}/{ident}", json={"arrival_date": "2026-10-12"})
+    assert moved.is_success
+    assert calculate()["items"][0]["incoming_units"] == 0
+    assert client.get(confirm_url).json()["registry_deliveries"] == partial["registry_deliveries"]
+    assert client.get(csv_url).content == exported
+    assert client.get(f"/api/plans/{before['id']}").json()["registry_deliveries"][0]["quantity"] == 12
+
+
+def test_manual_plans_and_replays_do_not_mix_in_live_deliveries(client, monkeypatch):
+    monkeypatch.setattr("backend.app.business_today", lambda: date(2026, 10, 10))
+    ident = imported(client)["id"]
+    entry = {"product_id": "tea", "arrival_date": "2026-10-11"}
+    assert client.post(f"/api/datasets/{ident}/deliveries", json={
+        **entry, "number": "101", "ordered_qty": 12,
+    }).status_code == 201
+    params = {"dataset_id": ident, "target_date": "2026-10-11", "cutoff": "2026-10-09",
+              "lead_time_days": 1, "usable_stock_assumption": {"tea": 0}}
+    manual = [dict(entry, quantity=3)]
+    for changes, expected in [
+        ({"expected_deliveries": []}, 0),
+        ({"expected_deliveries": manual}, 3),
+        ({"delivery_source": "manual"}, 0),
+        ({"mode": "replay"}, 0),
+        ({"mode": "replay", "expected_deliveries": manual}, 3),
+    ]:
+        result = client.post("/api/plans", json={**params, **changes})
+        assert result.status_code == 201, result.text
+        assert result.json()["delivery_source"] == "manual"
+        assert result.json()["items"][0]["incoming_units"] == expected
+    for changes in ({"mode": "replay"}, {"expected_deliveries": manual}):
+        assert client.post("/api/plans", json={**params, **changes, "delivery_source": "registry"}).status_code == 422
 
 
 def test_unknown_stock_is_not_zero(client):

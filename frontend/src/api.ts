@@ -39,9 +39,22 @@ export function errorMessage(status: number, data: unknown): string {
     return JSON.stringify(data.detail);
   return `Сервер вернул ошибку HTTP ${status}. Повторите действие позже.`;
 }
-export async function api<T>(path: string, body?: unknown): Promise<T> {
+export class ApiError extends Error {
+  constructor(
+    readonly status: number,
+    message: string,
+  ) {
+    super(message);
+  }
+}
+
+export async function api<T>(
+  path: string,
+  body?: unknown,
+  method = body === undefined ? "GET" : "POST",
+): Promise<T> {
   const response = await fetch("/api" + path, {
-    method: body === undefined ? "GET" : "POST",
+    method,
     headers:
       body === undefined
         ? undefined
@@ -57,11 +70,13 @@ export async function api<T>(path: string, body?: unknown): Promise<T> {
   try {
     data = JSON.parse(text);
   } catch {
-    if (!response.ok) throw new Error(errorMessage(response.status, null));
+    if (!response.ok)
+      throw new ApiError(response.status, errorMessage(response.status, null));
     throw new Error(
       "Сервер вернул некорректный ответ. Повторите действие позже.",
     );
   }
-  if (!response.ok) throw new Error(errorMessage(response.status, data));
+  if (!response.ok)
+    throw new ApiError(response.status, errorMessage(response.status, data));
   return data as T;
 }

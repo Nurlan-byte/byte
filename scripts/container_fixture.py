@@ -74,6 +74,19 @@ def seed(state_path):
     }
     plan = request(f"/api/plans/{plan['id']}/confirm", confirm_body)
     export = request(f"/api/plans/{plan['id']}/export", text=True)
+    shop = request("/api/datasets", {
+        "schema_version": "procurement-1", "source": "synthetic", "bakery_id": "ci-bar",
+        "target": "sold_units", "unit": "physical_unit", "provenance": "Synthetic registry check",
+        "catalog": [{"product_id": "water", "name": "Water", "pack_size": 6}],
+        "csv_text": "date,product_id,opening,received,sold,waste,closing\n2026-01-01,water,0,12,12,0,0",
+    }, expected=201)
+    registry = f"/api/datasets/{shop['id']}/deliveries"
+    delivery = request(registry, {
+        "number": "TEST-12", "product_id": "water", "arrival_date": "2026-10-12", "ordered_qty": 12,
+    }, expected=201)
+    receipt = {"quantity": 5, "idempotency_key": "ci-receive-five"}
+    partial = request(f"{registry}/{delivery['id']}/receipts", receipt)
+    assert partial["remaining_qty"] == 7
     state_path.write_text(
         json.dumps(
             {
@@ -86,6 +99,7 @@ def seed(state_path):
                 "import_body": import_body,
                 "train_body": train_body,
                 "confirm_body": confirm_body,
+                "registry": registry, "receipt": receipt, "partial_delivery": partial,
             }
         )
     )
@@ -106,6 +120,10 @@ def verify(state_path):
     revisions = request(f"/api/plans/{plan['id']}/revisions")
     assert len(revisions) == 2 and revisions[-1] == plan
     assert request(f"/api/plans/{plan['id']}/export", text=True) == state["export"]
+    registry, partial = state["registry"], state["partial_delivery"]
+    assert request(registry) == [partial]
+    assert request(f"{registry}/{partial['id']}/receipts", state["receipt"]) == partial
+    assert request(registry)[0]["remaining_qty"] == 7
     print(
         "Persisted data, exact model/plan/export, revision history and retry keys verified."
     )

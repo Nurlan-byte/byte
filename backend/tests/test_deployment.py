@@ -1,5 +1,6 @@
 """Local snapshot and configuration contracts; these do NOT run Docker/Caddy."""
 
+import hashlib
 import json
 import sqlite3
 import subprocess
@@ -66,6 +67,20 @@ def populated(tmp_path, monkeypatch):
         "evaluation": {"synthetic": True},
     }
     model_storage.save_training(model, "train-once", '{"cutoff":"2026-10-01"}')
+    received = json.dumps({
+        "id": "shipment", "bakery_id": "branch-a", "number": "SH-1", "product_id": "p1",
+        "arrival_date": "2026-10-01", "ordered_qty": 12, "received_qty": 5,
+        "remaining_qty": 7, "status": "partial",
+    })
+    with storage.connection() as con:
+        con.execute("""
+            INSERT INTO deliveries(id,bakery_id,number,product_id,arrival_date,initial_arrival_date,ordered_qty,received_qty)
+            VALUES ('shipment','branch-a','SH-1','p1','2026-10-01','2026-10-01',12,5)
+        """)
+        con.execute("""
+            INSERT INTO delivery_receipts(delivery_id,idempotency_key,quantity,received_at,response)
+            VALUES ('shipment','receive-once',5,'2026-10-01T09:00:00+00:00',?)
+        """, (received,))
     return database, dataset, confirmed, model
 
 
@@ -75,6 +90,30 @@ def dump_tables(path):
             table: con.execute(f"SELECT * FROM {table} ORDER BY rowid").fetchall()
             for table in snapshots.COLUMNS
         }
+
+
+def test_existing_v3_snapshot_can_be_verified_before_upgrade(tmp_path):
+    backup = tmp_path / "previous-backup.sqlite3"
+    with storage.connection(backup) as con:
+        storage._migrate_v2(con)
+        storage._migrate_v3(con)
+    # Model the old application's manifest independently of the new writer.
+    original = backup.read_bytes()
+    manifest = {
+        "format": "bakeplan-sqlite-snapshot-1", "schema_version": 3,
+        "created_at": "2026-10-01T09:00:00+00:00",
+        "sha256": hashlib.sha256(original).hexdigest(),
+        "table_counts": {table: 0 for table in storage.SQLITE_V3_COLUMNS},
+    }
+    snapshots.manifest_path(backup).write_text(json.dumps(manifest), encoding="utf-8")
+    assert snapshots.verify_backup(backup) == manifest
+    if sys.platform == "linux":
+        restored = tmp_path / "restored.sqlite3"
+        assert snapshots.restore_backup(backup, restored, app_stopped=True) == manifest
+        assert restored.read_bytes() == original
+        storage.initialize_database(restored)
+        assert snapshots.inspect_database(restored)["schema_version"] == 4
+        assert backup.read_bytes() == original
 
 
 def test_backup_restore_preserves_all_state_and_retry_keys(
@@ -91,6 +130,8 @@ def test_backup_restore_preserves_all_state_and_retry_keys(
         "dataset_import_keys": 1,
         "training_requests": 1,
         "confirmations": 1,
+        "deliveries": 1,
+        "delivery_receipts": 1,
     }
     assert snapshots.verify_backup(backup) == summary
     restored = tmp_path / "restored.sqlite3"
@@ -181,6 +222,7 @@ def test_restore_requires_stop_acknowledgement_and_new_destination(populated, tm
         "schema",
         "tables",
         "reference",
+        "receipt_total",
         "sidecar",
     ],
 )
@@ -209,6 +251,8 @@ def test_invalid_backup_refused_without_creating_destination(
                 con.execute("DROP TABLE confirmations")
             elif damage == "reference":
                 con.execute("UPDATE models SET dataset_id='missing'")
+            elif damage == "receipt_total":
+                con.execute("UPDATE deliveries SET received_qty=6")
         # A matching checksum does not let corrupt application structure pass.
         record = json.loads(manifest.read_text())
         record["sha256"] = snapshots._sha256(backup)
@@ -338,7 +382,10 @@ def test_gateway_entrypoint_fails_closed_without_operator_secret():
     assert not process.stdout
 
 
-@pytest.mark.parametrize("table", ["models", "confirmations", "revisions", "dataset_import_keys", "training_requests"])
+@pytest.mark.parametrize("table", [
+    "models", "confirmations", "revisions", "dataset_import_keys", "training_requests",
+    "deliveries", "delivery_receipts",
+])
 def test_health_rejects_missing_persistence_tables(tmp_path, monkeypatch, table):
     from fastapi.testclient import TestClient
     from backend.app import app

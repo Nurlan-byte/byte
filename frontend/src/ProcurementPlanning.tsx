@@ -1,7 +1,8 @@
 import { useEffect, useState } from "react";
 import type { PlanningSection } from "./PlanningSection";
-import type { ExpectedDelivery, Plan } from "./types";
+import type { DeliverySource, ExpectedDelivery, Plan } from "./types";
 import { ExpectedDeliveries } from "./ExpectedDeliveries";
+import { DeliveryRegistry } from "./DeliveryRegistry";
 import { api } from "./api";
 import { businessDate } from "./dates";
 import { dayWord } from "./dayWord";
@@ -47,10 +48,19 @@ export function ProcurementPlanning(p: Parameters<typeof PlanningSection>[0]) {
   const [deliveryEdit, setDeliveryEdit] = useState<ExpectedDelivery[] | null>(
     null,
   );
-  useEffect(
-    () => setDeliveryEdit(null),
-    [dataset?.id, plan?.id, plan?.revision],
-  );
+  const [sourceEdit, setSourceEdit] = useState<DeliverySource | null>(null);
+  useEffect(() => {
+    setDeliveryEdit(null);
+    setSourceEdit(null);
+  }, [dataset?.id, plan?.id, plan?.revision]);
+  const replay = p.target <= businessDate();
+  const savedSource = plan?.delivery_source ?? "manual";
+  const source: DeliverySource = replay
+    ? "manual"
+    : (sourceEdit ??
+      (plan && !selectedDatasetDiffers && p.target === plan.target_date
+        ? savedSource
+        : "registry"));
   const savedDeliveries = selectedDatasetDiffers
     ? []
     : (plan?.expected_deliveries ?? []);
@@ -73,6 +83,7 @@ export function ProcurementPlanning(p: Parameters<typeof PlanningSection>[0]) {
     inputError = (e as Error).message;
   }
   if (
+    source === "manual" &&
     deliveries.some(
       (row) =>
         !row.arrival_date ||
@@ -95,7 +106,10 @@ export function ProcurementPlanning(p: Parameters<typeof PlanningSection>[0]) {
       p.method !== plan.requested_method ||
       Number(lead) !== plan.lead_time_days ||
       (!selectedDatasetDiffers &&
-        (!sameStock || deliveriesChanged || !!inputError)));
+        (!sameStock ||
+          (sourceEdit !== null && source !== savedSource) ||
+          (source === "manual" && deliveriesChanged) ||
+          !!inputError)));
   const orderRows = (plan?.items ?? []).map((item) => {
     const value = p.quantities[item.product_id] ?? "";
     const stock =
@@ -145,6 +159,16 @@ export function ProcurementPlanning(p: Parameters<typeof PlanningSection>[0]) {
             Перейти к данным
           </button>
         </div>
+      )}
+      {!!dataset?.catalog?.length && (
+        <DeliveryRegistry
+          key={dataset.id}
+          datasetId={dataset.id}
+          branch={dataset.bakery_id}
+          catalog={dataset.catalog}
+          run={p.run}
+          disabled={p.busy}
+        />
       )}
       <div className="controls planning-controls">
         <div className="control-field">
@@ -203,8 +227,8 @@ export function ProcurementPlanning(p: Parameters<typeof PlanningSection>[0]) {
       <div className="data-guide stock-guide">
         <h3>Допущение о доступном остатке</h3>
         <p>
-          Укажите, сколько единиц останется к открытию в день продаж. Поставки,
-          перечисленные ниже, BakePlan добавит отдельно.
+          Укажите, сколько единиц останется к открытию в день продаж, включая
+          уже принятый товар. Ожидаемые поступления BakePlan добавит отдельно.
         </p>
         <p className="stock-rule">
           Пустое поле = остаток неизвестен: автоматический заказ отключён,
@@ -254,15 +278,42 @@ export function ProcurementPlanning(p: Parameters<typeof PlanningSection>[0]) {
             ))}
           </div>
         )}
-        {!!dataset?.catalog?.length && (
-          <ExpectedDeliveries
-            catalog={dataset.catalog}
-            deliveries={deliveries}
-            onChange={setDeliveryEdit}
-            target={p.target}
-            disabled={p.busy}
-          />
+        {!!dataset?.catalog?.length && !replay && (
+          <label className="control-field">
+            Источник поставок
+            <select
+              value={source}
+              disabled={p.busy}
+              onChange={(e) => setSourceEdit(e.target.value as DeliverySource)}
+            >
+              <option value="registry">Реестр филиала</option>
+              <option value="manual">Ввести для этого заказа</option>
+            </select>
+          </label>
         )}
+        {!!dataset?.catalog?.length &&
+          (source === "registry" ? (
+            <p>
+              В расчёт войдёт оставшееся в пути количество из реестра филиала{" "}
+              {dataset.bakery_id} со сроком от даты заказа до начала дня продаж.
+            </p>
+          ) : (
+            <>
+              {replay && (
+                <p>
+                  Для исторического расчёта введите поставки, которые ожидались
+                  на дату заказа.
+                </p>
+              )}
+              <ExpectedDeliveries
+                catalog={dataset.catalog}
+                deliveries={deliveries}
+                onChange={setDeliveryEdit}
+                target={p.target}
+                disabled={p.busy}
+              />
+            </>
+          ))}
       </div>
       {inputError && (
         <p role="alert" className="field-error">
@@ -292,9 +343,12 @@ export function ProcurementPlanning(p: Parameters<typeof PlanningSection>[0]) {
                 target_date: p.target,
                 cutoff: p.cutoff,
                 method: p.method,
-                mode: p.target <= businessDate() ? "replay" : "operational",
+                mode: replay ? "replay" : "operational",
                 lead_time_days: Number(lead),
-                expected_deliveries: deliveries,
+                delivery_source: source,
+                ...(source === "manual"
+                  ? { expected_deliveries: deliveries }
+                  : {}),
                 usable_stock_assumption: Object.fromEntries(
                   Object.entries(assumptions).filter(([productId]) =>
                     dataset?.catalog?.some(
@@ -337,6 +391,12 @@ export function ProcurementPlanning(p: Parameters<typeof PlanningSection>[0]) {
               Сохранённый срок поставки: {plan.lead_time_days}{" "}
               {dayWord(plan.lead_time_days ?? 0)}. Срез: {plan.cutoff}.
             </p>
+            {plan.delivery_source === "registry" && (
+              <p>
+                Поставки из реестра филиала {plan.bakery_id} зафиксированы на
+                момент расчёта.
+              </p>
+            )}
           </div>
           {selectedDatasetDiffers && (
             <p
@@ -457,6 +517,19 @@ export function ProcurementPlanning(p: Parameters<typeof PlanningSection>[0]) {
                             В пути к дате продаж: {i.incoming_units} шт.
                           </small>
                         )}
+                        {plan.registry_deliveries
+                          ?.filter(
+                            (delivery) => delivery.product_id === i.product_id,
+                          )
+                          .map((delivery) => (
+                            <small
+                              key={delivery.id}
+                              data-delivery-id={delivery.id}
+                            >
+                              № {delivery.number} · {delivery.arrival_date} ·{" "}
+                              {delivery.quantity} шт.
+                            </small>
+                          ))}
                       </td>
                       <td
                         className="numeric-cell forecast-cell"

@@ -19,6 +19,7 @@ from backend.schemas import (
     ForecastRequest,
 )
 from backend.dataset_identity import identity
+from backend import deliveries
 from backend.ml_service import train_dataset, models_for_dataset, create_forecast
 from backend.services import (
     ServiceError,
@@ -96,7 +97,7 @@ async def invalid_request(request, exc):
 
 @app.middleware("http")
 async def limit_body(request, call_next):
-    if request.method == "POST":
+    if request.method in {"POST", "PATCH"}:
         chunks, size = [], 0
         async for chunk in request.stream():
             size += len(chunk)
@@ -156,6 +157,33 @@ def datasets(
 @app.get("/api/datasets/{ident}")
 def dataset_detail(ident: str):
     return identity(get_dataset(ident))
+
+
+@app.get("/api/datasets/{ident}/deliveries")
+def branch_deliveries(ident: str):
+    return deliveries.list_deliveries(ident)
+
+
+@app.post("/api/datasets/{ident}/deliveries")
+def create_delivery(ident: str, body: deliveries.DeliveryRequest, response: Response):
+    delivery, created = deliveries.create_delivery(ident, body)
+    response.status_code = 201 if created else 200
+    return delivery
+
+
+@app.post("/api/datasets/{ident}/deliveries/{delivery_id}/receipts")
+def receive_delivery(ident: str, delivery_id: str, body: deliveries.ReceiptRequest):
+    return deliveries.receive_delivery(ident, delivery_id, body)
+
+
+@app.post("/api/datasets/{ident}/deliveries/{delivery_id}/cancel")
+def cancel_delivery(ident: str, delivery_id: str):
+    return deliveries.cancel_delivery(ident, delivery_id)
+
+
+@app.patch("/api/datasets/{ident}/deliveries/{delivery_id}")
+def reschedule_delivery(ident: str, delivery_id: str, body: deliveries.RescheduleRequest):
+    return deliveries.reschedule_delivery(ident, delivery_id, body)
 
 
 @app.post("/api/datasets/{ident}/train")

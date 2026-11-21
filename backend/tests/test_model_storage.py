@@ -317,8 +317,10 @@ def _legacy_database(path, version):
             "INSERT INTO confirmations VALUES (?,?,?,?)",
             ("p1", "key", " unchanged request ", plan),
         )
-        if version == 2:
+        if version >= 2:
             storage._migrate_v2(con)
+            if version == 3:
+                storage._migrate_v3(con)
         else:
             con.execute(f"PRAGMA user_version={version}")
         return {
@@ -328,11 +330,11 @@ def _legacy_database(path, version):
 
 
 @pytest.mark.parametrize("version", [0, 1, 2])
-def test_additive_v3_migration_preserves_legacy_bytes_and_backups(db, version):
+def test_additive_migrations_preserve_legacy_bytes_and_backups(db, version):
     original = _legacy_database(db, version)
     storage.initialize_database()
     with storage.connection() as con:
-        assert con.execute("PRAGMA user_version").fetchone()[0] == 3
+        assert con.execute("PRAGMA user_version").fetchone()[0] == storage.SQLITE_SCHEMA_VERSION
         for table, rows in original.items():
             current = con.execute(f"SELECT * FROM {table}").fetchall()
             assert [row[: len(rows[0])] for row in current] == rows
@@ -354,13 +356,42 @@ def test_additive_v3_migration_preserves_legacy_bytes_and_backups(db, version):
 
 
 def test_newer_schema_rejected_without_migration_or_backup(db):
+    newer = storage.SQLITE_SCHEMA_VERSION + 1
     with sqlite3.connect(db) as con:
-        con.execute("PRAGMA user_version=4")
+        con.execute(f"PRAGMA user_version={newer}")
     with pytest.raises(RuntimeError, match="newer"):
         storage.initialize_database()
     assert not list(db.parent.glob("*.bak"))
     with sqlite3.connect(db) as con:
-        assert con.execute("PRAGMA user_version").fetchone()[0] == 4
+        assert con.execute("PRAGMA user_version").fetchone()[0] == newer
+
+
+def test_v3_database_and_trained_model_survive_registry_migration(db):
+    _legacy_database(db, 3)
+    model_storage.save_training(model(), "training-key", "body")
+
+    def old_rows(con):
+        return {
+            table: con.execute(f"SELECT * FROM {table} ORDER BY rowid").fetchall()
+            for table in storage.SQLITE_V3_COLUMNS
+        }
+
+    with storage.connection(db) as con:
+        original = old_rows(con)
+    storage.initialize_database(db)
+    backup_path = db.with_name(db.name + ".pre-v4.bak")
+    with storage.connection(backup_path) as backup:
+        assert backup.execute("PRAGMA user_version").fetchone()[0] == 3
+        assert old_rows(backup) == original
+    with storage.connection(db) as live:
+        assert live.execute("PRAGMA user_version").fetchone()[0] == 4
+        assert old_rows(live) == original
+        for name in ("deliveries", "delivery_receipts"):
+            assert live.execute(f"SELECT count(*) FROM {name}").fetchone()[0] == 0
+    assert model_storage.previous_training("d1", "training-key", "body") == model()
+    before = backup_path.read_bytes()
+    storage.initialize_database(db)
+    assert backup_path.read_bytes() == before
 
 
 def test_existing_migration_backup_is_never_overwritten(db):

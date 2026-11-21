@@ -4,6 +4,19 @@ export type ExpectedDelivery = {
   arrival_date: string;
   quantity: number;
 };
+export type DeliverySource = "manual" | "registry";
+export type RegisteredDelivery = {
+  id: string;
+  bakery_id: string;
+  number: string;
+  product_id: string;
+  arrival_date: string;
+  ordered_qty: number;
+  received_qty: number;
+  remaining_qty: number;
+  status: "ordered" | "partial" | "received" | "cancelled";
+};
+export type CountedDelivery = ExpectedDelivery & { id: string; number: string };
 export type CatalogItem = {
   product_id: string;
   name: string;
@@ -59,6 +72,8 @@ export type PlanSummary = {
   lead_time_days?: number;
   usable_stock_assumption?: Record<string, number>;
   expected_deliveries?: ExpectedDelivery[];
+  delivery_source?: DeliverySource;
+  registry_deliveries?: CountedDelivery[];
   id: string;
   revision: number;
   status: string;

@@ -10,8 +10,8 @@ from pathlib import Path
 
 SCHEMA_VERSION = "history-1"
 MAX_SQLITE_INTEGER = 2**63 - 1
-SQLITE_SCHEMA_VERSION = 3
-SQLITE_SCHEMA_COLUMNS = {
+SQLITE_SCHEMA_VERSION = 4
+SQLITE_V3_COLUMNS = {
     "datasets": {
         "id", "payload", "schema_version", "source", "content_hash", "created_at",
         "row_count", "canonical_dataset_id",
@@ -27,6 +27,14 @@ SQLITE_SCHEMA_COLUMNS = {
     "revisions": {"plan_id", "revision", "payload"},
     "confirmations": {"plan_id", "key", "body", "response"},
     "dataset_import_keys": {"source", "schema_version", "content_hash", "dataset_id"},
+}
+SQLITE_SCHEMA_COLUMNS = {
+    **SQLITE_V3_COLUMNS,
+    "deliveries": {
+        "id", "bakery_id", "number", "product_id", "arrival_date", "initial_arrival_date",
+        "ordered_qty", "received_qty", "cancelled",
+    },
+    "delivery_receipts": {"delivery_id", "idempotency_key", "quantity", "received_at", "response"},
 }
 
 
@@ -90,6 +98,7 @@ def initialize_database(path=None):
     with connection(path) as con:
         if con.execute("PRAGMA user_version").fetchone()[0] == SQLITE_SCHEMA_VERSION:
             return
+        migrations = ((2, _migrate_v2), (3, _migrate_v3), (4, _migrate_v4))
         while True:
             con.execute("BEGIN IMMEDIATE")
             version = con.execute("PRAGMA user_version").fetchone()[0]
@@ -97,35 +106,17 @@ def initialize_database(path=None):
                 raise RuntimeError("Database schema is newer than this application")
             if version == SQLITE_SCHEMA_VERSION:
                 return
-            if version == 2:
-                _backup_database(path, 3)
-                break
-            existing_database = con.execute(
+            has_tables = con.execute(
                 "SELECT 1 FROM sqlite_master WHERE type='table' LIMIT 1"
             ).fetchone() is not None
-            if existing_database:
-                _backup_database(path, 2)
-            _migrate_v2(con)
-            if not existing_database:
-                break  # Initialize the entire empty database in one transaction.
+            if version == 0 and not has_tables:
+                for _, migrate in migrations:
+                    migrate(con)
+                return
+            target, migrate = next(step for step in migrations if step[0] > version)
+            _backup_database(path, target)
+            migrate(con)
             con.commit()
-        con.execute(
-            "CREATE TABLE models("
-            "id TEXT PRIMARY KEY,dataset_id TEXT NOT NULL,"
-            "training_cutoff TEXT NOT NULL,protocol_version TEXT NOT NULL,"
-            "payload TEXT NOT NULL,artifact_hash TEXT NOT NULL,"
-            "UNIQUE(dataset_id,training_cutoff,protocol_version))"
-        )
-        con.execute(
-            "CREATE TABLE training_requests("
-            "dataset_id TEXT NOT NULL,key TEXT NOT NULL,body TEXT NOT NULL,"
-            "model_id TEXT NOT NULL,PRIMARY KEY(dataset_id,key),"
-            "FOREIGN KEY(model_id) REFERENCES models(id))"
-        )
-        con.execute(
-            "CREATE INDEX model_dataset_cutoff ON models(dataset_id,training_cutoff)"
-        )
-        con.execute("PRAGMA user_version=3")
 
 
 def _migrate_v2(con):
@@ -190,6 +181,53 @@ def _migrate_v2(con):
     con.execute("CREATE INDEX dataset_created ON datasets(created_at)")
     con.execute("CREATE INDEX plan_created ON plans(created_at)")
     con.execute("PRAGMA user_version=2")
+
+
+def _migrate_v3(con):
+    con.execute(
+        "CREATE TABLE models("
+        "id TEXT PRIMARY KEY,dataset_id TEXT NOT NULL,"
+        "training_cutoff TEXT NOT NULL,protocol_version TEXT NOT NULL,"
+        "payload TEXT NOT NULL,artifact_hash TEXT NOT NULL,"
+        "UNIQUE(dataset_id,training_cutoff,protocol_version))"
+    )
+    con.execute(
+        "CREATE TABLE training_requests("
+        "dataset_id TEXT NOT NULL,key TEXT NOT NULL,body TEXT NOT NULL,"
+        "model_id TEXT NOT NULL,PRIMARY KEY(dataset_id,key),"
+        "FOREIGN KEY(model_id) REFERENCES models(id))"
+    )
+    con.execute("CREATE INDEX model_dataset_cutoff ON models(dataset_id,training_cutoff)")
+    con.execute("PRAGMA user_version=3")
+
+
+def _migrate_v4(con):
+    con.execute("""
+        CREATE TABLE deliveries(
+            id TEXT PRIMARY KEY NOT NULL,
+            bakery_id TEXT NOT NULL,
+            number TEXT NOT NULL,
+            product_id TEXT NOT NULL,
+            arrival_date TEXT NOT NULL,
+            initial_arrival_date TEXT NOT NULL,
+            ordered_qty INTEGER NOT NULL CHECK(ordered_qty BETWEEN 1 AND 1000000000),
+            received_qty INTEGER NOT NULL DEFAULT 0 CHECK(received_qty BETWEEN 0 AND ordered_qty),
+            cancelled INTEGER NOT NULL DEFAULT 0 CHECK(cancelled IN (0, 1)),
+            UNIQUE(bakery_id, number, product_id)
+        )
+    """)
+    con.execute("CREATE INDEX deliveries_arrival ON deliveries(bakery_id, arrival_date)")
+    con.execute("""
+        CREATE TABLE delivery_receipts(
+            delivery_id TEXT NOT NULL REFERENCES deliveries(id),
+            idempotency_key TEXT NOT NULL,
+            quantity INTEGER NOT NULL CHECK(quantity BETWEEN 1 AND 1000000000),
+            received_at TEXT NOT NULL,
+            response TEXT NOT NULL,
+            PRIMARY KEY(delivery_id, idempotency_key)
+        )
+    """)
+    con.execute("PRAGMA user_version=4")
 
 
 def fetch(con, table, ident):
@@ -272,13 +310,17 @@ def _update_plan_metadata(con, plan, ident):
 
 def save_plan(plan):
     with connection() as con:
-        payload = json.dumps(plan)
-        con.execute("INSERT INTO plans(id,payload) VALUES (?,?)", (plan["id"], payload))
-        _update_plan_metadata(con, plan, plan["id"])
-        con.execute(
-            "INSERT INTO revisions VALUES (?,?,?)",
-            (plan["id"], plan["revision"], payload),
-        )
+        insert_plan(con, plan)
+
+
+def insert_plan(con, plan):
+    payload = json.dumps(plan)
+    con.execute("INSERT INTO plans(id,payload) VALUES (?,?)", (plan["id"], payload))
+    _update_plan_metadata(con, plan, plan["id"])
+    con.execute(
+        "INSERT INTO revisions VALUES (?,?,?)",
+        (plan["id"], plan["revision"], payload),
+    )
 
 
 def update_plan(con, plan):
