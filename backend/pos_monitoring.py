@@ -67,9 +67,10 @@ class _NoRedirect(HTTPRedirectHandler):
 def _send_success(check_id):
     # Accept only a check UUID. Neither credentials nor branch data accompany the signal.
     sender = build_opener(ProxyHandler({}), _NoRedirect())
-    req = Request(f"https://hc-ping.com/{UUID(check_id)}", method="HEAD")
+    req = Request(f"https://hc-ping.com/{UUID(check_id)}", method="POST", data=b"")
     with sender.open(req, timeout=4) as response:
-        return response.status == 200
+        # The hosted service also returns 200 for unknown and rate-limited checks.
+        return response.status == 200 and response.read(32).strip() == b"OK"
 
 
 def notify_ready(clock, *, only=None):

@@ -76,7 +76,9 @@ def test_deadline_cli_counts_silent_days_and_eligible_working_days(tmp_path):
     assert partial["late"] == 0 and partial["missing"] == partial["on_time"] == 1
 
 
-def test_uuid_only_heartbeat_sends_no_payload_or_redirect(monkeypatch):
+@pytest.mark.parametrize(("ack", "accepted"), [(b"OK", True), (b"OK (not found)", False),
+                                                (b"OK (rate limited)", False)])
+def test_uuid_only_heartbeat_sends_no_payload_or_redirect(monkeypatch, ack, accepted):
     from urllib.request import Request
     from uuid import uuid4
 
@@ -85,16 +87,17 @@ def test_uuid_only_heartbeat_sends_no_payload_or_redirect(monkeypatch):
     class Check:
         def open(self, req, timeout):
             assert req.full_url == f"https://hc-ping.com/{check_id}"
-            assert req.get_method() == "HEAD" and req.data is None and not req.headers
+            assert req.get_method() == "POST" and req.data == b"" and not req.headers
             assert timeout == 4
             class Response:
                 status = 200
+                def read(self, limit): return ack[:limit]
                 def __enter__(self): return self
                 def __exit__(self, *exc): pass
             return Response()
 
     monkeypatch.setattr(pos_monitoring, "build_opener", lambda *args: Check())
-    assert pos_monitoring._send_success(check_id)
+    assert pos_monitoring._send_success(check_id) is accepted
     with pytest.raises(ValueError):
         pos_monitoring._send_success("https://example.invalid/")
     assert pos_monitoring._NoRedirect().redirect_request(Request("https://hc-ping.com"),
