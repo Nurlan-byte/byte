@@ -62,11 +62,14 @@ python -m pip install -r tools/requirements-tracking.txt
 python -m tools.track_forecast benchmarks/open-sales/results/volume_quality.json --database data/forecast-experiments.sqlite3
 python -m tools.track_forecast benchmarks/open-sales/results/receipt_quality.json --database data/forecast-experiments.sqlite3
 python -m tools.track_forecast benchmarks/open-sales/results/sparse_tsb.json --database data/forecast-experiments.sqlite3
+python -m tools.track_forecast benchmarks/open-sales/results/sparse_bias.json --database data/forecast-experiments.sqlite3
 ```
 
 В одной базе MLflow создаёт два эксперимента. В `BakePlan purchase forecasts` хранится оценка закупки, в `BakePlan receipt counts` — оценка числа строк чеков. Для просмотра откройте `mlflow ui --backend-store-uri sqlite:///data/forecast-experiments.sqlite3` из корня проекта и выберите нужный эксперимент.
 
 Для редких продаж в штуках сохранены MAE рабочего прогноза, B1 и поправки TSB, покрытие фактическими продажами и суммарное отклонение в штуках по каждой группе. Результаты подбора и контрольного периода разделены. [Выборка M5](../benchmarks/open-sales/m5-panel.md) · [Итог сравнения](../benchmarks/open-sales/results/sparse_tsb.json)
+
+В следующем опыте поправку ограничили средней прошлой ошибкой товара. MLflow отдельно показывает результаты на знакомых источниках (`regression`) и трёх новых магазинах (`confirmation`), включая число изменённых прогнозов и суммарную величину поправок. [Правило и критерии](../benchmarks/open-sales/sparse_bias_protocol.json)
 
 В отчёте по чекам группа `original_week` воспроизводит сравнение за 24–30 сентября 2025 года. В `all` записаны средняя абсолютная ошибка (MAE) и её изменение в процентах относительно прежнего метода Ridge/B1. Положительное изменение означает рост ошибки. В группах `zero` и `positive` хранятся число наблюдений (`n`) и суммы абсолютных ошибок (`baseline_ae_sum`, `candidate_ae_sum`, `legacy_ae_sum`) для дней с нулём строк чеков и с одной или более строками соответственно. По разности сумм можно проверить вклад каждой группы в результат. Эти показатели агрегированы за неделю. Решение о выпуске хранится отдельно в теге `gate` и опирается на основной контрольный период.
 

@@ -26,7 +26,7 @@ def sha256(path):
         return hashlib.file_digest(stream, "sha256").hexdigest()
 
 
-def prepare_tables(db, raw, stores):
+def prepare_tables(db, raw, stores=STORES):
     """Retain missing cells and calculate store activity across the entire assortment."""
     days = ",".join(f"d_{i}" for i in range(FIRST_DAY, LAST_DAY + 1))
     db.execute("""

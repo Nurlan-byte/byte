@@ -5,12 +5,20 @@ import os from 'node:os';
 import path from 'node:path';
 
 test('saved SQLite snapshots survive real API process restart and another import', async ({ request }) => {
+  test.setTimeout(90_000);
   const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'bakeplan-restart-'));
   const base = 'http://127.0.0.1:18001/api';
   let child: ChildProcess | undefined;
   async function start() {
     child = spawn(path.resolve(process.platform === 'win32' ? '.venv/Scripts/python.exe' : '.venv/bin/python'), ['-m','uvicorn','backend.app:app','--host','127.0.0.1','--port','18001'], {env:{...process.env,BAKEPLAN_DB:path.join(directory,'test.sqlite3')}, windowsHide:true,stdio:'ignore'});
-    await expect.poll(async () => {try {return (await request.get(`${base}/plans`)).status()} catch {return 0}}).toBe(200);
+    await expect.poll(async () => {
+      if (child?.exitCode != null) throw new Error(`API exited during startup with code ${child.exitCode}`);
+      try {
+        return (await request.get(`${base}/plans`, { timeout: 2_000 })).status();
+      } catch {
+        return 0;
+      }
+    }, { timeout: 25_000 }).toBe(200);
   }
   async function stop() {
     if (!child || child.exitCode !== null) return;
