@@ -7,6 +7,7 @@ from typing import Literal
 
 from fastapi import APIRouter
 
+from backend.branch_access import current_branch, require_branch
 from backend.config import business_today
 from backend.errors import ServiceError
 from backend.procurement_planning import has_order_suggestion, pack_adjustment
@@ -24,6 +25,7 @@ def order_adjustments(
     source: Literal["local", "external", "synthetic"] = "local",
     actual_dataset_id: str | None = None,
 ):
+    require_branch(bakery_id)
     if end < start:
         raise ServiceError(422, "Конец периода должен быть не раньше начала.")
     seen = set()
@@ -60,10 +62,11 @@ def order_adjustments(
                 and start.isoformat() <= r["date"] <= end.isoformat()
                 and r["date"] < today
             }
+        owner_column = "branch_id" if current_branch() is not None else "json_extract(payload,'$.bakery_id')"
         for (payload,) in con.execute(
-            """
+            f"""
             SELECT payload FROM plans WHERE status='confirmed' AND target_date BETWEEN ? AND ?
-            AND source=? AND json_extract(payload,'$.bakery_id')=?
+            AND source=? AND {owner_column}=?
             AND json_extract(payload,'$.planning_kind')='procurement' AND json_extract(payload,'$.mode')=?
             ORDER BY coalesce(json_extract(payload,'$.confirmed_at'),created_at) DESC, rowid DESC
         """,

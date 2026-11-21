@@ -122,7 +122,7 @@ def measure(args, directory):
     db = directory / "orders.sqlite3"
     key = directory / "test.key"
     pos_vault.init_key(key)
-    os.environ.update(BAKEPLAN_DB=str(db), BAKEPLAN_POS_MASTER_KEY_FILE=str(key), BAKEPLAN_POS_ENABLED="1",
+    os.environ.update(BAKEPLAN_DB=str(db), BAKEPLAN_LOCAL_DEMO="1", BAKEPLAN_POS_MASTER_KEY_FILE=str(key), BAKEPLAN_POS_ENABLED="1",
                       HF_HUB_OFFLINE="1", K6_NO_USAGE_REPORT="true")
     for name in ("BAKEPLAN_HEALTHCHECKS_FILE", "OTEL_EXPORTER_OTLP_TRACES_ENDPOINT"):
         os.environ.pop(name, None)

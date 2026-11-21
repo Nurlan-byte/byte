@@ -2,6 +2,9 @@ import { defineConfig } from '@playwright/test';
 import path from 'node:path';
 import os from 'node:os';
 
+// Each synthetic server, including subprocesses in restart tests, owns a disposable loopback database.
+process.env.BAKEPLAN_LOCAL_DEMO = '1';
+
 export default defineConfig({
   testDir: './e2e', workers: 1, timeout: 30_000,
   use: { baseURL: 'http://127.0.0.1:15173', trace: 'retain-on-failure',

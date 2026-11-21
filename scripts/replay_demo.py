@@ -50,15 +50,17 @@ def digest(value):
 
 @contextmanager
 def replay_database(path):
-    previous = os.environ.get("BAKEPLAN_DB")
-    os.environ["BAKEPLAN_DB"] = str(path)
+    settings = {"BAKEPLAN_DB": str(path), "BAKEPLAN_LOCAL_DEMO": "1"}
+    previous = {name: os.environ.get(name) for name in settings}
+    os.environ.update(settings)
     try:
         yield
     finally:
-        if previous is None:
-            os.environ.pop("BAKEPLAN_DB", None)
-        else:
-            os.environ["BAKEPLAN_DB"] = previous
+        for name, value in previous.items():
+            if value is None:
+                os.environ.pop(name, None)
+            else:
+                os.environ[name] = value
 
 
 def table_counts():

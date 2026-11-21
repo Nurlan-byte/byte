@@ -3,6 +3,8 @@ import path from 'node:path';
 import os from 'node:os';
 import { randomUUID } from 'node:crypto';
 
+process.env.BAKEPLAN_LOCAL_DEMO = '1';
+
 const python = path.resolve(process.platform === 'win32' ? '.venv/Scripts/python.exe' : '.venv/bin/python');
 
 // A separate invocation, ports and new SQLite isolate the recording from both

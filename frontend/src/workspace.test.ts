@@ -10,6 +10,27 @@ import type { Dataset, Plan } from "./types";
 
 afterEach(() => vi.unstubAllGlobals());
 
+test("last order and POS references belong to the signed-in account and branch", () => {
+  const entries = new Map<string, string>();
+  vi.stubGlobal("localStorage", {
+    getItem: (key: string) => entries.get(key) ?? null,
+    setItem: (key: string, value: string) => entries.set(key, value),
+    removeItem: (key: string) => entries.delete(key),
+  });
+  const first = { bakery_id: "north", operator_id: "admin" };
+  const colleague = { bakery_id: "north", operator_id: "colleague" };
+  const transferred = { bakery_id: "south", operator_id: "admin" };
+  for (const key of ["plan", "dataset", "pos-mode", "pos-connection"] as const) {
+    workspaceReference(key, "older-demo");
+    expect(workspaceReference(key, undefined, first)).toBeNull();
+    workspaceReference(key, "first-branch", first);
+    expect(workspaceReference(key, undefined, first)).toBe("first-branch");
+    expect(workspaceReference(key, undefined, colleague)).toBeNull();
+    expect(workspaceReference(key, undefined, transferred)).toBeNull();
+    expect(workspaceReference(key)).toBe("older-demo");
+  }
+});
+
 test("blocked browser storage never prevents the server workflow", () => {
   vi.stubGlobal("localStorage", {
     getItem() {

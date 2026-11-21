@@ -92,6 +92,8 @@ jobs:
           npm.cmd run build
       - name: Browser flow and restart
         run: npm.cmd run test:e2e
+      - name: Verify order isolation with two branch logins
+        run: npx.cmd playwright test --config=playwright.branch.config.ts
       - name: Capture matching pre-polish UI baseline
         run: |
           $PSNativeCommandUseErrorActionPreference = $true

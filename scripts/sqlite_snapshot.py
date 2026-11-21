@@ -20,7 +20,7 @@ from pathlib import Path
 from backend import model_storage
 from backend.storage import SQLITE_SCHEMA_COLUMNS as COLUMNS
 from backend.storage import SQLITE_SCHEMA_VERSION as SCHEMA_VERSION
-from backend.storage import SQLITE_V3_COLUMNS, SQLITE_V4_COLUMNS, SQLITE_V5_COLUMNS
+from backend.storage import SQLITE_V3_COLUMNS, SQLITE_V4_COLUMNS, SQLITE_V5_COLUMNS, SQLITE_V6_COLUMNS
 
 FORMAT = "bakeplan-sqlite-snapshot-1"
 
@@ -73,7 +73,7 @@ def inspect_database(path):
                 raise SnapshotError("SQLite integrity_check failed")
             version = con.execute("PRAGMA user_version").fetchone()[0]
             expected_columns = {3: SQLITE_V3_COLUMNS, 4: SQLITE_V4_COLUMNS, 5: SQLITE_V5_COLUMNS,
-                                SCHEMA_VERSION: COLUMNS}.get(version)
+                                6: SQLITE_V6_COLUMNS, SCHEMA_VERSION: COLUMNS}.get(version)
             if expected_columns is None:
                 raise SnapshotError(f"Unsupported BakePlan schema version {version}")
             tables = {

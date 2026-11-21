@@ -3,12 +3,12 @@ import { OrderAdjustmentReport } from "./OrderAdjustmentReport";
 import {
   savedDataset,
   forPlanningKind,
-  workspaceReference,
   hasQuantityChanges,
   initialQuantity,
   productActiveOnTarget,
 } from "./workspace";
 import { Icon } from "./Icon";
+import { useWorkspaceReference, useWorkspaceSession } from "./WorkspaceAccess";
 import {
   DatasetContext,
   PlanHeader,
@@ -33,6 +33,8 @@ import { PlanningSection } from "./PlanningSection";
 import { HistorySection, HISTORY_PAGE_SIZE } from "./HistorySection";
 
 export function App() {
+  const { bakery_id: assignedBranch } = useWorkspaceSession();
+  const workspaceReference = useWorkspaceReference();
   const [planningKind, setPlanningKind] = useState<
     "production" | "procurement"
   >("production");
@@ -56,7 +58,8 @@ export function App() {
     [busy, setBusy] = useState(true),
     [error, setError] = useState(""),
     [notice, setNotice] = useState("");
-  const [bakeryId, setBakeryId] = useState("demo");
+  const [formBakeryId, setBakeryId] = useState("demo");
+  const bakeryId = assignedBranch ?? formBakeryId;
   const [dataTarget, setDataTarget] = useState<DatasetTarget>("sold_units");
   const [provenance, setProvenance] = useState(
     "Синтетическая демонстрация BakePlan",
@@ -115,6 +118,12 @@ export function App() {
         : Promise.resolve(null),
     ]).then(([data, previousPlan, plans, latest]) => {
       if (!active) return;
+      if (data.status === "rejected" && data.reason instanceof ApiError && data.reason.status === 404) {
+        workspaceReference("dataset", null);
+      }
+      if (previousPlan.status === "rejected" && previousPlan.reason instanceof ApiError && previousPlan.reason.status === 404) {
+        workspaceReference("plan", null);
+      }
       const fresh = latest.status === "fulfilled" ? latest.value : null;
       const restoredDataset =
         fresh?.dataset ?? (data.status === "fulfilled" ? data.value : null);
@@ -299,6 +308,7 @@ export function App() {
       setDataset(value);
     },
     bakeryId,
+    branchLocked: assignedBranch !== null,
     setBakeryId,
     dataTarget,
     setDataTarget,
@@ -395,6 +405,7 @@ export function App() {
         }}
       />
       <main id="workspace" tabIndex={-1}>
+        {assignedBranch && <p className="muted">Филиал: <strong>{assignedBranch}</strong></p>}
         {view === "planning" && (
           <PlanHeader kind={planningKind} target={target} />
         )}

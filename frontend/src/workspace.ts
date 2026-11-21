@@ -27,13 +27,22 @@ export function savedDataset(result: Dataset): Dataset {
   };
 }
 
+export type WorkspaceSession =
+  | { bakery_id: string; operator_id: string }
+  | { bakery_id: null; operator_id: null };
+export type WorkspaceKey = "dataset" | "plan" | "pos-mode" | "pos-connection";
+
 // Store references only. Quantities and CSV drafts are never restored as saved data.
 export function workspaceReference(
-  key: "dataset" | "plan" | "pos-mode" | "pos-connection",
+  key: WorkspaceKey,
   value?: string | null,
+  session?: WorkspaceSession,
 ) {
   try {
-    const name = `bakeplan.owner.${key}`;
+    const scope = session?.bakery_id == null
+      ? "owner"
+      : `account.${JSON.stringify([session.operator_id, session.bakery_id])}`;
+    const name = `bakeplan.${scope}.${key}`;
     if (value === undefined) return localStorage.getItem(name);
     if (value) localStorage.setItem(name, value);
     else localStorage.removeItem(name);

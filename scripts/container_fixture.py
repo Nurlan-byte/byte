@@ -75,7 +75,7 @@ def seed(state_path):
     plan = request(f"/api/plans/{plan['id']}/confirm", confirm_body)
     export = request(f"/api/plans/{plan['id']}/export", text=True)
     shop = request("/api/datasets", {
-        "schema_version": "procurement-1", "source": "synthetic", "bakery_id": "ci-bar",
+        "schema_version": "procurement-1", "source": "synthetic", "bakery_id": "synthetic-deployment",
         "target": "sold_units", "unit": "physical_unit", "provenance": "Synthetic registry check",
         "catalog": [{"product_id": "water", "name": "Water", "pack_size": 6}],
         "csv_text": "date,product_id,opening,received,sold,waste,closing\n2026-01-01,water,0,12,12,0,0",

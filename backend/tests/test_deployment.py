@@ -123,6 +123,7 @@ def test_backup_restore_preserves_all_state_and_retry_keys(
     backup = tmp_path / "snapshots" / "demo.sqlite3"
     summary = snapshots.create_backup(database, backup)
     assert summary["table_counts"] == {
+        "branch_accounts": 0,
         "datasets": 1,
         "plans": 1,
         "models": 1,

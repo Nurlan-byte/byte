@@ -146,6 +146,7 @@ for (const width of [360, 768, 1440]) {
     await page.route("**/api/**", async (route) => {
       const req = route.request();
       const url = new URL(req.url());
+      if (url.pathname === "/api/session") return route.continue();
       let body: any = [];
       if (req.method() === "POST" && url.pathname === "/api/datasets") {
         const input = req.postDataJSON();

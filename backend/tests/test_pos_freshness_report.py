@@ -22,7 +22,8 @@ def test_v5_monitoring_migration_preserves_legacy_backup(tmp_path, monkeypatch):
         storage._migrate_v3(db)
         storage._migrate_v4(db)
         storage._migrate_v5(db)
-    storage.save_dataset({"id": "data", "rows": [], "version": "saved"})
+        db.execute("INSERT INTO datasets (id,payload) VALUES ('data',?)",
+                   (json.dumps({"id": "data", "rows": [], "version": "saved"}),))
     legacy_forecast = '{"result":{"dataset_id":"data"},"targetDate":"2026-01-03"}'
     with storage.connection(path) as db:
         db.execute("""INSERT INTO pos_connections

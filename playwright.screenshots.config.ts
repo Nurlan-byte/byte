@@ -2,6 +2,8 @@ import { defineConfig } from '@playwright/test';
 import path from 'node:path';
 import os from 'node:os';
 
+process.env.BAKEPLAN_LOCAL_DEMO = '1';
+
 const sourceRoot = path.resolve(process.env.BAKEPLAN_CAPTURE_SOURCE_DIR ?? '.');
 const python = path.resolve(process.platform === 'win32' ? '.venv/Scripts/python.exe' : '.venv/bin/python');
 const variant = process.env.BAKEPLAN_CAPTURE_BASELINE === '1' ? 'before' : 'after';

@@ -8,9 +8,11 @@ from contextlib import contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
 
+from backend.branch_access import current_branch
+
 SCHEMA_VERSION = "history-1"
 MAX_SQLITE_INTEGER = 2**63 - 1
-SQLITE_SCHEMA_VERSION = 6
+SQLITE_SCHEMA_VERSION = 7
 SQLITE_V3_COLUMNS = {
     "datasets": {
         "id", "payload", "schema_version", "source", "content_hash", "created_at",
@@ -44,11 +46,17 @@ SQLITE_V5_COLUMNS = {
         "lease_token", "lease_until", "dataset_id", "forecast", "target_date",
     },
 }
-SQLITE_SCHEMA_COLUMNS = {
+SQLITE_V6_COLUMNS = {
     **SQLITE_V5_COLUMNS,
     "pos_monitoring_epochs": {"connection_id", "started_at", "ended_at"},
     "pos_fresh_days": {"connection_id", "business_day", "observed_through", "fresh_at",
                        "pinged_at", "ping_token", "next_ping_at"},
+}
+SQLITE_SCHEMA_COLUMNS = {
+    **SQLITE_V6_COLUMNS,
+    "datasets": SQLITE_V6_COLUMNS["datasets"] | {"branch_id"},
+    "plans": SQLITE_V6_COLUMNS["plans"] | {"branch_id"},
+    "branch_accounts": {"username", "bakery_id", "password_hash"},
 }
 
 
@@ -113,7 +121,7 @@ def initialize_database(path=None):
         if con.execute("PRAGMA user_version").fetchone()[0] == SQLITE_SCHEMA_VERSION:
             return
         migrations = ((2, _migrate_v2), (3, _migrate_v3), (4, _migrate_v4), (5, _migrate_v5),
-                      (6, _migrate_v6))
+                      (6, _migrate_v6), (7, _migrate_v7))
         while True:
             con.execute("BEGIN IMMEDIATE")
             version = con.execute("PRAGMA user_version").fetchone()[0]
@@ -288,10 +296,74 @@ def _migrate_v6(con):
     con.execute("PRAGMA user_version=6")
 
 
+def _dataset_owner(dataset):
+    label = dataset.get("bakery_id")
+    assigned = dataset.get("owner_bakery_id")
+    if not isinstance(label, str) or not label.strip():
+        return None
+    if assigned is not None:
+        return label if assigned == label else None
+    if dataset.get("metadata_declared") is False or (
+        label == "legacy" and dataset.get("metadata_declared") is not True
+    ):
+        return None
+    return label
+
+
+def _plan_owner(con, plan):
+    row = con.execute("SELECT branch_id FROM datasets WHERE id=?", (plan.get("dataset_id"),)).fetchone()
+    if row and ("bakery_id" not in plan or plan["bakery_id"] == row[0]):
+        return row[0]
+    return None
+
+
+def _migrate_v7(con):
+    con.execute("""CREATE TABLE branch_accounts(
+        username TEXT PRIMARY KEY NOT NULL, bakery_id TEXT NOT NULL, password_hash TEXT
+    )""")
+    con.execute("ALTER TABLE datasets ADD COLUMN branch_id TEXT")
+    con.execute("ALTER TABLE plans ADD COLUMN branch_id TEXT")
+    for ident, raw in con.execute("SELECT id,payload FROM datasets WHERE json_valid(payload)"):
+        dataset = json.loads(raw)
+        if isinstance(dataset, dict) and dataset.get("id") == ident:
+            con.execute("UPDATE datasets SET branch_id=? WHERE id=?", (_dataset_owner(dataset), ident))
+    for ident, dataset_id, raw in con.execute("SELECT id,dataset_id,payload FROM plans WHERE json_valid(payload)"):
+        plan = json.loads(raw)
+        if isinstance(plan, dict) and plan.get("id") == ident and plan.get("dataset_id") == dataset_id:
+            con.execute("UPDATE plans SET branch_id=? WHERE id=?", (_plan_owner(con, plan), ident))
+    # A contradictory historical revision or receipt makes the entire order ambiguous.
+    for table, column in (("revisions", "payload"), ("confirmations", "response")):
+        con.execute(f"""
+            UPDATE plans SET branch_id=NULL WHERE branch_id IS NOT NULL AND EXISTS (
+                SELECT 1 FROM {table} h WHERE h.plan_id=plans.id AND CASE WHEN json_valid(h.{column}) THEN
+                    json_extract(h.{column},'$.id') IS NOT plans.id
+                    OR (json_type(h.{column},'$.bakery_id') IS NOT NULL
+                        AND json_extract(h.{column},'$.bakery_id') IS NOT plans.branch_id)
+                    OR (json_type(h.{column},'$.dataset_id') IS NOT NULL
+                        AND json_extract(h.{column},'$.dataset_id') IS NOT plans.dataset_id)
+                ELSE 1 END
+            )
+        """)
+    con.execute("CREATE INDEX datasets_branch ON datasets(branch_id)")
+    con.execute("CREATE INDEX plans_branch ON plans(branch_id)")
+    # Old imports could share a canonical ID assigned before branches existed.
+    con.execute("""
+        UPDATE datasets SET canonical_dataset_id=id WHERE branch_id IS NOT NULL AND NOT EXISTS (
+            SELECT 1 FROM datasets canonical
+            WHERE canonical.id=datasets.canonical_dataset_id AND canonical.branch_id=datasets.branch_id
+        )
+    """)
+    con.execute("PRAGMA user_version=7")
+
+
 def fetch(con, table, ident):
     if table not in {"datasets", "plans"}:
         raise ValueError("Unsupported object table")
-    row = con.execute(f"SELECT payload FROM {table} WHERE id=?", (ident,)).fetchone()
+    branch = current_branch()
+    if branch is None:
+        row = con.execute(f"SELECT payload FROM {table} WHERE id=?", (ident,)).fetchone()
+    else:
+        row = con.execute(f"SELECT payload FROM {table} WHERE id=? AND branch_id=?", (ident, branch)).fetchone()
     if row is None:
         raise NotFound(ident)
     return json.loads(row[0])
@@ -304,15 +376,15 @@ def get_dataset(ident):
 
 def get_plan(ident, revision=None):
     with connection() as con:
+        current = fetch(con, "plans", ident)
         if revision is None:
-            return fetch(con, "plans", ident)
+            return current
         row = con.execute(
             "SELECT payload FROM revisions WHERE plan_id=? AND revision=?",
             (ident, revision),
         ).fetchone()
         if row is None:
             # Older databases can have a current plan without a history row.
-            current = fetch(con, "plans", ident)
             if current.get("revision", 0) == revision:
                 return current
             raise NotFound((ident, revision))
@@ -321,17 +393,31 @@ def get_plan(ident, revision=None):
 
 def save_dataset(dataset):
     schema, source, content_hash, created_at, count = dataset_metadata(dataset)
+    owner = _dataset_owner(dataset)
+    branch = current_branch()
+    if branch is not None and branch != owner:
+        raise NotFound(dataset["id"])
     with connection() as con:
         con.execute("BEGIN IMMEDIATE")
         existing = con.execute(
-            "SELECT dataset_id FROM dataset_import_keys WHERE source=? AND schema_version=? AND content_hash=?",
+            """SELECT k.dataset_id, d.branch_id FROM dataset_import_keys k
+               JOIN datasets d ON d.id=k.dataset_id
+               WHERE k.source=? AND k.schema_version=? AND k.content_hash=?""",
             (source, schema, content_hash),
         ).fetchone()
         if existing:
-            return fetch(con, "datasets", existing[0]), False
+            if existing[1] == owner:
+                return fetch(con, "datasets", existing[0]), False
+            # Current imports hash the branch into their content. Older hashes can collide.
+            match = con.execute("""
+                SELECT id FROM datasets WHERE branch_id IS ? AND source=?
+                AND schema_version=? AND content_hash=? ORDER BY rowid LIMIT 1
+            """, (owner, source, schema, content_hash)).fetchone()
+            if match:
+                return fetch(con, "datasets", match[0]), False
         ident = dataset["id"]
         con.execute(
-            "INSERT INTO datasets(id,payload,schema_version,source,content_hash,created_at,row_count,canonical_dataset_id) VALUES (?,?,?,?,?,?,?,?)",
+            "INSERT INTO datasets(id,payload,schema_version,source,content_hash,created_at,row_count,canonical_dataset_id,branch_id) VALUES (?,?,?,?,?,?,?,?,?)",
             (
                 ident,
                 json.dumps(dataset),
@@ -341,10 +427,11 @@ def save_dataset(dataset):
                 created_at,
                 count,
                 ident,
+                owner,
             ),
         )
         con.execute(
-            "INSERT INTO dataset_import_keys VALUES (?,?,?,?)",
+            "INSERT OR IGNORE INTO dataset_import_keys VALUES (?,?,?,?)",
             (source, schema, content_hash, ident),
         )
         return dataset, True
@@ -373,7 +460,11 @@ def save_plan(plan):
 
 def insert_plan(con, plan):
     payload = json.dumps(plan)
-    con.execute("INSERT INTO plans(id,payload) VALUES (?,?)", (plan["id"], payload))
+    owner = _plan_owner(con, plan)
+    branch = current_branch()
+    if branch is not None and branch != owner:
+        raise NotFound(plan["dataset_id"])
+    con.execute("INSERT INTO plans(id,payload,branch_id) VALUES (?,?,?)", (plan["id"], payload, owner))
     _update_plan_metadata(con, plan, plan["id"])
     con.execute(
         "INSERT INTO revisions VALUES (?,?,?)",
@@ -382,12 +473,22 @@ def insert_plan(con, plan):
 
 
 def update_plan(con, plan):
-    if (
-        con.execute(
-            "UPDATE plans SET payload=? WHERE id=?", (json.dumps(plan), plan["id"])
-        ).rowcount
-        != 1
-    ):
+    branch = current_branch()
+    owner = _plan_owner(con, plan)
+    params = (json.dumps(plan), plan["id"])
+    if branch is None:
+        changed = con.execute(
+            "UPDATE plans SET payload=? WHERE id=? AND (branch_id IS NULL OR (branch_id=? AND dataset_id=?))",
+            (*params, owner, plan.get("dataset_id")),
+        )
+    else:
+        if owner != branch:
+            raise NotFound(plan["id"])
+        changed = con.execute(
+            "UPDATE plans SET payload=? WHERE id=? AND branch_id=? AND dataset_id=?",
+            (*params, branch, plan["dataset_id"]),
+        )
+    if changed.rowcount != 1:
         raise NotFound(plan["id"])
     _update_plan_metadata(con, plan, plan["id"])
 
@@ -404,10 +505,13 @@ def _summaries(table, columns, limit, offset, extras=None):
     extras = extras or {}
     selections = [*columns, *(f"{expression} AS {name}" for name, expression in extras.items())]
     keys = [*columns, *extras]
+    branch = current_branch()
+    condition = "" if branch is None else "WHERE branch_id=?"
+    scope = () if branch is None else (branch,)
     with connection() as con:
         rows = con.execute(
-            f"SELECT {','.join(selections)} FROM {table} ORDER BY rowid DESC LIMIT ? OFFSET ?",
-            (limit, offset),
+            f"SELECT {','.join(selections)} FROM {table} {condition} ORDER BY rowid DESC LIMIT ? OFFSET ?",
+            (*scope, limit, offset),
         )
         return [dict(zip(keys, row, strict=True)) for row in rows]
 

@@ -372,8 +372,8 @@ def test_v3_database_and_trained_model_survive_registry_migration(db):
 
     def old_rows(con):
         return {
-            table: con.execute(f"SELECT * FROM {table} ORDER BY rowid").fetchall()
-            for table in storage.SQLITE_V3_COLUMNS
+            table: con.execute(f"SELECT {','.join(sorted(columns))} FROM {table} ORDER BY rowid").fetchall()
+            for table, columns in storage.SQLITE_V3_COLUMNS.items()
         }
 
     with storage.connection(db) as con:

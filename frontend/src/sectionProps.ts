@@ -8,6 +8,7 @@ export type SectionProps = {
   source: string;
   setSource: Setter<string>;
   bakeryId: string;
+  branchLocked?: boolean;
   setBakeryId: Setter<string>;
   dataTarget: DatasetTarget;
   setDataTarget: Setter<DatasetTarget>;

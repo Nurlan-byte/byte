@@ -14,12 +14,14 @@ from time import monotonic, sleep
 from unittest.mock import patch
 from uuid import uuid4
 
+import bcrypt
 from fastapi.testclient import TestClient
 import pytest
 
-from backend import context_sources, pos_monitoring, pos_providers, pos_sync, pos_vault, storage
+from backend import branch_accounts, context_sources, pos_import, pos_monitoring, pos_providers, pos_sync, pos_vault, storage
 from backend.app import app
 from backend.errors import ServiceError
+from scripts import pos_branches
 
 URL = "/api/pos/connections"
 TOKEN = "operator-test-key-123"
@@ -88,6 +90,75 @@ def register(client, **kwargs):
     return client.post(
         URL, json={"provider": "poster", "api_key": TOKEN, "days": 14, **kwargs}
     )
+
+
+@pytest.mark.parametrize("provider", ["poster", "moysklad"])
+def test_operator_looks_up_branch_ids_without_saving_keys_or_reading_sales(shop, provider, monkeypatch, capsys):
+    shop["shops"] = ["1", "2"]
+    monkeypatch.setattr(pos_branches, "getpass", lambda _: TOKEN)
+    pos_branches.main([provider])
+    output = capsys.readouterr()
+    assert TOKEN not in output.out + output.err
+    for number, line in zip(shop["shops"], output.out.splitlines(), strict=True):
+        outlet = pos_providers.Location(number, f"Клуб {number}", shop["account"])
+        assert json.loads(line) == {**outlet.public(), "bakery_id": pos_import.branch_id(provider, outlet)}
+    assert shop["reads"] == [] and not storage.database_path().exists()
+
+    def provider_failure(reader):
+        raise RuntimeError(f"transport URI with {reader.key}")
+
+    monkeypatch.setattr(pos_providers, "locations", provider_failure)
+    with pytest.raises(SystemExit, match="1"):
+        pos_branches.main([provider])
+    failure = capsys.readouterr()
+    assert "Не удалось" in failure.err and TOKEN not in failure.out + failure.err
+
+
+def test_branch_admin_only_imports_and_manages_own_pos_outlet(shop, monkeypatch):
+    monkeypatch.delenv("BAKEPLAN_LOCAL_DEMO", raising=False)
+    shop["shops"] = ["1", "2"]
+    storage.initialize_database()
+    accounts = {}
+    for location in shop["shops"]:
+        outlet = pos_providers.Location(location, f"Клуб {location}", shop["account"])
+        accounts[location] = (f"admin-{location}", f"test-password-{location}")
+        username, password = accounts[location]
+        password_hash = bcrypt.hashpw(password.encode(), bcrypt.gensalt(rounds=4)).decode()
+        branch_accounts.set_account(username, pos_import.branch_id("poster", outlet), password_hash)
+    with TestClient(app) as client:
+        saved = {}
+        for location, auth in accounts.items():
+            client.auth = auth
+            response = register(client)
+            assert response.status_code == 200, response.text
+            connection = response.json()["connection"]
+            assert connection["location"]["id"] == location
+            saved[location] = connection["id"]
+        client.auth = accounts["1"]
+        assert [c["id"] for c in client.get(URL).json()] == [saved["1"]]
+        assert client.get(f"{URL}/{saved['1']}/latest").json()["forecast"] is not None
+        assert client.get(f"{URL}/{saved['2']}/latest").status_code == 404
+        reads = list(shop["reads"])
+        for route in [URL, "/api/pos/import"]:
+            response = client.post(route, json={"provider": "poster", "api_key": TOKEN, "location_id": "2"})
+            assert response.status_code == 404, response.text
+        assert shop["reads"] == reads
+        assert client.delete(f"{URL}/{saved['2']}").status_code == 404
+        with storage.connection() as db:
+            assert db.execute(
+                "SELECT ended_at FROM pos_monitoring_epochs WHERE connection_id=?", (saved["2"],)
+            ).fetchone() == (None,)
+        assert client.delete(f"{URL}/{saved['1']}").status_code == 204
+        assert client.get(URL).json() == []
+        monkeypatch.delenv(pos_vault.KEY_FILE_ENV)
+        assert client.get("/api/pos/status").json() == {"enabled": True}
+        client.auth = accounts["2"]
+        assert [c["id"] for c in client.get(URL).json()] == [saved["2"]]
+        assert client.get(f"{URL}/{saved['2']}/latest").json()["connection"]["status"] == "ready"
+        assert client.get("/api/pos/status").json()["daily_configured"] is True
+        once = client.post("/api/pos/import", json={"provider": "poster", "api_key": TOKEN, "days": 14})
+        assert once.status_code == 200, once.text
+        assert once.json()["location"]["id"] == "2"
 
 
 def _order_for_snapshot(client, daily):

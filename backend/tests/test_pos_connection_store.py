@@ -255,21 +255,21 @@ def test_v4_migration_preserves_rows_backup_and_legacy_verification(
     db = tmp_path / "old.sqlite3"
     monkeypatch.setenv("BAKEPLAN_DB", str(db))
     with storage.connection() as conn:
+        record = {"id": "old", "version": "v4", "source": "local", "rows": [{"sold": 3}]}
+        conn.execute("CREATE TABLE datasets(id TEXT PRIMARY KEY, payload TEXT NOT NULL)")
+        conn.execute("INSERT INTO datasets VALUES(?,?)", ("old", json.dumps(record)))
         storage._migrate_v2(conn)
         storage._migrate_v3(conn)
         storage._migrate_v4(conn)
-    storage.save_dataset(
-        {"id": "old", "version": "v4", "source": "local", "rows": [{"sold": 3}]}
-    )
     assert snapshots.inspect_database(db)["schema_version"] == 4
     storage.initialize_database()
     backup = Path(str(db) + ".pre-v5.bak")
     assert not store.list_connections()
     assert snapshots.inspect_database(backup)["schema_version"] == 4
     with sqlite3.connect(backup) as old, sqlite3.connect(db) as new:
-        for table in storage.SQLITE_V4_COLUMNS:
-            old_rows = old.execute(f"SELECT * FROM {table}").fetchall()
-            assert old_rows == new.execute(f"SELECT * FROM {table}").fetchall()
+        for table, columns in storage.SQLITE_V4_COLUMNS.items():
+            query = f"SELECT {', '.join(sorted(columns))} FROM {table}"
+            assert old.execute(query).fetchall() == new.execute(query).fetchall()
 
 
 @pytest.mark.skipif(

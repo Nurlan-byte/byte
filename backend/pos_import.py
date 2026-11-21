@@ -7,6 +7,7 @@ import os
 from datetime import timedelta
 
 from backend import pos_providers
+from backend.branch_access import current_branch, require_branch
 from backend.dataset_identity import identity
 from backend.errors import ServiceError
 from backend.schemas import ImportRequest
@@ -44,6 +45,12 @@ def branch_id(provider, outlet):
 def select_outlet(reader, location_id):
     try:
         outlets = pos_providers.locations(reader)
+        branch = current_branch()
+        if branch is not None:
+            for outlet in outlets:
+                if (location_id is None or outlet.id == location_id) and branch_id(reader.provider, outlet) == branch:
+                    return outlet, None
+            raise ServiceError(404, "Объект не найден")
         if location_id is None and len(outlets) > 1:
             return None, {
                 "status": "choose_location",
@@ -64,6 +71,8 @@ def select_outlet(reader, location_id):
 
 
 def import_outlet(reader, selected, days, city, today, *, require_last_day=False):
+    bakery_id = branch_id(reader.provider, selected)
+    require_branch(bakery_id)
     start = today - timedelta(days=days)
     sales = pos_providers.Observations(start, today - timedelta(days=1))
     try:
@@ -118,7 +127,7 @@ def import_outlet(reader, selected, days, city, today, *, require_last_day=False
     )
     request = ImportRequest(
         source="local",
-        bakery_id=branch_id(reader.provider, selected),
+        bakery_id=bakery_id,
         provenance=provenance,
         csv_text=stream.getvalue(),
         schema_version="pos-units-1" if sales.physical else "sales-1",

@@ -3,7 +3,6 @@
 import argparse
 import hashlib
 import json
-import os
 from datetime import date
 from pathlib import Path
 
@@ -11,6 +10,7 @@ from fastapi.testclient import TestClient
 
 from backend.app import app
 from scripts.generate_cgz_synthetic import CATALOG_PATH, CONFIG, CSV_PATH
+from scripts.replay_demo import replay_database
 
 
 def replay(output: Path) -> dict:
@@ -21,9 +21,7 @@ def replay(output: Path) -> dict:
     catalog = json.loads(CATALOG_PATH.read_text(encoding="utf-8"))
     output.mkdir(parents=True)
     database = output / "synthetic-replay.sqlite3"
-    previous_db = os.environ.get("BAKEPLAN_DB")
-    os.environ["BAKEPLAN_DB"] = str(database)
-    try:
+    with replay_database(database):
         with TestClient(app) as client:
             def call(method: str, path: str, **kwargs):
                 response = client.request(method, path, **kwargs)
@@ -116,11 +114,6 @@ def replay(output: Path) -> dict:
             json.dumps(report, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
         )
         return report
-    finally:
-        if previous_db is None:
-            os.environ.pop("BAKEPLAN_DB", None)
-        else:
-            os.environ["BAKEPLAN_DB"] = previous_db
 
 
 def main() -> None:

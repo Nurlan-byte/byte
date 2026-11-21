@@ -1,9 +1,11 @@
 from fastapi.testclient import TestClient
+import bcrypt
 import json
 import pytest
 
 from backend.app import app
-from backend.storage import connection
+from backend.branch_accounts import set_account
+from backend.storage import connection, save_dataset, save_plan
 from backend.tests.test_procurement import payload
 
 
@@ -185,3 +187,33 @@ def test_actuals_coverage_never_imputes_unobserved_days_as_zero(orders):
         url, params={**query, "actual_dataset_id": complete, "source": "local"}
     )
     assert wrong.status_code == 422
+
+
+def test_branch_report_counts_orders_inherited_from_dataset_and_excludes_conflicting_snapshots(tmp_path, monkeypatch):
+    monkeypatch.setenv("BAKEPLAN_DB", str(tmp_path / "report.sqlite3"))
+    day = "2026-10-11"
+    with TestClient(app) as client:
+        for branch in ("north", "south"):
+            save_dataset({
+                "id": branch, "bakery_id": branch, "metadata_declared": True,
+                "source": "local", "target": "sold_units", "unit": "physical_unit",
+                "rows": [{"date": day, "product_id": "tea", "sold": 10}],
+            })
+        # Older confirmed decisions can carry only the immutable dataset reference.
+        saved = {
+            "id": "owned", "dataset_id": "north", "revision": 1, "status": "confirmed",
+            "planning_kind": "procurement", "mode": "operational", "target_date": day, "source": "local",
+            "items": [{"product_id": "tea", "forecast_mean": 13}],
+        }
+        save_plan(saved)
+        save_plan(dict(saved, id="ambiguous", bakery_id="north", dataset_id="south",
+                       items=[{"product_id": "foreign", "forecast_mean": 100}]))
+        set_account("admin", "north", bcrypt.hashpw(b"fixture", bcrypt.gensalt(rounds=4)).decode())
+        response = client.get(
+            "/api/reports/order-adjustments", auth=("admin", "fixture"),
+            params=dict(bakery_id="north", actual_dataset_id="north", start=day, end=day),
+        )
+        assert response.is_success, response.text
+        report = response.json()
+        assert report["confirmed_product_days"] == report["matched_sales_days"] == 1
+        assert report["sales_mae_units"] == report["sales_bias_units"] == 3

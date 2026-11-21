@@ -6,6 +6,7 @@ import hashlib
 import json
 import uuid
 from datetime import date, datetime, timedelta, timezone
+from backend.branch_access import current_branch, require_branch
 from backend.config import CATALOG, VERSION
 from backend.demand_context import with_demand_context
 from backend.errors import ServiceError
@@ -34,6 +35,8 @@ from backend.storage import (
 
 
 def import_history(body: ImportRequest, today: date, *, pos_metadata=None):
+    if body.bakery_id is not None:
+        require_branch(body.bakery_id)
     catalog = [product.model_dump() for product in body.catalog] if body.catalog else None
     continuity = []
     if body.schema_version == "procurement-1":
@@ -105,6 +108,11 @@ def import_history(body: ImportRequest, today: date, *, pos_metadata=None):
         dataset["version"] = dataset["content_hash"]
     else:
         dataset = identity(dataset)
+        branch = current_branch()
+        if branch is not None:
+            # Scope an old-format import without inventing declared ML provenance.
+            version = hashlib.sha256(f"{branch}:{dataset['version']}".encode()).hexdigest()
+            dataset.update(bakery_id=branch, owner_bakery_id=branch, version=version, content_hash=version)
     if body.schema_version == "sales-1":
         dataset["missing_calendar_days"] = None
         dataset["diagnostics"] = [
@@ -354,6 +362,7 @@ def confirm_plan(ident: str, body: ConfirmRequest, today: date):
     encoded_body = json.dumps(body.model_dump(exclude_none=True), sort_keys=True)
     with connection() as con:
         con.execute("BEGIN IMMEDIATE")
+        plan = fetch(con, "plans", ident)
         previous = con.execute(
             "SELECT body,response FROM confirmations WHERE plan_id=? AND key=?",
             (ident, body.idempotency_key),
@@ -364,7 +373,6 @@ def confirm_plan(ident: str, body: ConfirmRequest, today: date):
                     409, "Ключ повторного запроса использован с другими данными"
                 )
             return json.loads(previous[1])
-        plan = fetch(con, "plans", ident)
         if (
             plan.get("planning_kind") == "procurement"
             and plan["mode"] == "operational"

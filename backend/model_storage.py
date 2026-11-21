@@ -12,6 +12,7 @@ import math
 from datetime import date
 
 from backend import storage
+from backend.branch_access import current_branch
 
 
 class TrainingConflict(Exception):
@@ -141,7 +142,14 @@ def _get(con, ident):
 
 def get_model(ident):
     with storage.connection() as con:
-        row = _get(con, ident)
+        branch = current_branch()
+        if branch is None:
+            row = _get(con, ident)
+        else:
+            row = con.execute(
+                f"SELECT {_MODEL_COLUMNS} FROM models WHERE id=? "
+                "AND dataset_id IN (SELECT id FROM datasets WHERE branch_id=?)", (ident, branch),
+            ).fetchone()
         if row is None:
             raise storage.NotFound(ident)
         return _decode(row)

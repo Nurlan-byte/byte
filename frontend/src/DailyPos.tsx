@@ -4,7 +4,7 @@ import type { ForecastSnapshot } from "./ForecastResult";
 import type { AdoptDataset } from "./DemandSources";
 import type { ImportProps } from "./ImportSection";
 import type { Dataset } from "./types";
-import { workspaceReference } from "./workspace";
+import { useWorkspaceReference } from "./WorkspaceAccess";
 
 export type PosConnectionSummary = {
   id: string;
@@ -40,6 +40,7 @@ export function DailyConnections({
   run: ImportProps["run"];
   adopt: AdoptDataset;
 }) {
+  const workspaceReference = useWorkspaceReference();
   const [removing, setRemoving] = useState<string | null>(null);
   const [removeError, setRemoveError] = useState("");
   const [refreshing, setRefreshing] = useState(false);

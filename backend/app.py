@@ -1,13 +1,18 @@
 """HTTP adapter for pure calculations and transactional workflows."""
 
 import json
+import os
 import sqlite3
 from contextlib import asynccontextmanager, closing
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, Response
 from starlette.exceptions import HTTPException as StarletteHTTPException
+from starlette.concurrency import run_in_threadpool
+from starlette.routing import get_route_path
+from backend.branch_access import branch_scope, current_branch
+from backend.branch_accounts import authenticate
 from backend.config import CATALOG, business_today
 from backend.context_routes import router as context_router
 from backend.imports import CsvValidationError, parse_csv as parse_history
@@ -133,6 +138,37 @@ def parse_csv(text):
     )
 
 
+@app.middleware("http")
+async def authorize_branch(request, call_next):
+    public_read = request.method in {"GET", "HEAD"} and get_route_path(request.scope) in {
+        "/api/health", "/docs", "/openapi.json", "/redoc", "/docs/oauth2-redirect",
+    }
+    preflight = request.method == "OPTIONS" and "access-control-request-method" in request.headers and "origin" in request.headers
+    if public_read or preflight:
+        return await call_next(request)
+    local_demo = (
+        os.getenv("BAKEPLAN_LOCAL_DEMO") == "1"
+        and request.client is not None and request.client.host in {"127.0.0.1", "::1", "testclient"}
+        and "forwarded" not in request.headers and "x-forwarded-for" not in request.headers
+    )
+    account = await run_in_threadpool(authenticate, request.headers.getlist("authorization"), local_demo)
+    if account is None:
+        response = error_response(401, "Войдите с учётной записью своего филиала")
+        response.headers["WWW-Authenticate"] = 'Basic realm="BakePlan", charset="UTF-8"'
+    else:
+        request.state.operator_id, bakery_id = account
+        with branch_scope(bakery_id):
+            response = await call_next(request)
+    response.headers["Cache-Control"] = "private, no-store"
+    response.headers.add_vary_header("Authorization")
+    return response
+
+
+@app.get("/api/session")
+def session(request: Request):
+    return {"bakery_id": current_branch(), "operator_id": request.state.operator_id}
+
+
 @app.get("/api/health")
 def health():
     try:
@@ -216,13 +252,13 @@ def error_responses(*statuses: int):
 
 
 @app.post("/api/forecasts", response_model=ForecastResponse, response_model_exclude_unset=True,
-          responses=error_responses(404, 413, 422, 503))
+          responses=error_responses(401, 404, 413, 422, 503))
 def forecast(body: ForecastRequest):
     return create_forecast(body, business_today())
 
 
 @app.post("/api/plans", status_code=201, response_model=PlanResponse, response_model_exclude_unset=True,
-          responses=error_responses(404, 413, 422, 503))
+          responses=error_responses(401, 404, 413, 422, 503))
 def create_plan(body: PlanRequest):
     return build_plan(body, business_today())
 
@@ -241,7 +277,7 @@ def plan_detail(ident: str):
 
 
 @app.post("/api/plans/{ident}/confirm", response_model=PlanResponse, response_model_exclude_unset=True,
-          responses=error_responses(404, 409, 413, 422))
+          responses=error_responses(401, 404, 409, 413, 422))
 def confirm(ident: str, body: ConfirmRequest):
     return confirm_plan(ident, body, business_today())
 

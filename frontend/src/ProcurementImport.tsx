@@ -386,6 +386,7 @@ export function ProcurementImport(p: ImportProps) {
             <label htmlFor="proc-shop">Код точки</label>
             <input
               id="proc-shop"
+              readOnly={p.branchLocked}
               value={p.bakeryId}
               disabled={p.busy}
               onChange={(e) => p.setBakeryId(e.target.value)}

@@ -6,6 +6,7 @@ from datetime import UTC, datetime, timedelta, timezone
 from uuid import uuid4
 
 from backend import pos_vault, storage
+from backend.branch_access import current_branch, require_branch
 
 LEASE_DURATION = timedelta(minutes=10)
 RETRY_DELAY = timedelta(minutes=15)
@@ -43,26 +44,32 @@ def _query_one(db, sql, params):
     return dict(zip((column[0] for column in cursor.description), row, strict=True))
 
 
+def _branch_filter():
+    branch = current_branch()
+    return ("bakery_id=?", (branch,)) if branch is not None else ("1", ())
+
+
 def has_connections():
+    where, params = _branch_filter()
     with storage.connection() as db:
-        return (
-            db.execute("SELECT 1 FROM pos_connections LIMIT 1").fetchone() is not None
-        )
+        return db.execute(f"SELECT 1 FROM pos_connections WHERE {where} LIMIT 1", params).fetchone() is not None
 
 
 def list_connections():
+    where, params = _branch_filter()
     with storage.connection() as db:
         cursor = db.execute(
-            f"SELECT {PUBLIC} FROM pos_connections ORDER BY location_name, id"
+            f"SELECT {PUBLIC} FROM pos_connections WHERE {where} ORDER BY location_name, id", params
         )
         columns = [col[0] for col in cursor.description]
         return [dict(zip(columns, row, strict=True)) for row in cursor]
 
 
 def connection_result(ident):
+    where, params = _branch_filter()
     with storage.connection() as db:
         summary = _query_one(
-            db, f"SELECT {PUBLIC}, forecast FROM pos_connections WHERE id=?", (ident,)
+            db, f"SELECT {PUBLIC}, forecast FROM pos_connections WHERE id=? AND {where}", (ident, *params)
         )
     forecast = summary.pop("forecast")
     return summary, json.loads(forecast) if forecast is not None else None
@@ -72,6 +79,7 @@ def start_connection(
     provider, location_id, location_name, bakery_id, days, city, api_key, now
 ):
     """Register the verified POS outlet; keep its prior result until the new import succeeds."""
+    require_branch(bakery_id)
     with storage.connection() as db:
         db.execute("BEGIN IMMEDIATE")
         existing = db.execute(
@@ -247,6 +255,10 @@ def fail(claim, error, now):
 def revoke(ident, now=None):
     with storage.connection() as db:
         db.execute("PRAGMA secure_delete=ON")
+        db.execute("BEGIN IMMEDIATE")
+        branch = current_branch()
+        if branch is not None:
+            _query_one(db, "SELECT id FROM pos_connections WHERE id=? AND bakery_id=?", (ident, branch))
         db.execute(
             "UPDATE pos_monitoring_epochs SET ended_at=? WHERE connection_id=? AND ended_at IS NULL",
             (_time(now or datetime.now(UTC)), ident),

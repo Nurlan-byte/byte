@@ -72,6 +72,7 @@ export type ImportProps = Pick<
   | "source"
   | "setSource"
   | "bakeryId"
+  | "branchLocked"
   | "setBakeryId"
   | "dataTarget"
   | "setDataTarget"
@@ -105,6 +106,7 @@ function ProductionImport({
   source,
   setSource,
   bakeryId,
+  branchLocked,
   setBakeryId,
   dataTarget,
   setDataTarget,
@@ -595,6 +597,7 @@ function ProductionImport({
             <label htmlFor="import-bakery">Код точки</label>
             <input
               id="import-bakery"
+              readOnly={branchLocked}
               disabled={busy}
               value={bakeryId}
               onChange={(event) => setBakeryId(event.target.value)}
