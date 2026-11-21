@@ -1,6 +1,19 @@
-import { expect, type Page } from '@playwright/test';
+import { expect, type Locator, type Page } from '@playwright/test';
 
 export type Section = 'План' | 'Данные' | 'Модель' | 'История';
+
+export async function acceptPlanReplacement(page: Page, action: Locator) {
+  const [prompt] = await Promise.all([
+    page.waitForEvent('dialog').then(async dialog => {
+      const observed = { type: dialog.type(), message: dialog.message() };
+      await dialog.accept();
+      return observed;
+    }),
+    action.click(),
+  ]);
+  expect(prompt.type).toBe('confirm');
+  expect(prompt.message).toContain('Есть несохранённые количества');
+}
 
 export async function navigate(page: Page, section: Section) {
   if (section === 'Модель') {

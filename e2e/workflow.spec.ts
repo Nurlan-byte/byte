@@ -1,6 +1,6 @@
 import { test, expect, type Page } from '@playwright/test';
 import fs from 'node:fs/promises';
-import { navigate, openDetails, openHistoryPlan, prepareImport } from './helpers';
+import { acceptPlanReplacement, navigate, openDetails, openHistoryPlan, prepareImport } from './helpers';
 
 const base = 'http://127.0.0.1:18000/api';
 
@@ -62,7 +62,7 @@ test('old plan cannot be confirmed under changed date, cutoff, method or calenda
   await expect(confirm).toBeEnabled();
   await page.getByLabel('Целевой день открыт', { exact: true }).uncheck();
   await expect(confirm).toBeDisabled();
-  await page.getByRole('button', { name: 'Рассчитать план', exact: true }).click();
+  await acceptPlanReplacement(page, page.getByRole('button', { name: 'Рассчитать план', exact: true }));
   await expect(page.getByTestId('stale-plan')).toHaveCount(0);
   await expect(quantity).toHaveValue('0');
   await expect(quantity).toBeDisabled();

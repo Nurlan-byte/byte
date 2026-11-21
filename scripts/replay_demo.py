@@ -16,6 +16,7 @@ import subprocess
 import sys
 import tempfile
 import uuid
+from contextlib import contextmanager
 from datetime import date, datetime, timezone
 from pathlib import Path
 from unittest.mock import patch
@@ -45,6 +46,19 @@ TABLES = (
 
 def digest(value):
     return hashlib.sha256(value).hexdigest()
+
+
+@contextmanager
+def replay_database(path):
+    previous = os.environ.get("BAKEPLAN_DB")
+    os.environ["BAKEPLAN_DB"] = str(path)
+    try:
+        yield
+    finally:
+        if previous is None:
+            os.environ.pop("BAKEPLAN_DB", None)
+        else:
+            os.environ["BAKEPLAN_DB"] = previous
 
 
 def table_counts():
@@ -141,7 +155,7 @@ def replay(output_dir):
         fallback_db = Path(directory) / "untrained.sqlite3"
         assert not main_db.exists() and not fallback_db.exists()
         with (
-            patch.dict(os.environ, {"BAKEPLAN_DB": str(fallback_db)}),
+            replay_database(fallback_db),
             patch("backend.app.business_today", return_value=BUSINESS_DATE),
         ):
             with TestClient(app) as client:
@@ -176,7 +190,7 @@ def replay(output_dir):
                     "b1_equality_verified": True,
                 }
         with (
-            patch.dict(os.environ, {"BAKEPLAN_DB": str(main_db)}),
+            replay_database(main_db),
             patch("backend.app.business_today", return_value=BUSINESS_DATE),
         ):
             with TestClient(app) as client:

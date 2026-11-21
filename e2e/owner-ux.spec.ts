@@ -3,7 +3,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import os from 'node:os';
 import { spawn, type ChildProcess } from 'node:child_process';
-import { navigate, openDetails } from './helpers';
+import { acceptPlanReplacement, navigate, openDetails } from './helpers';
 
 async function importFile(page: Page) {
   await navigate(page, 'Данные');
@@ -82,7 +82,7 @@ test('missing weekday history stays unknown, manual fields explain batches and e
   await page.getByLabel('CSV-файл', { exact: true }).setInputFiles('fixtures/invalid_balance.csv');
   await openDetails(page, 'Параметры набора');
   await page.getByLabel('Код точки', { exact: true }).fill('synthetic-invalid');
-  await page.getByRole('button', { name: 'Проверить и импортировать' }).click();
+  await acceptPlanReplacement(page, page.getByRole('button', { name: 'Проверить и импортировать' }));
   await expect(page.getByRole('alert')).toBeFocused();
   await expect(page.getByRole('alert').locator('.error-message')).toContainText('Строка 2: Нарушен баланс');
   await navigate(page, 'План');
