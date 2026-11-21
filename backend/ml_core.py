@@ -14,6 +14,7 @@ import hashlib
 import json
 import math
 from collections import Counter, defaultdict
+from dataclasses import dataclass
 from datetime import date
 
 import numpy as np
@@ -135,7 +136,7 @@ def _label(row, target, planning_kind="production"):
     return value, None
 
 
-def _snapshot(dataset, cutoff):
+def _snapshot_rows(dataset, cutoff):
     identity = _identity(dataset)
     planning_kind = dataset.get("planning_kind", "production")
     if planning_kind not in {"production", "procurement"}:
@@ -189,20 +190,28 @@ def _snapshot(dataset, cutoff):
             }
         )
     records.sort(key=lambda record: (record["date"], record["product_id"]))
+    return identity, records
+
+
+def _snapshot_hash(identity, records, planning_kind):
     snapshot = {"identity": identity, "rows": records}
     if planning_kind == "procurement":
         snapshot["planning_kind"] = planning_kind
-    snapshot_hash = _digest(snapshot)
-    return identity, records, snapshot_hash
+    return _digest(snapshot)
+
+
+def _snapshot(dataset, cutoff):
+    identity, records = _snapshot_rows(dataset, cutoff)
+    return identity, records, _snapshot_hash(identity, records, dataset.get("planning_kind"))
 
 
 def _history(records):
     histories = defaultdict(dict)
     for row in records:
+        # Products with no usable sale still need a manual forecast in the batch.
+        history = histories[row["product_id"]]
         if row["history_value"] is not None:
-            histories[row["product_id"]][_day(row["date"]).toordinal()] = row[
-                "history_value"
-            ]
+            history[_day(row["date"]).toordinal()] = row["history_value"]
     return histories
 
 
@@ -789,14 +798,14 @@ def train_model(dataset: dict, cutoff: date) -> dict:
     }
 
 
-def forecast_model(
-    model: dict, dataset: dict, product_id: str, target: date, cutoff: date
-) -> dict:
-    """Use a matching as-of artifact, or an explicit safe B1/manual fallback."""
+def prepare_forecast(
+    model: dict, dataset: dict, target: date, cutoff: date
+) -> "ForecastBatch":
+    """Index the available observations and verify the model's training history once."""
     target, cutoff = _day(target), _day(cutoff)
     if cutoff >= target:
         raise ValueError("Forecast cutoff must precede target")
-    identity, records, _ = _snapshot(dataset, cutoff)
+    identity, records = _snapshot_rows(dataset, cutoff)
     if not isinstance(model, dict) or any(
         model.get(key) != identity[key] for key in IDENTITY_KEYS
     ):
@@ -807,62 +816,93 @@ def forecast_model(
         trained = None
     if trained is not None and trained > cutoff:
         raise ValueError("Model training cutoff is after forecast cutoff")
-    features, baseline = _features(
-        _history(records).get(product_id, {}), target, cutoff
+    training_hash = None
+    if trained is not None:
+        # The artifact's digest covers only what was visible on its training day.
+        training_rows = records
+        if trained < cutoff:
+            last_day = trained.isoformat()
+            training_rows = [row for row in records if row["date"] <= last_day]
+        training_hash = _snapshot_hash(identity, training_rows, dataset.get("planning_kind"))
+    return ForecastBatch(
+        model=model, target=target, cutoff=cutoff,
+        protocol=protocol_for_dataset(dataset),
+        training_hash=training_hash,
+        histories=_history(records),
     )
-    result = {
-        "forecast_mean": baseline["b1_mean"],
-        **baseline,
-        "method": "B1" if baseline["b1_mean"] is not None else "manual",
-        "fallback_reason": None,
-        "evaluation_applicability": evaluation_applicability(
-            model, target, cutoff, product_id
-        ),
-    }
-    if model.get("id") is not None:
-        result["model_id"] = model["id"]
 
-    def fallback(reason):
-        result["fallback_reason"] = reason
-        result["evaluation_applicability"].update(applicable=False, reason=reason)
+
+@dataclass(frozen=True)
+class ForecastBatch:
+    """One model and one as-of history, shared by the products in a forecast."""
+
+    model: dict
+    target: date
+    cutoff: date
+    protocol: str
+    training_hash: str | None
+    histories: dict[str, dict[int, int]]
+
+    def predict(self, product_id: str) -> dict:
+        model, target, cutoff = self.model, self.target, self.cutoff
+        features, baseline = _features(self.histories.get(product_id, {}), target, cutoff)
+        result = {
+            "forecast_mean": baseline["b1_mean"],
+            **baseline,
+            "method": "B1" if baseline["b1_mean"] is not None else "manual",
+            "fallback_reason": None,
+            "evaluation_applicability": evaluation_applicability(model, target, cutoff, product_id),
+        }
+        if model.get("id") is not None:
+            result["model_id"] = model["id"]
+
+        def fallback(reason):
+            result["fallback_reason"] = reason
+            result["evaluation_applicability"].update(applicable=False, reason=reason)
+            return result
+
+        if features is None:
+            return fallback("no_b1_history")
+        if (
+            self.protocol == PROCUREMENT_PROTOCOL_VERSION
+            and (target - cutoff).days != FORECAST_HORIZON_DAYS
+        ):
+            return fallback("forecast_horizon_mismatch")
+        if model.get("protocol_version") != self.protocol:
+            return fallback("unsupported_protocol")
+        if self.training_hash is None:
+            return fallback("invalid_training_cutoff")
+        if model.get("status") != "ready":
+            return fallback("model_not_ready")
+        if not isinstance(model.get("products"), dict):
+            return fallback("invalid_artifact")
+        product = model["products"].get(product_id)
+        if not isinstance(product, dict):
+            return fallback("product_not_trained")
+        if product.get("status") != "ready":
+            return fallback("product_not_ready")
+        if model.get("snapshot_hash") != self.training_hash:
+            return fallback("snapshot_mismatch")
+        if not _safe_features(features):
+            return fallback("feature_out_of_bounds")
+        try:
+            params = product.get("parameters")
+            _validate_params(params)
+            if _digest(params) != product.get("parameters_hash"):
+                return fallback("invalid_artifact")
+            prediction = _predict(params, features, baseline["b1_mean"])
+            if not math.isfinite(prediction):
+                return fallback("nonfinite_prediction")
+        except _PredictionBoundsError:
+            return fallback("prediction_out_of_bounds")
+        except ValueError, TypeError, ArithmeticError, KeyError:
+            return fallback("invalid_artifact")
+        result.update(forecast_mean=prediction, method="ML", fallback_reason=None)
         return result
 
-    if features is None:
-        return fallback("no_b1_history")
-    if (
-        dataset.get("planning_kind") == "procurement"
-        and (target - cutoff).days != FORECAST_HORIZON_DAYS
-    ):
-        return fallback("forecast_horizon_mismatch")
-    if model.get("protocol_version") != protocol_for_dataset(dataset):
-        return fallback("unsupported_protocol")
-    if trained is None:
-        return fallback("invalid_training_cutoff")
-    if model.get("status") != "ready":
-        return fallback("model_not_ready")
-    if not isinstance(model.get("products"), dict):
-        return fallback("invalid_artifact")
-    product = model["products"].get(product_id)
-    if not isinstance(product, dict):
-        return fallback("product_not_trained")
-    if product.get("status") != "ready":
-        return fallback("product_not_ready")
-    _, _, actual_snapshot = _snapshot(dataset, trained)
-    if model.get("snapshot_hash") != actual_snapshot:
-        return fallback("snapshot_mismatch")
-    if not _safe_features(features):
-        return fallback("feature_out_of_bounds")
-    try:
-        params = product.get("parameters")
-        _validate_params(params)
-        if _digest(params) != product.get("parameters_hash"):
-            return fallback("invalid_artifact")
-        prediction = _predict(params, features, baseline["b1_mean"])
-        if not math.isfinite(prediction):
-            return fallback("nonfinite_prediction")
-    except _PredictionBoundsError:
-        return fallback("prediction_out_of_bounds")
-    except ValueError, TypeError, ArithmeticError, KeyError:
-        return fallback("invalid_artifact")
-    result.update(forecast_mean=prediction, method="ML", fallback_reason=None)
-    return result
+
+def forecast_model(
+    model: dict, dataset: dict, product_id: str, target: date, cutoff: date
+) -> dict:
+    """Forecast a single product using the same preparation as a batch."""
+    return prepare_forecast(model, dataset, target, cutoff).predict(product_id)

@@ -14,7 +14,7 @@ if __package__ in {None, ""}:
 from backend.config import CATALOG
 from backend.dataset_identity import parse_sales_csv
 from backend.imports import parse_csv
-from backend.ml_core import TARGET_UNITS, _label, forecast_model, train_model
+from backend.ml_core import TARGET_UNITS, _label, prepare_forecast, train_model
 
 HORIZON_DAYS = 2
 
@@ -46,6 +46,7 @@ def evaluate(dataset, training_cutoff, start, end):
     )
     if not targets:
         raise ValueError("No observed targets in the requested evaluation window")
+    batch = None
     for row in targets:
         product = row["product_id"]
         value, reason = _label(row, dataset["target"])
@@ -55,7 +56,9 @@ def evaluate(dataset, training_cutoff, start, end):
         eligible[product] += 1
         target = date.fromisoformat(row["date"])
         cutoff = target - timedelta(days=HORIZON_DAYS)
-        result = forecast_model(model, dataset, product, target, cutoff)
+        if batch is None or batch.target != target:
+            batch = prepare_forecast(model, dataset, target, cutoff)
+        result = batch.predict(product)
         methods[result["method"]] += 1
         if result["method"] != "ML" or result["b1_mean"] is None:
             excluded[result.get("fallback_reason") or "no_paired_prediction"] += 1

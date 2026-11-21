@@ -6,7 +6,9 @@ import unittest
 import tempfile
 import json
 from pathlib import Path
+from unittest.mock import patch
 
+from backend.ml_core import prepare_forecast
 from backend.tests.test_ml_core import fixture
 from tools.evaluate_forward import evaluate, main
 
@@ -33,6 +35,21 @@ class ForwardEvaluationTests(unittest.TestCase):
                     timedelta(days=2),
                 )
         self.assertIn("unverified", report["independence"])
+
+    def test_prepares_each_eligible_target_date_once_for_all_products(self):
+        closed = self.start + timedelta(days=1)
+        last = self.start + timedelta(days=2)
+        for row in self.data["rows"]:
+            if row["date"] == closed.isoformat():
+                row["is_open"] = False
+        with patch("tools.evaluate_forward.prepare_forecast", wraps=prepare_forecast) as prepare:
+            report = evaluate(self.data, self.cutoff, self.start, last)
+        self.assertEqual(
+            [call.args[2:] for call in prepare.call_args_list],
+            [(self.start, self.cutoff), (last, self.cutoff + timedelta(days=2))],
+        )
+        self.assertEqual(report["aggregate"]["paired_n"], 4)
+        self.assertEqual(report["exclusions_and_unpaired"], {"closed_or_unknown_open": 2})
 
     def test_future_labels_do_not_change_frozen_training(self):
         original = evaluate(self.data, self.cutoff, self.start, self.end)

@@ -6,13 +6,14 @@ import os
 import subprocess
 import sys
 import threading
+from collections import defaultdict
 from datetime import date, datetime, timezone
 from pathlib import Path
 
 from backend.dataset_identity import identity
 from backend.errors import ServiceError
 from backend.forecasting import baseline
-from backend.ml_core import evaluation_applicability, forecast_model, protocol_for_dataset
+from backend.ml_core import evaluation_applicability, prepare_forecast, protocol_for_dataset
 from backend.model_storage import (
     InvalidArtifact,
     TrainingConflict,
@@ -160,7 +161,7 @@ def train_dataset(ident, body, today):
         ) from None
 
 
-def _b1(dataset, product, target, cutoff, reason):
+def _b1(dataset, rows, product, target, cutoff, reason):
     if dataset.get("planning_kind") == "procurement":
         kwargs = {"eligible": lambda row: row.get("is_open") is not False}
     elif dataset["target"] == "item_line_count":
@@ -168,7 +169,7 @@ def _b1(dataset, product, target, cutoff, reason):
     else:
         kwargs = {}
     value = baseline(
-        dataset["rows"],
+        rows,
         product_id=product,
         target_date=target,
         cutoff=cutoff,
@@ -222,24 +223,29 @@ def forecast_items(dataset, target, cutoff, model_id=None, method="ML"):
             if model.get("protocol_version") != protocol_version:
                 reason = "Версия протокола модели не поддерживается; используется B1"
                 model = None
+    batch = None
+    invalid_reason = "Модель неприменима или повреждена; используется B1"
+    if model:
+        try:
+            batch = prepare_forecast(model, dataset, target, cutoff)
+        except ValueError, TypeError, KeyError, ArithmeticError:
+            reason = invalid_reason
     items = []
-    for product in sorted(
-        {row["product_id"] for row in dataset["rows"] if row["date"] <= str(cutoff)}
-    ):
-        if model:
+    if batch is not None:
+        for product in sorted(batch.histories):
             try:
-                prediction = forecast_model(model, dataset, product, target, cutoff)
+                prediction = batch.predict(product)
             except ValueError, TypeError, KeyError, ArithmeticError:
-                prediction = _b1(
-                    dataset,
-                    product,
-                    target,
-                    cutoff,
-                    "Модель неприменима или повреждена; используется B1",
-                )
+                prediction = _b1(dataset, dataset["rows"], product, target, cutoff, invalid_reason)
             items.append({**prediction, "product_id": product})
-        else:
-            items.append(_b1(dataset, product, target, cutoff, reason))
+    else:
+        rows_by_product = defaultdict(list)
+        last_day = cutoff.isoformat()
+        for row in dataset["rows"]:
+            if row["date"] <= last_day:
+                rows_by_product[row["product_id"]].append(row)
+        for product, rows in sorted(rows_by_product.items()):
+            items.append(_b1(dataset, rows, product, target, cutoff, reason))
     applicability = evaluation_applicability(evaluation_model, target, cutoff)
     if method == "B1":
         applicability.update(applicable=False, reason="b1_requested")

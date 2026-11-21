@@ -4,10 +4,11 @@ from copy import deepcopy
 from datetime import date, timedelta
 import json
 import math
+from unittest.mock import patch
 
 import pytest
 
-from backend import ml_core as core
+from backend import ml_core as core, ml_service
 from backend.forecasting import baseline
 
 START = date(2026, 1, 1)
@@ -766,3 +767,150 @@ def test_old_model_still_predicts_but_metrics_are_not_applicable():
     assert stale["method"] == "ML"
     assert stale["evaluation_applicability"]["applicable"] is False
     assert stale["evaluation_applicability"]["reason"] == "model_too_old"
+
+
+@pytest.mark.parametrize(
+    ("forecast_day", "previous_means"),
+    [
+        (89, (43.63877818709016, 54.03753326523221, 63.0)),
+        (95, (41.411782337858355, 51.817593274924846, 60.5)),
+    ],
+)
+def test_batch_preserves_per_item_results_and_shares_history(
+    monkeypatch, forecast_day, previous_means
+):
+    # Reference means were captured on 09eb023 before sharing snapshots.
+    data = fixture(100, products=("p1", "p2", "p3"))
+    sparse_start = (START + timedelta(days=80)).isoformat()
+    rows = [
+        row
+        for row in data["rows"]
+        if row["product_id"] != "p3" or row["date"] >= sparse_start
+    ]
+    rows.extend(
+        [
+            {**rows[0], "product_id": "closed", "is_open": False},
+            {**rows[-1], "product_id": "future-only"},
+        ]
+    )
+    data["rows"] = rows[::-1]
+    model = {**train(data), "id": "reference-model"}
+    monkeypatch.setattr(ml_service, "get_model", lambda _: model)
+    cutoff = START + timedelta(days=forecast_day)
+    target = cutoff + timedelta(days=2)
+    product_ids = ["closed", "p1", "p2", "p3"]
+    expected = [
+        {
+            **core.forecast_model(model, data, product, target, cutoff),
+            "product_id": product,
+        }
+        for product in product_ids
+    ]
+    with (
+        patch.object(core, "_snapshot_rows", wraps=core._snapshot_rows) as normalize,
+        patch.object(core, "_history", wraps=core._history) as index,
+        patch.object(core, "_snapshot_hash", wraps=core._snapshot_hash) as digest,
+    ):
+        batch = ml_service.forecast_items(data, target, cutoff, model["id"])
+    normalize.assert_called_once()
+    index.assert_called_once()
+    digest.assert_called_once()
+    # Compare every field, including unrounded predictions and item-specific reasons.
+    assert batch["items"] == expected
+    assert batch["evaluation_applicability"]["reason"] == "partial_product_coverage"
+    assert [(item["method"], item["fallback_reason"]) for item in expected] == [
+        ("manual", "no_b1_history"),
+        ("ML", None),
+        ("ML", None),
+        ("B1", "product_not_ready"),
+    ]
+    # Independent reference tolerates only platform BLAS roundoff during training.
+    assert [item["forecast_mean"] for item in expected[1:]] == pytest.approx(
+        previous_means, rel=0, abs=1e-12
+    )
+    dates = [(target - timedelta(weeks=k)).isoformat() for k in range(1, 5)]
+    assert [item["used_dates"] for item in expected] == [
+        [],
+        dates,
+        dates,
+        [day for day in dates if day >= sparse_start],
+    ]
+    for row in rows:
+        if row["date"] > cutoff.isoformat():
+            row["sold"] = 1_000_000
+    assert ml_service.forecast_items(data, target, cutoff, model["id"]) == batch
+
+
+def test_batch_verifies_training_prefix_again_for_each_request(monkeypatch):
+    data = fixture(105, products=("p1", "p2"))
+    model = {**train(data), "id": "reference-model"}
+    monkeypatch.setattr(ml_service, "get_model", lambda _: model)
+    cutoff = START + timedelta(days=96)
+    target = cutoff + timedelta(days=2)
+
+    def predict():
+        return ml_service.forecast_items(data, target, cutoff, model["id"])["items"]
+
+    before = predict()
+    # The latest matching weekday falls after training, before the forecast cutoff.
+    latest = target - timedelta(days=7)
+    recent = next(
+        row
+        for row in data["rows"]
+        if row["product_id"] == "p1" and row["date"] == latest.isoformat()
+    )
+    recent["sold"] += 40
+    current = predict()
+    assert [item["method"] for item in current] == ["ML", "ML"]
+    assert current[0]["b1_mean"] == before[0]["b1_mean"] + 10
+    assert current[1] == before[1]
+
+    # Even one product changes the shared training fingerprint.
+    data["rows"][0]["sold"] += 1
+    assert [(item["method"], item["fallback_reason"]) for item in predict()] == [
+        ("B1", "snapshot_mismatch"),
+        ("B1", "snapshot_mismatch"),
+    ]
+
+
+def test_batch_normalization_error_preserves_service_b1_for_every_product(monkeypatch):
+    data = fixture(products=("p1", "p2"))
+    model = {**train(data), "id": "reference-model"}
+    monkeypatch.setattr(ml_service, "get_model", lambda _: model)
+    cutoff = START + timedelta(days=89)
+    target = cutoff + timedelta(days=2)
+    matching_day = (target - timedelta(weeks=1)).isoformat()
+    duplicate = next(
+        row
+        for row in data["rows"]
+        if row["date"] == matching_day and row["product_id"] == "p1"
+    )
+    data["rows"].append(dict(duplicate))
+
+    batch = ml_service.forecast_items(data, target, cutoff, model["id"])
+    coverage = {
+        "applicable": False,
+        "reason": "no_ml_forecasts",
+        "evaluated_horizon_days": 2,
+        "requested_horizon_days": 2,
+    }
+    assert batch["evaluation_applicability"] == coverage
+    assert [item["product_id"] for item in batch["items"]] == ["p1", "p2"]
+    for item in batch["items"]:
+        product = item["product_id"]
+        expected = baseline(
+            data["rows"],
+            product_id=product,
+            target_date=target,
+            cutoff=cutoff,
+            method="B1",
+        )
+        assert expected["eligible_weekday_n"] == (9 if product == "p1" else 8)
+        assert item == {
+            **expected,
+            "product_id": product,
+            "method": "B1",
+            "b1_mean": expected["forecast_mean"],
+            "fallback_reason": "Модель неприменима или повреждена; используется B1",
+            "evaluation_applicability": coverage,
+        }
