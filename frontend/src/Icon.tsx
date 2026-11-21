@@ -95,24 +95,12 @@ export function Icon({
 /** BakePlan monogram, the same mark as in the pitch deck and README. */
 export function BrandMark() {
   return (
-    <svg
+    <img
       className="brand-logo"
-      viewBox="0 0 160 160"
-      aria-hidden="true"
-      focusable="false"
-    >
-      <rect x="2" y="2" width="156" height="156" rx="34" fill="#F7F2EC" />
-      <g transform="translate(37 28) scale(1.45)">
-        <path
-          fill="#1A1614"
-          d="M0 0h14v72H0zM14 40h26c24 0 24 32 0 32H14V59h24c7 0 7-6 0-6H14z"
-        />
-        <path
-          fill="#C2341F"
-          fillRule="evenodd"
-          d="M20 0h18c25 0 25 34 0 34H20zM20 12v10h16c8 0 8-10 0-10z"
-        />
-      </g>
-    </svg>
+      src="/bakeplan.svg"
+      alt=""
+      width="36"
+      height="36"
+    />
   );
 }

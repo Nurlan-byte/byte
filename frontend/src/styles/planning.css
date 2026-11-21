@@ -1,0 +1,429 @@
+/* The start screen belongs to the active workflow, including procurement. */
+.plan-start {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+}
+.plan-start-hero {
+  display: grid;
+  grid-template-columns: minmax(0, 1.06fr) minmax(0, 1fr);
+  min-height: 330px;
+  overflow: hidden;
+  color: #192e43;
+  background: #f7efe2;
+  border: 1px solid #e4d9c8;
+  border-radius: 18px;
+}
+.plan-start-copy {
+  align-self: center;
+  min-width: 0;
+  padding: clamp(26px, 4.6vw, 68px);
+}
+.plan-start-copy h2 {
+  max-width: 13em;
+  margin: 0;
+  font-size: clamp(32px, 3.65vw, 58px);
+  line-height: 1.04;
+  letter-spacing: -0.045em;
+  text-wrap: balance;
+}
+.plan-start-copy p {
+  max-width: 37ch;
+  margin: 18px 0 24px;
+  color: #42505d;
+  font-size: clamp(15px, 1.15vw, 18px);
+  line-height: 1.55;
+}
+.plan-start-copy .cta {
+  display: inline-flex;
+  align-items: center;
+  gap: 16px;
+  min-height: 48px;
+  margin: 0;
+  padding-inline: 22px;
+}
+.plan-start-copy small {
+  margin-top: 11px;
+  color: #585d60;
+  font-size: 13px;
+}
+.plan-start-photo {
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  min-width: 0;
+  object-fit: cover;
+  object-position: center;
+}
+.plan-start-requirements {
+  align-self: stretch;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  padding: clamp(24px, 4vw, 56px);
+  background: #21394b;
+  color: #fff;
+}
+.plan-start-requirements h3 {
+  margin: 0 0 18px;
+  color: inherit;
+  font-size: 23px;
+}
+.plan-start-requirements dl {
+  margin: 0;
+}
+.plan-start-requirements dl > div {
+  display: grid;
+  grid-template-columns: 5.2em minmax(0, 1fr);
+  align-items: baseline;
+  gap: 12px;
+  padding: 12px 0;
+  border-top: 1px solid #607687;
+}
+.plan-start-requirements dt {
+  font-weight: 650;
+}
+.plan-start-requirements dd {
+  margin: 0;
+  color: #e0e9ed;
+  font-size: 14px;
+}
+.plan-start-history {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin-top: 16px;
+  padding: 22px clamp(20px, 3vw, 36px);
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+}
+.plan-start-history-icon {
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  flex: none;
+  border-radius: 12px;
+  background: #e9eef2;
+  color: #385169;
+}
+.plan-start-history h3 {
+  margin: 0;
+  font-size: 18px;
+}
+.plan-start-history p {
+  margin: 3px 0 0;
+  color: var(--muted);
+  font-size: 14px;
+}
+.plan-start-history button {
+  margin: 0 0 0 auto;
+  flex-shrink: 0;
+}
+
+.plan-workbench .section-heading {
+  align-items: center;
+}
+.plan-workbench .section-heading h2 {
+  margin: 0;
+  letter-spacing: -0.035em;
+}
+.plan-workbench .section-copy {
+  max-width: 62ch;
+  margin: 5px 0 0;
+}
+.plan-workbench .planning-controls {
+  grid-template-columns: repeat(3, minmax(0, 1fr)) minmax(0, 1.12fr);
+  align-items: start;
+  margin: 18px 0;
+  padding: 16px;
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+}
+.plan-workbench .planning-controls input {
+  max-width: 100%;
+  min-width: 0;
+}
+.plan-workbench .production-controls {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+.production-controls > .control-field:nth-child(-n + 2) {
+  align-self: end;
+}
+.production-controls > .cta {
+  align-self: end;
+  margin: 0;
+}
+.plan-workbench .planning-controls .checkbox-line {
+  background: var(--surface);
+}
+.plan-workbench .planning-controls summary {
+  line-height: 1.3;
+}
+.plan-workbench > button.cta {
+  margin-top: 0;
+}
+.plan-source-help {
+  margin: 12px 0 0;
+}
+.plan-source-help .control-hint {
+  max-width: 74ch;
+  margin: 5px 0 10px;
+}
+.plan-workbench .replay-notice {
+  padding: 10px 14px;
+  margin: 12px 0;
+  font-size: 13px;
+}
+.plan-workbench .plan-heading {
+  margin-top: 28px;
+  padding: 22px 0 8px;
+  border-top: 2px solid var(--ink);
+  border-radius: 0;
+  background: transparent;
+}
+.plan-workbench .plan-heading .section-heading {
+  margin-bottom: 8px;
+}
+#plan-review-heading {
+  margin: 0;
+  scroll-margin-top: 34px;
+  letter-spacing: -0.03em;
+}
+#plan-review-heading:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 4px;
+}
+.review-state {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 12px;
+}
+.review-state a,
+.confirm-bar a[href="#plan-items"] {
+  display: inline-flex;
+  align-items: center;
+  min-height: 36px;
+  font-size: 14px;
+  font-weight: 600;
+}
+#plan-confirm,
+#plan-items {
+  scroll-margin-top: 16px;
+}
+.plan-workbench .quantity-help {
+  margin: 7px 0;
+}
+.plan-workbench .confirm-bar {
+  align-items: center;
+  border-top: 1px solid var(--line);
+}
+
+.stock-guide {
+  background: var(--surface);
+}
+.stock-guide .stock-rule {
+  margin: 10px 0 14px;
+  font-size: 13px;
+}
+.stock-guide .stock-grid {
+  padding: 15px;
+  background: var(--surface-2);
+  border-radius: 10px;
+}
+.stock-guide .stock-explanation {
+  margin: 12px 0;
+}
+.stock-guide .delivery-source {
+  max-width: 24em;
+  margin-top: 16px;
+}
+.delivery-registry .registry-toolbar,
+.delivery-record-heading {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px 20px;
+}
+.registry-toolbar p {
+  flex: 1 1 24em;
+}
+.delivery-registry .delivery-list {
+  display: grid;
+  gap: 12px;
+  margin: 12px 0;
+}
+.delivery-registry .delivery-record {
+  padding: 16px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+}
+.delivery-record-heading > div {
+  flex: 1;
+}
+.delivery-record-heading p {
+  margin: 3px 0 0;
+  color: var(--muted);
+  font-size: 13px;
+}
+.delivery-record .delivery-totals {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+  padding: 12px 0 6px;
+  margin: 0;
+  font-variant-numeric: tabular-nums;
+}
+.delivery-record .delivery-totals dd {
+  color: var(--ink);
+  font-size: 18px;
+}
+.delivery-record progress {
+  display: block;
+  width: 100%;
+  height: 5px;
+  accent-color: #33755c;
+}
+.delivery-registry fieldset.delivery-fields,
+.incoming-list fieldset.delivery-fields {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 140px), 1fr));
+  align-items: end;
+  gap: 12px;
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--surface);
+}
+.delivery-fields legend {
+  padding-inline: 6px;
+  font-weight: 650;
+}
+.incoming-list fieldset.delivery-fields > small {
+  grid-column: 1 / -1;
+}
+.supplier-message {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px 16px;
+  padding: 20px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--surface-2);
+  box-shadow: none;
+}
+.supplier-message h3 {
+  margin: 0;
+}
+.supplier-message > textarea,
+.supplier-message > p {
+  grid-column: 1 / -1;
+  margin: 0;
+}
+.supplier-message textarea {
+  font: inherit;
+  font-size: 14px;
+}
+.supplier-message .supplier-copy-actions {
+  margin: 0;
+}
+.supplier-message .supplier-copy-actions > span:empty {
+  display: none;
+}
+
+@media (max-width: 820px) {
+  .plan-start-hero {
+    min-height: 280px;
+  }
+  .plan-workbench .planning-controls {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .production-controls > .cta {
+    grid-column: 1 / -1;
+  }
+  .plan-workbench .confirm-bar {
+    align-items: stretch;
+  }
+}
+@media (max-width: 620px) {
+  .plan-start-hero {
+    grid-template-columns: minmax(0, 1fr);
+    min-height: 0;
+    border-radius: 13px;
+  }
+  .plan-start-copy {
+    padding: 24px;
+  }
+  .plan-start-copy h2 {
+    font-size: clamp(32px, 8.6vw, 44px);
+  }
+  .plan-start-copy p {
+    margin: 12px 0 18px;
+  }
+  .plan-start-photo {
+    height: clamp(125px, 34vw, 195px);
+    object-position: center 55%;
+  }
+  .plan-start-requirements {
+    padding: 18px 24px;
+  }
+  .plan-start-requirements h3 {
+    margin-bottom: 8px;
+    font-size: 18px;
+  }
+  .plan-start-requirements dl > div {
+    padding: 8px 0;
+  }
+  .plan-start-history {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    gap: 10px 12px;
+    padding: 16px;
+  }
+  .plan-start-history button {
+    grid-column: 2;
+    justify-self: start;
+    margin: 0;
+  }
+  .plan-workbench .planning-controls {
+    gap: 10px;
+    padding: 12px;
+  }
+  .plan-workbench .planning-controls .control-field > label {
+    font-size: 13px;
+  }
+  .plan-workbench .planning-controls input[type="date"] {
+    width: 100%;
+    padding-inline: 5px;
+  }
+  .plan-workbench .planning-controls .calendar-field .checkbox-line {
+    gap: 5px;
+  }
+  .plan-workbench .plan-heading {
+    margin-top: 20px;
+  }
+  .plan-workbench .plan-heading .section-heading {
+    align-items: start;
+  }
+  .delivery-record-heading {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 6px;
+  }
+  .delivery-record-heading .badge {
+    justify-self: start;
+  }
+  .supplier-message {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .supplier-message .supplier-copy-actions {
+    justify-content: start;
+  }
+}

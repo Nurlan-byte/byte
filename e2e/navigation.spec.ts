@@ -81,7 +81,8 @@ test('section navigation preserves the dataset, diagnostic forecast and unsaved 
   await expect(page.getByLabel('Данные доступны до', { exact: true })).toHaveValue('2026-10-11');
   await expect(page.getByTestId('stale-plan')).toHaveCount(0);
   await expect(page.getByRole('button', { name: 'Подтвердить и сохранить', exact: true })).toBeEnabled();
-  await expect(page.locator('.workspace-header')).toContainText('2026-10-12');
+  await expect(page.locator('.workspace-header time')).toHaveAttribute('datetime', '2026-10-12');
+  await expect(page.locator('.workspace-header time')).toContainText('12 октября 2026');
   await expect(page.locator('.workspace-header')).toContainText('Историческое воспроизведение');
   await expect(page.locator('.workspace-header')).not.toContainText('на завтра');
 });
@@ -97,6 +98,18 @@ for (const width of [360, 768, 1440]) {
     await expect(page.getByTestId('model-summary')).not.toContainText('MAE');
     await page.getByRole('button', { name: 'Проверить прогноз', exact: true }).click();
     await expect(page.getByTestId('forecast-table').locator('tbody tr').first()).toContainText('Экспериментальный расчёт');
+    if (width === 360) {
+      const forecast = page.getByRole('region', { name: 'Прогноз по товарам', exact: true });
+      await forecast.focus();
+      await page.keyboard.press('Shift+Tab');
+      await page.keyboard.press('Tab');
+      await expect(forecast).toBeFocused();
+      if (await forecast.evaluate(el => el.scrollWidth > el.clientWidth)) {
+        const start = await forecast.evaluate(el => el.scrollLeft);
+        await page.keyboard.press('ArrowRight');
+        await expect.poll(() => forecast.evaluate(el => el.scrollLeft)).toBeGreaterThan(start);
+      }
+    }
     await navigate(page, 'История');
     await page.getByRole('button', { name: 'Обновить историю', exact: true }).click();
     await expect(page.locator('.history-card').first()).toBeVisible();
@@ -115,3 +128,26 @@ for (const width of [360, 768, 1440]) {
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
   });
 }
+
+test('mobile navigation fits at 320px and import actions are on the first screen at 360px', async ({ page }) => {
+  await page.setViewportSize({ width: 320, height: 800 });
+  await page.goto('/');
+  const navigation = page.getByRole('navigation', { name: 'Разделы BakePlan', exact: true });
+  await expect(navigation.getByRole('button', { name: 'План', exact: true })).toBeEnabled();
+  await page.evaluate(() => document.fonts.ready.then(() => true));
+  for (const name of ['План', 'Данные', 'История']) {
+    await expect(navigation.getByRole('button', { name, exact: true })).toBeInViewport({ ratio: 1 });
+  }
+  await expect(navigation.getByText('Дополнительно', { exact: true })).toBeInViewport({ ratio: 1 });
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(320);
+
+  await page.setViewportSize({ width: 360, height: 800 });
+  await navigate(page, 'Данные');
+  const file = page.getByLabel('CSV-файл', { exact: true });
+  const demo = page.getByRole('button', { name: 'Загрузить демо CSV', exact: true });
+  await expect(file).toBeEnabled();
+  await expect(demo).toBeEnabled();
+  expect(await page.evaluate(() => window.scrollY)).toBe(0);
+  await expect(file).toBeInViewport({ ratio: 1 });
+  await expect(demo).toBeInViewport({ ratio: 1 });
+});

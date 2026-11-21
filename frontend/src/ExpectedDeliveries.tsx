@@ -22,7 +22,7 @@ export function ExpectedDeliveries({
     );
   }
   return (
-    <details className="expected-deliveries">
+    <details className="expected-deliveries incoming-list">
       <summary>Товары в пути ({deliveries.length})</summary>
       <p>
         Добавьте уже заказанные товары, которые ожидаете получить к открытию в
@@ -30,7 +30,7 @@ export function ExpectedDeliveries({
         поставок.
       </p>
       {deliveries.map((row, index) => (
-        <fieldset key={index} disabled={disabled}>
+        <fieldset className="delivery-fields" key={index} disabled={disabled}>
           <legend>Поставка {index + 1}</legend>
           <label>
             Товар

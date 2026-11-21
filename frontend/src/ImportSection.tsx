@@ -178,25 +178,24 @@ function ProductionImport({
     : !csv.trim()
       ? "Выберите CSV-файл, загрузите демо или вставьте CSV ниже."
       : !bakeryId.trim()
-        ? "Укажите код точки в разделе «Параметры набора»."
+        ? "Укажите код точки для этого набора."
         : !provenance.trim()
           ? "Укажите происхождение данных: название источника и описание набора."
           : "";
 
   return (
-    <section id="import" aria-labelledby="import-heading">
+    <section
+      className="data-workspace"
+      id="import"
+      aria-labelledby="import-heading"
+    >
       <div className="section-heading">
         <div>
-          <p className="eyebrow">История продаж</p>
-          <h2 id="import-heading">Данные пекарни</h2>
+          <h1 id="import-heading">Данные пекарни</h1>
           <p className="section-copy">
-            Загрузите историю из CSV или попробуйте демо. Сначала проверим
-            данные, затем можно перейти к плану выпечки.
+            Выберите историю продаж, чтобы подготовить план выпечки.
           </p>
         </div>
-        <span className={`badge ${dataset ? "badge-success" : ""}`}>
-          {dataset ? "Проверено и сохранено" : "Начните с импорта"}
-        </span>
       </div>
 
       {dataset && (
@@ -297,6 +296,127 @@ function ProductionImport({
         </div>
       )}
 
+      {dataset && <h2 className="subheading">Загрузить другой набор</h2>}
+      <div className="source-options">
+        <div className="file-drop source-option">
+          <Icon name="data" />
+          <label htmlFor="import-file">CSV-файл</label>
+          <p id="import-file-help">
+            UTF-8 с запятыми, до 2 МБ. До 1 000 000 символов и 10 000 строк.
+          </p>
+          <input
+            id="import-file"
+            ref={fileInput}
+            type="file"
+            accept=".csv,text/csv"
+            aria-describedby="import-file-help"
+            disabled={busy}
+            onChange={(event) => {
+              const file = event.target.files?.[0];
+              if (!file) return;
+              if (file.size > 2_000_000) {
+                setError(
+                  "Файл превышает 2 МБ. Уменьшите CSV и выберите файл снова. Текущее содержимое не изменено.",
+                );
+                event.target.value = "";
+                return;
+              }
+              void run(async () => {
+                let text: string;
+                try {
+                  text = await file.text();
+                } catch {
+                  if (fileInput.current) fileInput.current.value = "";
+                  throw new Error(
+                    "Не удалось прочитать CSV-файл. Выберите его снова или вставьте содержимое в разделе «Вставить или проверить CSV». Текущее содержимое не изменено.",
+                  );
+                }
+                if ([...text].length > 1_000_000) {
+                  if (fileInput.current) fileInput.current.value = "";
+                  throw new Error(
+                    "CSV превышает 1 000 000 символов. Сократите файл и выберите его снова. Текущее содержимое не изменено.",
+                  );
+                }
+                setCsv(text);
+                setFileName(file.name);
+                if (source === "synthetic") {
+                  setSource("local");
+                  setProvenance(file.name);
+                }
+                if (bakeryId === "demo") setBakeryId("");
+                setNotice(
+                  "Файл прочитан, но ещё не импортирован. Проверьте источник и нажмите «Проверить и импортировать».",
+                );
+              });
+            }}
+          />
+          {fileName && <p className="muted">Выбран файл: {fileName}</p>}
+        </div>
+        <div className="demo-picker source-option">
+          <Icon name="bread" />
+          <strong className="source-title">Попробовать на примере</strong>
+          <div className="actions demo-actions">
+            <button
+              className="secondary"
+              disabled={busy}
+              onClick={() =>
+                void run(async () => {
+                  const response = await fetch("/demo.csv");
+                  if (!response.ok)
+                    throw new Error(
+                      "Демо-файл недоступен. Повторите загрузку или выберите свой CSV-файл.",
+                    );
+                  setCsv(await response.text());
+                  setFileName("");
+                  if (fileInput.current) fileInput.current.value = "";
+                  setSource("synthetic");
+                  setBakeryId("demo");
+                  setDataTarget("sold_units");
+                  setProvenance(
+                    "Синтетическая демонстрация BakePlan: физические штуки",
+                  );
+                  setNotice(
+                    "Подготовлены синтетические данные в штуках. Нажмите «Проверить и импортировать», затем перейдите к плану.",
+                  );
+                })
+              }
+            >
+              Загрузить демо CSV
+            </button>
+            <button
+              className="secondary"
+              disabled={busy}
+              onClick={() => {
+                setCsv(syntheticSalesCsv());
+                setFileName("");
+                if (fileInput.current) fileInput.current.value = "";
+                setSource("synthetic");
+                setBakeryId("demo");
+                setDataTarget("item_line_count");
+                setProvenance(
+                  "Синтетические строки продаж для тестирования BakePlan",
+                );
+                setNotice(
+                  "Загружено синтетическое sales-only демо. Импортируйте CSV для диагностики; выпуск из этих данных не рассчитывается.",
+                );
+              }}
+            >
+              Демо строк продаж
+            </button>
+          </div>
+          <p>
+            Оба демо содержат синтетические данные. Первый пример — продажи в
+            штуках, второй — строки чеков.
+          </p>
+        </div>
+      </div>
+      <p className="import-stage" data-testid="import-stage" aria-live="polite">
+        {draftMatchesSaved
+          ? "3 из 3 · Данные проверены и сохранены. Можно рассчитывать план."
+          : csv.trim()
+            ? "2 из 3 · Файл подготовлен, но ещё не импортирован. Проверьте источник и нажмите «Проверить и импортировать»."
+            : "1 из 3 · Выберите файл или попробуйте демо."}
+      </p>
       <details className="saved-datasets">
         <summary>Продолжить работу с сохранённым набором</summary>
         <button
@@ -362,22 +482,20 @@ function ProductionImport({
         )}
       </details>
 
-      <h3>{dataset ? "Загрузить другой набор" : "Загрузить историю"}</h3>
       {!dataset && (
         <div className="data-guide">
-          <h3>Какие данные нужны?</h3>
+          <h2 className="subheading">Какие данные нужны?</h2>
           <p>
             По каждому изделию и дню: сколько осталось утром, испекли, продали,
             списали и осталось вечером. Отметьте закрытые дни и случаи, когда
             товар закончился.
           </p>
-          <p>
-            Для расчёта по дням недели полезна история за последние 8 недель.
-            Короткую историю можно импортировать, но для части изделий оценки
-            может не быть.
-          </p>
           <details>
             <summary>Формат файла и пять изделий</summary>
+            <p>
+              Для расчёта по дням недели полезна история за 8 недель. При
+              короткой истории оценка доступна не для всех изделий.
+            </p>
             <p>
               Одна строка — один день и одно изделие. Количества — целые
               физические штуки. Пропуск даты не означает нулевые продажи.
@@ -402,172 +520,45 @@ function ProductionImport({
           </details>
         </div>
       )}
-      <p className="import-stage" data-testid="import-stage">
-        {draftMatchesSaved
-          ? "3 из 3 · Данные проверены и сохранены. Можно рассчитывать план."
-          : csv.trim()
-            ? "2 из 3 · Файл подготовлен, но ещё не импортирован. Проверьте источник и нажмите «Проверить и импортировать»."
-            : "1 из 3 · Выберите файл или попробуйте демо."}
-      </p>
-      <div className="file-drop">
-        <label htmlFor="import-file">CSV-файл</label>
-        <p className="muted" id="import-file-help">
-          UTF-8, разделитель — запятая. До 1 000 000 символов CSV и 10 000
-          строк; весь запрос — до 2 МБ. Для своего файла проверьте источник и
-          происхождение данных ниже.
-        </p>
-        <input
-          id="import-file"
-          ref={fileInput}
-          type="file"
-          accept=".csv,text/csv"
-          aria-describedby="import-file-help"
-          disabled={busy}
-          onChange={(event) => {
-            const file = event.target.files?.[0];
-            if (!file) return;
-            if (file.size > 2_000_000) {
-              setError(
-                "Файл превышает 2 МБ. Уменьшите CSV и выберите файл снова. Текущее содержимое не изменено.",
-              );
-              event.target.value = "";
-              return;
-            }
-            void run(async () => {
-              let text: string;
-              try {
-                text = await file.text();
-              } catch {
-                if (fileInput.current) fileInput.current.value = "";
-                throw new Error(
-                  "Не удалось прочитать CSV-файл. Выберите его снова или вставьте содержимое в разделе «Вставить или проверить CSV». Текущее содержимое не изменено.",
+      <div className="data-settings">
+        <h2 className="subheading">Источник и единицы измерения</h2>
+        <div className="controls source-fields">
+          <div className="control-field">
+            <label htmlFor="import-source">Источник</label>
+            <select
+              id="import-source"
+              disabled={busy}
+              value={source}
+              onChange={(event) => {
+                setSource(event.target.value);
+                setProvenance(
+                  event.target.value === "synthetic"
+                    ? "Синтетическая демонстрация BakePlan"
+                    : "",
                 );
+              }}
+            >
+              <option value="synthetic">Синтетические данные</option>
+              <option value="local">Локальные данные пекарни</option>
+              <option value="external">Внешние данные</option>
+            </select>
+          </div>
+          <div className="control-field">
+            <label htmlFor="import-target">Измеряемая величина</label>
+            <select
+              id="import-target"
+              disabled={busy}
+              value={dataTarget}
+              onChange={(event) =>
+                setDataTarget(event.target.value as DatasetTarget)
               }
-              if ([...text].length > 1_000_000) {
-                if (fileInput.current) fileInput.current.value = "";
-                throw new Error(
-                  "CSV превышает 1 000 000 символов. Сократите файл и выберите его снова. Текущее содержимое не изменено.",
-                );
-              }
-              setCsv(text);
-              setFileName(file.name);
-              if (source === "synthetic") {
-                setSource("local");
-                setProvenance(file.name);
-              }
-              if (bakeryId === "demo") setBakeryId("");
-              setNotice(
-                "Файл прочитан, но ещё не импортирован. Проверьте источник и нажмите «Проверить и импортировать».",
-              );
-            });
-          }}
-        />
-        {fileName && <p className="muted">Выбран файл: {fileName}</p>}
-      </div>
-      <div className="actions demo-actions">
-        <button
-          className="secondary"
-          disabled={busy}
-          onClick={() =>
-            void run(async () => {
-              const response = await fetch("/demo.csv");
-              if (!response.ok)
-                throw new Error(
-                  "Демо-файл недоступен. Повторите загрузку или выберите свой CSV-файл.",
-                );
-              setCsv(await response.text());
-              setFileName("");
-              if (fileInput.current) fileInput.current.value = "";
-              setSource("synthetic");
-              setBakeryId("demo");
-              setDataTarget("sold_units");
-              setProvenance(
-                "Синтетическая демонстрация BakePlan: физические штуки",
-              );
-              setNotice(
-                "Подготовлены синтетические данные в штуках. Нажмите «Проверить и импортировать», затем перейдите к плану.",
-              );
-            })
-          }
-        >
-          Загрузить демо CSV
-        </button>
-        <button
-          className="secondary"
-          disabled={busy}
-          onClick={() => {
-            setCsv(syntheticSalesCsv());
-            setFileName("");
-            if (fileInput.current) fileInput.current.value = "";
-            setSource("synthetic");
-            setBakeryId("demo");
-            setDataTarget("item_line_count");
-            setProvenance(
-              "Синтетические строки продаж для тестирования BakePlan",
-            );
-            setNotice(
-              "Загружено синтетическое sales-only демо. Импортируйте CSV для диагностики; выпуск из этих данных не рассчитывается.",
-            );
-          }}
-        >
-          Демо строк продаж
-        </button>
-        <span className="muted">Оба демо содержат синтетические данные</span>
-      </div>
-      <div className="controls">
-        <div className="control-field">
-          <label htmlFor="import-source">Источник</label>
-          <select
-            id="import-source"
-            disabled={busy}
-            value={source}
-            onChange={(event) => {
-              setSource(event.target.value);
-              setProvenance(
-                event.target.value === "synthetic"
-                  ? "Синтетическая демонстрация BakePlan"
-                  : "",
-              );
-            }}
-          >
-            <option value="synthetic">Синтетические данные</option>
-            <option value="local">Локальные данные пекарни</option>
-            <option value="external">Внешние данные</option>
-          </select>
-        </div>
-        <div className="control-field">
-          <label htmlFor="import-target">Измеряемая величина</label>
-          <select
-            id="import-target"
-            disabled={busy}
-            value={dataTarget}
-            onChange={(event) =>
-              setDataTarget(event.target.value as DatasetTarget)
-            }
-          >
-            <option value="sold_units">Продажи в штуках</option>
-            <option value="item_line_count">Строки чеков — диагностика</option>
-          </select>
-        </div>
-      </div>
-      <div className="control-field">
-        <label htmlFor="import-provenance">Происхождение данных</label>
-        <input
-          id="import-provenance"
-          disabled={busy}
-          value={provenance}
-          onChange={(event) => setProvenance(event.target.value)}
-          placeholder="Название источника и описание набора"
-        />
-      </div>
-      <p className="muted">
-        {salesOnly
-          ? "Строка продажи не равна физической штуке. Агрегированные открытые данные, включая BreadBasket, подходят только для sales-only диагностики."
-          : "Для плана нужны физические количества и корректный баланс. Пропуски остаются неизвестными и не становятся нулевыми продажами."}
-      </p>
-      <details>
-        <summary>Параметры набора</summary>
-        <div className="controls">
+            >
+              <option value="sold_units">Продажи в штуках</option>
+              <option value="item_line_count">
+                Строки чеков — диагностика
+              </option>
+            </select>
+          </div>
           <div className="control-field">
             <label htmlFor="import-bakery">Код точки</label>
             <input
@@ -578,11 +569,31 @@ function ProductionImport({
               placeholder="demo"
             />
           </div>
+          <div className="control-field provenance-field">
+            <label htmlFor="import-provenance">Происхождение данных</label>
+            <input
+              id="import-provenance"
+              disabled={busy}
+              value={provenance}
+              onChange={(event) => setProvenance(event.target.value)}
+              placeholder="Название источника и описание набора"
+            />
+          </div>
         </div>
         <p className="muted">
-          Данные разных точек и единиц измерения хранятся отдельно.
+          {salesOnly
+            ? "Строка продажи не равна физической штуке. Агрегированные открытые данные, включая BreadBasket, подходят только для sales-only диагностики."
+            : "Для плана нужны физические количества и корректный баланс. Пропуски остаются неизвестными и не становятся нулевыми продажами."}
         </p>
-      </details>
+        <details>
+          <summary>Параметры набора</summary>
+          <p className="muted">
+            Данные разных точек и единиц измерения хранятся отдельно. При
+            открытии сохранённого набора BakePlan восстановит его источник,
+            точку и единицы измерения.
+          </p>
+        </details>
+      </div>
       <details>
         <summary>Вставить или проверить CSV</summary>
         <p className="muted">

@@ -1,4 +1,6 @@
+import { useEffect, useRef } from "react";
 import { ProcurementPlanning } from "./ProcurementPlanning";
+import { PlanStart } from "./PlanStart";
 import { Icon } from "./Icon";
 import { api } from "./api";
 import type { Plan } from "./types";
@@ -14,16 +16,63 @@ import {
   productActiveOnTarget,
 } from "./workspace";
 import { formatDatasetPeriod } from "./datasetSummary";
-export function PlanningSection(
-  props: Parameters<typeof ProductionPlanning>[0],
-) {
-  const selected = {
-    ...props,
-    dataset: forPlanningKind(props.dataset, props.planningKind),
-    plan: forPlanningKind(props.plan, props.planningKind),
-  };
+type PlanningProps = Pick<
+  SectionProps,
+  | "planningKind"
+  | "dataset"
+  | "plan"
+  | "busy"
+  | "setNotice"
+  | "target"
+  | "setTarget"
+  | "cutoff"
+  | "setCutoff"
+  | "method"
+  | "setMethod"
+  | "targetOpen"
+  | "setTargetOpen"
+  | "quantities"
+  | "setQuantities"
+  | "confirmation"
+  | "invalid"
+  | "run"
+  | "runReplacingPlan"
+  | "show"
+  | "refreshHistory"
+> & { onImport?: () => void; onHistory?: () => void };
+
+export type PlanWorkflowProps = PlanningProps & {
+  showCalculated: (plan: Plan) => void;
+};
+
+export function PlanningSection(props: PlanningProps) {
+  const dataset = forPlanningKind(props.dataset, props.planningKind);
+  const plan = forPlanningKind(props.plan, props.planningKind);
+  const focusResult = useRef<string | null>(null);
+  useEffect(() => {
+    if (plan && focusResult.current === plan.id) {
+      focusResult.current = null;
+      document.getElementById("plan-review-heading")?.focus();
+    }
+  }, [plan]);
+
+  if (!dataset && !plan) {
+    return (
+      <PlanStart
+        procurement={props.planningKind === "procurement"}
+        busy={props.busy}
+        onImport={props.onImport}
+        onHistory={props.onHistory}
+      />
+    );
+  }
+  function showCalculated(result: Plan) {
+    focusResult.current = result.id;
+    props.show(result);
+  }
+  const selected = { ...props, dataset, plan, showCalculated };
   return props.planningKind === "procurement" ? (
-    <ProcurementPlanning key={selected.dataset?.id ?? ""} {...selected} />
+    <ProcurementPlanning key={dataset?.id ?? ""} {...selected} />
   ) : (
     <ProductionPlanning {...selected} />
   );
@@ -51,39 +100,22 @@ function ProductionPlanning({
   run,
   runReplacingPlan = run,
   show,
+  showCalculated,
   refreshHistory,
-}: Pick<
-  SectionProps,
-  | "planningKind"
-  | "dataset"
-  | "plan"
-  | "busy"
-  | "setNotice"
-  | "target"
-  | "setTarget"
-  | "cutoff"
-  | "setCutoff"
-  | "method"
-  | "setMethod"
-  | "targetOpen"
-  | "setTargetOpen"
-  | "quantities"
-  | "setQuantities"
-  | "confirmation"
-  | "invalid"
-  | "run"
-  | "runReplacingPlan"
-  | "show"
-  | "refreshHistory"
-> & { onImport?: () => void; onHistory?: () => void }) {
+}: PlanWorkflowProps) {
   const salesOnly =
     dataset?.target === "item_line_count" || dataset?.unit === "item_line";
   if (salesOnly && (!plan || dataset.id === plan.dataset_id)) {
     return (
       <aside className="sales-only" data-testid="sales-only-notice">
-        Строки продаж не преобразуются в физические штуки. Для производственного
-        плана импортируйте отдельную историю sold_units / physical_unit с
-        балансом.
+        <strong>Для выпуска нужна история продаж в штуках</strong>
+        <p>
+          Строки продаж не преобразуются в физические штуки. Добавьте историю с
+          остатками и количеством проданных изделий.
+        </p>
+        <button className="secondary" disabled={busy} onClick={onImport}>
+          Перейти к данным
+        </button>
       </aside>
     );
   }
@@ -96,71 +128,34 @@ function ProductionPlanning({
   const calendarKnown = plan?.items.some((item) => item.target_is_open != null);
   const dirty = hasQuantityChanges(plan, quantities);
   const replay = target <= businessDate();
-  if (!dataset && !plan)
-    return (
-      <section
-        id="planning"
-        aria-labelledby="planning-heading"
-        className="welcome"
-      >
-        <span className="empty-icon">
-          <Icon name="bread" />
-        </span>
-        <p className="eyebrow">ВАШ ПЕРВЫЙ ПЛАН</p>
-        <h2 id="planning-heading">Подготовим выпечку на день</h2>
-        <p>
-          Добавьте историю продаж. BakePlan предложит количество для каждого
-          изделия, а вы проверите и сохраните свой выпуск.
-        </p>
-        <button className="cta" disabled={busy} onClick={onImport}>
-          Перейти к данным <Icon name="arrow" />
-        </button>
-        <p className="muted">
-          Нет файла под рукой? В «Данных» можно попробовать синтетический
-          пример.
-        </p>
-        <div className="welcome-next">
-          <strong>Что дальше</strong>
-          <p>
-            Выберите дату → получите план → поправьте количества → подтвердите.
-            Сохранённый план можно открыть в истории и скачать в CSV.
-          </p>
-        </div>
-        <button className="text-button" disabled={busy} onClick={onHistory}>
-          Открыть сохранённые планы
-        </button>
-      </section>
-    );
   return (
-    <section id="planning" aria-labelledby="planning-heading">
+    <section
+      id="planning"
+      className="plan-workbench"
+      aria-labelledby="planning-heading"
+    >
       <div className="section-heading">
         <div>
-          <p className="eyebrow">ПЛАН НА ДЕНЬ</p>
           <h2 id="planning-heading">Сколько выпекаем?</h2>
           <p className="section-copy">
-            Рассчитайте ориентир, проверьте партии и подтвердите свой выпуск.
+            Укажите дату выпуска и последний день, по которому есть продажи.
           </p>
         </div>
-        <span
-          className={`badge ${plan?.status === "confirmed" ? "badge-success" : "badge-neutral"}`}
-        >
-          {plan
-            ? plan.status === "confirmed"
-              ? "Сохранён"
-              : "Черновик"
-            : "Новый план"}
-        </span>
-      </div>
-      {replay && !plan && (
-        <aside className="replay-notice">
-          <strong>Историческое воспроизведение</strong>
-          <span>
-            Выбрана прошедшая или текущая дата. Расчёт и подтверждение будут
-            сохранены с меткой replay.
+        {plan && (
+          <span
+            className={`badge ${plan.status === "confirmed" ? "badge-success" : "badge-neutral"}`}
+          >
+            {plan.status === "confirmed" ? "Сохранён" : "Черновик"}
           </span>
-        </aside>
+        )}
+      </div>
+      {dirty && (
+        <p className="status-note">
+          Новый расчёт заменит несохранённые поля ниже. Сначала подтвердите
+          текущие правки, если хотите их сохранить.
+        </p>
       )}
-      <div className="controls planning-controls">
+      <div className="controls planning-controls production-controls">
         <div className="control-field">
           <label htmlFor="plan-date">Дата плана</label>
           <input
@@ -181,6 +176,39 @@ function ProductionPlanning({
             onChange={(e) => setCutoff(e.target.value)}
           />
         </div>
+        <button
+          className="cta"
+          disabled={busy || !dataset || salesOnly || !target || !cutoff}
+          onClick={() =>
+            void runReplacingPlan(async () =>
+              showCalculated(
+                await api<Plan>("/plans", {
+                  dataset_id: dataset?.id,
+                  target_date: target,
+                  cutoff,
+                  method,
+                  mode: target <= businessDate() ? "replay" : "operational",
+                  target_is_open: targetOpen,
+                }),
+              ),
+            )
+          }
+        >
+          Рассчитать план
+        </button>
+        <div className="control-field calendar-field">
+          <label htmlFor="plan-open">Целевой день открыт</label>
+          <div className="checkbox-line">
+            <input
+              id="plan-open"
+              disabled={busy}
+              type="checkbox"
+              checked={targetOpen}
+              onChange={(e) => setTargetOpen(e.target.checked)}
+            />
+            <span>{targetOpen ? "Выпекаем" : "Выпуск 0"}</span>
+          </div>
+        </div>
         <details className="control-field">
           <summary>Настройки прогноза</summary>
           <label htmlFor="planning-method">Способ расчёта</label>
@@ -195,57 +223,23 @@ function ProductionPlanning({
             <option value="B0">По прошлой неделе</option>
           </select>
         </details>
-        <div className="control-field calendar-field">
-          <label htmlFor="plan-open">Целевой день открыт</label>
-          <div className="checkbox-line">
-            <input
-              id="plan-open"
-              disabled={busy}
-              type="checkbox"
-              checked={targetOpen}
-              onChange={(e) => setTargetOpen(e.target.checked)}
-            />
-            <span>{targetOpen ? "Выпекаем" : "Выпуск 0"}</span>
-          </div>
-        </div>
       </div>
-      {dirty && (
-        <p className="status-note">
-          Новый расчёт заменит несохранённые поля ниже. Сначала подтвердите
-          текущие правки, если хотите их сохранить.
-        </p>
+      {replay && !plan && (
+        <aside className="replay-notice">
+          <strong>Историческое воспроизведение</strong>
+          <span>
+            План для прошедшей или текущей даты сохранится с этой меткой.
+          </span>
+        </aside>
       )}
-      <button
-        className="cta"
-        disabled={busy || !dataset || salesOnly || !target || !cutoff}
-        onClick={() =>
-          void runReplacingPlan(async () =>
-            show(
-              await api<Plan>("/plans", {
-                dataset_id: dataset?.id,
-                target_date: target,
-                cutoff,
-                method,
-                mode: target <= businessDate() ? "replay" : "operational",
-                target_is_open: targetOpen,
-              }),
-            ),
-          )
-        }
-      >
-        Рассчитать план
-      </button>
       {salesOnly && (
         <aside className="sales-only" data-testid="sales-only-notice">
           Открыт сохранённый план выпуска. Для нового расчёта выберите историю
           продаж в штуках с балансом остатков.
         </aside>
       )}
-      <div className="hint-block">
-        <p className="control-hint">
-          План использует продажи из выбранной истории. Если последние продажи
-          ещё не внесены, укажите более раннюю дату данных.
-        </p>
+      <details className="plan-source-help">
+        <summary>Какие продажи учитываются?</summary>
         {dataset && (
           <p className="control-hint">
             Период выбранной истории: {formatDatasetPeriod(dataset)}. Новые дни
@@ -256,7 +250,7 @@ function ProductionPlanning({
           История показывает продажи, но не показывает, хватало ли товара всем
           покупателям. Отсутствие прогноза не означает нулевые продажи.
         </p>
-      </div>
+      </details>
       {!dataset && plan && (
         <p className="muted">
           Открыт сохранённый план. Для нового расчёта сначала загрузите набор
@@ -268,21 +262,24 @@ function ProductionPlanning({
           <div className="plan-heading">
             <div className="section-heading">
               <div>
-                <p className="eyebrow">ПРОВЕРКА ВЫПУСКА</p>
-                <h3>Ваш план на {plan.target_date}</h3>
+                <h3 id="plan-review-heading" tabIndex={-1}>
+                  Ваш план на {plan.target_date}
+                </h3>
               </div>
-              <span
-                className={`badge ${dirty ? "badge-warning" : plan.status === "confirmed" ? "badge-success" : "badge-neutral"}`}
-              >
-                {dirty
-                  ? "Есть несохранённые изменения"
-                  : plan.status === "confirmed"
-                    ? "Подтверждён"
-                    : "Ожидает проверки"}
-              </span>
+              <div className="review-state">
+                <span
+                  className={`badge ${dirty ? "badge-warning" : plan.status === "confirmed" ? "badge-success" : "badge-neutral"}`}
+                >
+                  {dirty
+                    ? "Есть несохранённые изменения"
+                    : plan.status === "confirmed"
+                      ? "Подтверждён"
+                      : "Ожидает проверки"}
+                </span>
+                <a href="#plan-confirm">К подтверждению</a>
+              </div>
             </div>
             <p>
-              План на <strong>{plan.target_date}</strong> ·{" "}
               {plan.source === "synthetic"
                 ? "Синтетические данные"
                 : plan.source === "local"
@@ -292,8 +289,7 @@ function ProductionPlanning({
               {plan.mode === "replay"
                 ? "Историческое воспроизведение"
                 : "Операционный план"}{" "}
-              · {plan.status === "confirmed" ? "подтверждён" : "черновик"} ·
-              версия {plan.revision}
+              · версия {plan.revision}
             </p>
             <p>
               Срез: {plan.cutoff} · выбранный метод:{" "}
@@ -345,6 +341,7 @@ function ProductionPlanning({
             выпуск сохраняется только после подтверждения.
           </p>
           <div
+            id="plan-items"
             className="table plan-table-scroll"
             tabIndex={0}
             role="region"
@@ -527,7 +524,7 @@ function ProductionPlanning({
               </tbody>
             </table>
           </div>
-          <div className="confirm-bar">
+          <div className="confirm-bar" id="plan-confirm" tabIndex={-1}>
             <div>
               <strong>
                 {stale
@@ -541,6 +538,7 @@ function ProductionPlanning({
                         : "Подтвердите выпуск"}
               </strong>
               <p>Проверьте партии, ограничения и общую загрузку печи.</p>
+              <a href="#plan-items">К товарам</a>
             </div>
             <div className="actions">
               <button
@@ -586,7 +584,11 @@ function ProductionPlanning({
               </button>{" "}
               <a
                 className="button-link secondary"
-                href={busy ? undefined : `/api/plans/${encodeURIComponent(plan.id)}/export?revision=${plan.revision}`}
+                href={
+                  busy
+                    ? undefined
+                    : `/api/plans/${encodeURIComponent(plan.id)}/export?revision=${plan.revision}`
+                }
                 aria-disabled={busy || undefined}
                 download
               >

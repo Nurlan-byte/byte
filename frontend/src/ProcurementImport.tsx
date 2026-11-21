@@ -59,19 +59,19 @@ export function ProcurementImport(p: ImportProps) {
     if (dataset && p.active !== false) summary.current?.focus();
   }, [dataset, p.active]);
   return (
-    <section aria-labelledby="import-heading" id="import">
+    <section
+      className="data-workspace"
+      aria-labelledby="import-heading"
+      id="import"
+    >
       <div className="section-heading">
         <div>
-          <p className="eyebrow">История продаж и поставок</p>
-          <h2 id="import-heading">Данные закупаемых товаров</h2>
+          <h1 id="import-heading">Данные закупаемых товаров</h1>
           <p className="section-copy">
-            Продажи и движение готового товара в физических штуках. Пропуски
-            означают неизвестные данные.
+            Загрузите продажи и поставки в штуках. Для заказа понадобятся размер
+            упаковки и остатки.
           </p>
         </div>
-        <span className={`badge ${dataset ? "badge-success" : ""}`}>
-          {dataset ? "Проверено и сохранено" : "Начните с импорта"}
-        </span>
       </div>
       {dataset && (
         <div
@@ -101,6 +101,79 @@ export function ProcurementImport(p: ImportProps) {
             </button>
           </div>
         </div>
+      )}
+      {dataset && <h2 className="subheading">Загрузить другой набор</h2>}
+      <div className="source-options">
+        <div className="file-drop source-option">
+          <Icon name="data" />
+          <label htmlFor="proc-file">CSV-файл закупки</label>
+          <input
+            id="proc-file"
+            ref={fileInput}
+            aria-describedby="proc-file-help"
+            type="file"
+            accept=".csv,text/csv"
+            disabled={p.busy}
+            onChange={(e) => {
+              const file = e.target.files?.[0];
+              if (file)
+                void p.run(async () => {
+                  if (file.size > 2_000_000)
+                    throw new Error("Файл превышает 2 МБ.");
+                  p.setCsv(await file.text());
+                  setFileName(file.name);
+                  if (p.source === "synthetic") {
+                    p.setSource("local");
+                    p.setProvenance(file.name);
+                  }
+                  if (
+                    p.bakeryId === "demo" ||
+                    procurementDemos.some((demo) => demo.id === p.bakeryId)
+                  )
+                    p.setBakeryId("");
+                  p.setNotice(
+                    "Файл прочитан. Заполните товары и проверьте источник перед импортом.",
+                  );
+                });
+            }}
+          />
+          <p id="proc-file-help">
+            CSV с запятыми, до 2 МБ. Каждая строка описывает один товар за день.
+          </p>
+        </div>
+        <div className="demo-picker source-option">
+          <Icon name="bread" />
+          <strong className="source-title">Попробовать на примере</strong>
+          <div className="actions">
+            {procurementDemos.map((demo) => (
+              <button
+                key={demo.id}
+                type="button"
+                className="secondary"
+                aria-describedby="proc-demo-help"
+                disabled={p.busy}
+                onClick={() => {
+                  p.setCsv(demo.csv);
+                  setCatalog(editableCatalog(demo.catalog));
+                  setFileName("");
+                  if (fileInput.current) fileInput.current.value = "";
+                  p.setSource("synthetic");
+                  p.setBakeryId(demo.id);
+                  p.setProvenance(demo.provenance);
+                }}
+              >
+                {demo.label}
+              </button>
+            ))}
+          </div>
+          <p id="proc-demo-help">
+            Оба примера синтетические. Выбор заменит CSV, каталог и источник в
+            форме. Сохранённый набор продолжит использоваться до нового импорта.
+          </p>
+        </div>
+      </div>
+      {fileName && (
+        <p role="status">Файл: {fileName}. Данные ещё не импортированы.</p>
       )}
       <details className="saved-datasets">
         <summary>Открыть сохранённые данные закупки</summary>
@@ -162,70 +235,6 @@ export function ProcurementImport(p: ImportProps) {
           вечером. Каталог должен содержать ровно товары CSV.
         </p>
       </details>
-      <h3>{dataset ? "Загрузить другой набор" : "Загрузить историю"}</h3>
-      <div className="demo-picker">
-        <p id="proc-demo-help">
-          Оба примера синтетические. Выбор заменит CSV, каталог и источник в
-          форме. Сохранённый набор продолжит использоваться до нового импорта.
-        </p>
-        <div className="actions">
-          {procurementDemos.map((demo) => (
-            <button
-              key={demo.id}
-              type="button"
-              className="secondary"
-              aria-describedby="proc-demo-help"
-              disabled={p.busy}
-              onClick={() => {
-                p.setCsv(demo.csv);
-                setCatalog(editableCatalog(demo.catalog));
-                setFileName("");
-                if (fileInput.current) fileInput.current.value = "";
-                p.setSource("synthetic");
-                p.setBakeryId(demo.id);
-                p.setProvenance(demo.provenance);
-              }}
-            >
-              {demo.label}
-            </button>
-          ))}
-        </div>
-      </div>
-      <div className="control-field file-drop">
-        <label htmlFor="proc-file">CSV-файл закупки</label>
-        <input
-          id="proc-file"
-          ref={fileInput}
-          type="file"
-          accept=".csv,text/csv"
-          disabled={p.busy}
-          onChange={(e) => {
-            const file = e.target.files?.[0];
-            if (file)
-              void p.run(async () => {
-                if (file.size > 2_000_000)
-                  throw new Error("Файл превышает 2 МБ.");
-                p.setCsv(await file.text());
-                setFileName(file.name);
-                if (p.source === "synthetic") {
-                  p.setSource("local");
-                  p.setProvenance(file.name);
-                }
-                if (
-                  p.bakeryId === "demo" ||
-                  procurementDemos.some((demo) => demo.id === p.bakeryId)
-                )
-                  p.setBakeryId("");
-                p.setNotice(
-                  "Файл прочитан. Заполните товары и проверьте источник перед импортом.",
-                );
-              });
-          }}
-        />
-      </div>
-      {fileName && (
-        <p role="status">Файл: {fileName}. Данные ещё не импортированы.</p>
-      )}
       <details id="proc-manual-csv">
         <summary>Вставить или исправить текст файла</summary>
         <div className="control-field">
@@ -242,131 +251,138 @@ export function ProcurementImport(p: ImportProps) {
           />
         </div>
       </details>
-      <h3>Товары и условия поставщика</h3>
-      <p id="catalog-help" className="section-copy">
-        Добавьте каждый товар из файла. Код должен совпадать с кодом в файле.
-        Упаковку укажите по условиям поставщика. Пустой максимум означает, что
-        ограничение не задано.
-      </p>
-      {catalog.map((item, index) => (
-        <fieldset
-          key={index}
-          disabled={p.busy}
-          aria-describedby="catalog-help"
-          className="catalog-item"
-        >
-          <legend>Товар {index + 1}</legend>
-          <div className="controls">
-            <div className="control-field">
-              <label htmlFor={`proc-product-${index}`}>
-                Код товара {index + 1}
-              </label>
-              <input
-                id={`proc-product-${index}`}
-                value={item.product_id}
-                maxLength={64}
-                onChange={(e) =>
-                  updateProduct(index, "product_id", e.target.value)
-                }
-              />
-            </div>
-            <div className="control-field">
-              <label htmlFor={`proc-name-${index}`}>
-                Название товара {index + 1}
-              </label>
-              <input
-                id={`proc-name-${index}`}
-                value={item.name}
-                maxLength={100}
-                onChange={(e) => updateProduct(index, "name", e.target.value)}
-              />
-            </div>
-            <div className="control-field">
-              <label htmlFor={`proc-pack-${index}`}>
-                Штук в упаковке {index + 1}
-              </label>
-              <input
-                id={`proc-pack-${index}`}
-                type="number"
-                min={1}
-                max={1000000000}
-                step={1}
-                value={item.pack_size}
-                onChange={(e) =>
-                  updateProduct(index, "pack_size", e.target.value)
-                }
-              />
-            </div>
-            <div className="control-field">
-              <label htmlFor={`proc-max-${index}`}>
-                Максимум заказа {index + 1} (необязательно)
-              </label>
-              <input
-                id={`proc-max-${index}`}
-                type="number"
-                min={0}
-                max={1000000000}
-                step={1}
-                value={item.max_order_qty}
-                placeholder="Не задан"
-                onChange={(e) =>
-                  updateProduct(index, "max_order_qty", e.target.value)
-                }
-              />
-            </div>
-          </div>
-          <button
-            type="button"
-            className="secondary danger"
-            disabled={p.busy || catalog.length === 1}
-            onClick={() =>
-              setCatalog((previous) => previous.filter((_, n) => n !== index))
-            }
-          >
-            Удалить товар {index + 1}
-          </button>
-        </fieldset>
-      ))}
-      <button
-        type="button"
-        className="secondary"
-        disabled={p.busy || catalog.length >= 50}
-        onClick={() => setCatalog((previous) => [...previous, emptyProduct()])}
-      >
-        Добавить товар
-      </button>
-      <div className="controls">
-        <div className="control-field">
-          <label htmlFor="proc-source">Источник закупки</label>
-          <select
-            id="proc-source"
-            value={p.source}
+      <div className="data-settings">
+        <h2 className="subheading">Товары и условия поставщика</h2>
+        <p id="catalog-help" className="section-copy">
+          Добавьте каждый товар из файла. Код должен совпадать с кодом в файле.
+          Упаковку укажите по условиям поставщика. Пустой максимум означает, что
+          ограничение не задано.
+        </p>
+        {catalog.map((item, index) => (
+          <fieldset
+            key={index}
             disabled={p.busy}
-            onChange={(e) => p.setSource(e.target.value)}
+            aria-describedby="catalog-help"
+            className="catalog-item"
           >
-            <option value="synthetic">Синтетические данные</option>
-            <option value="local">Локальные данные</option>
-            <option value="external">Внешние данные</option>
-          </select>
+            <legend>Товар {index + 1}</legend>
+            <div className="controls">
+              <div className="control-field">
+                <label htmlFor={`proc-product-${index}`}>
+                  Код товара {index + 1}
+                </label>
+                <input
+                  id={`proc-product-${index}`}
+                  value={item.product_id}
+                  maxLength={64}
+                  onChange={(e) =>
+                    updateProduct(index, "product_id", e.target.value)
+                  }
+                />
+              </div>
+              <div className="control-field">
+                <label htmlFor={`proc-name-${index}`}>
+                  Название товара {index + 1}
+                </label>
+                <input
+                  id={`proc-name-${index}`}
+                  value={item.name}
+                  maxLength={100}
+                  onChange={(e) => updateProduct(index, "name", e.target.value)}
+                />
+              </div>
+              <div className="control-field">
+                <label htmlFor={`proc-pack-${index}`}>
+                  Штук в упаковке {index + 1}
+                </label>
+                <input
+                  id={`proc-pack-${index}`}
+                  type="number"
+                  min={1}
+                  max={1000000000}
+                  step={1}
+                  value={item.pack_size}
+                  onChange={(e) =>
+                    updateProduct(index, "pack_size", e.target.value)
+                  }
+                />
+              </div>
+              <div className="control-field">
+                <label htmlFor={`proc-max-${index}`}>
+                  Максимум заказа {index + 1} (необязательно)
+                </label>
+                <input
+                  id={`proc-max-${index}`}
+                  type="number"
+                  min={0}
+                  max={1000000000}
+                  step={1}
+                  value={item.max_order_qty}
+                  placeholder="Не задан"
+                  onChange={(e) =>
+                    updateProduct(index, "max_order_qty", e.target.value)
+                  }
+                />
+              </div>
+            </div>
+            <button
+              type="button"
+              className="secondary danger"
+              disabled={p.busy || catalog.length === 1}
+              onClick={() =>
+                setCatalog((previous) => previous.filter((_, n) => n !== index))
+              }
+            >
+              Удалить товар {index + 1}
+            </button>
+          </fieldset>
+        ))}
+        <button
+          type="button"
+          className="secondary"
+          disabled={p.busy || catalog.length >= 50}
+          onClick={() =>
+            setCatalog((previous) => [...previous, emptyProduct()])
+          }
+        >
+          Добавить товар
+        </button>
+      </div>
+      <div className="data-settings">
+        <h2 className="subheading">Источник данных</h2>
+        <div className="controls">
+          <div className="control-field">
+            <label htmlFor="proc-source">Источник закупки</label>
+            <select
+              id="proc-source"
+              value={p.source}
+              disabled={p.busy}
+              onChange={(e) => p.setSource(e.target.value)}
+            >
+              <option value="synthetic">Синтетические данные</option>
+              <option value="local">Локальные данные</option>
+              <option value="external">Внешние данные</option>
+            </select>
+          </div>
+          <div className="control-field">
+            <label htmlFor="proc-shop">Код точки</label>
+            <input
+              id="proc-shop"
+              value={p.bakeryId}
+              disabled={p.busy}
+              onChange={(e) => p.setBakeryId(e.target.value)}
+            />
+          </div>
         </div>
         <div className="control-field">
-          <label htmlFor="proc-shop">Код точки</label>
+          <label htmlFor="proc-provenance">Происхождение данных закупки</label>
           <input
-            id="proc-shop"
-            value={p.bakeryId}
+            id="proc-provenance"
+            value={p.provenance}
             disabled={p.busy}
-            onChange={(e) => p.setBakeryId(e.target.value)}
+            onChange={(e) => p.setProvenance(e.target.value)}
           />
         </div>
-      </div>
-      <div className="control-field">
-        <label htmlFor="proc-provenance">Происхождение данных закупки</label>
-        <input
-          id="proc-provenance"
-          value={p.provenance}
-          disabled={p.busy}
-          onChange={(e) => p.setProvenance(e.target.value)}
-        />
       </div>
       <button
         className="cta"

@@ -19,13 +19,6 @@ function CopyOrder({ text }: { text: string }) {
 
   return (
     <>
-      <textarea
-        ref={field}
-        aria-label="Текст заказа для поставщика"
-        value={text}
-        rows={Math.min(text.split("\n").length, 10)}
-        readOnly
-      />
       <div className="supplier-copy-actions">
         <button className="secondary" type="button" onClick={() => void copy()}>
           Скопировать заказ
@@ -34,6 +27,13 @@ function CopyOrder({ text }: { text: string }) {
           {feedback}
         </span>
       </div>
+      <textarea
+        ref={field}
+        aria-label="Текст заказа для поставщика"
+        value={text}
+        rows={Math.min(text.split("\n").length, 10)}
+        readOnly
+      />
     </>
   );
 }
@@ -74,7 +74,7 @@ export function SupplierOrderText({ plan }: { plan: Plan }) {
     ...lines,
   ].join("\n");
   return (
-    <section className="data-guide" aria-label="Сообщение поставщику">
+    <section className="supplier-message" aria-label="Сообщение поставщику">
       <h3>Сообщение поставщику</h3>
       {problem || lines.length === 0 ? (
         <p>{problem || "В подтверждённом заказе нет товаров к поставке."}</p>

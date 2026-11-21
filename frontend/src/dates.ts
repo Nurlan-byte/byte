@@ -10,3 +10,15 @@ export function businessDate(offset = 0): string {
   d.setUTCDate(d.getUTCDate() + offset);
   return d.toISOString().slice(0, 10);
 }
+
+export function formatPlanDate(value: string) {
+  const date = new Date(`${value}T00:00:00Z`);
+  return Number.isNaN(date.getTime())
+    ? value
+    : date.toLocaleDateString("ru-RU", {
+        day: "numeric",
+        month: "long",
+        year: "numeric",
+        timeZone: "UTC",
+      });
+}

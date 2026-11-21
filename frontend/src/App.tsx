@@ -6,8 +6,14 @@ import {
   hasQuantityChanges,
   productActiveOnTarget,
 } from "./workspace";
-import { BrandMark, Icon } from "./Icon";
-import { formatDatasetPeriod, datasetSourceLabel } from "./datasetSummary";
+import { Icon } from "./Icon";
+import {
+  DatasetContext,
+  PlanHeader,
+  PlanProgress,
+  WorkspaceNavigation,
+  type View,
+} from "./WorkspaceChrome";
 import { api } from "./api";
 import type { Dataset, DatasetTarget, Plan, PlanSummary } from "./types";
 import { businessDate } from "./dates";
@@ -16,13 +22,22 @@ import { ImportSection } from "./ImportSection";
 import { ModelSection } from "./ModelSection";
 import { PlanningSection } from "./PlanningSection";
 import { HistorySection, HISTORY_PAGE_SIZE } from "./HistorySection";
-type View = "planning" | "import" | "model" | "history";
 
 export function App() {
   const [planningKind, setPlanningKind] = useState<
     "production" | "procurement"
   >("production");
   const [view, setView] = useState<View>("planning");
+  useEffect(() => {
+    const titles = {
+      planning:
+        planningKind === "procurement" ? "План закупки" : "План выпечки",
+      import: "Данные",
+      history: "История планов",
+      model: "Качество прогноза",
+    };
+    document.title = titles[view] + " · BakePlan";
+  }, [view, planningKind]);
   const [csv, setCsv] = useState(""),
     [source, setSource] = useState("synthetic"),
     [dataset, setDataset] = useState<Dataset | null>(null),
@@ -46,7 +61,6 @@ export function App() {
   const [historyLoaded, setHistoryLoaded] = useState(false);
   const [restored, setRestored] = useState(false);
   const errorBox = useRef<HTMLDivElement>(null);
-  const moreMenu = useRef<HTMLDetailsElement>(null);
   useEffect(() => {
     if (error) errorBox.current?.focus();
   }, [error]);
@@ -114,8 +128,20 @@ export function App() {
     return () => window.removeEventListener("beforeunload", warn);
   }, [unsaved]);
   function changeView(next: View) {
+    const leavingPanel = document.activeElement?.closest("[id^='panel-']");
     setView(next);
     window.scrollTo({ top: 0 });
+    if (leavingPanel && view !== next) {
+      requestAnimationFrame(() => {
+        if (
+          leavingPanel.hasAttribute("hidden") &&
+          (document.activeElement === document.body ||
+            leavingPanel.contains(document.activeElement))
+        ) {
+          document.getElementById("workspace")?.focus({ preventScroll: true });
+        }
+      });
+    }
     if (next === "history" && view !== "history" && !busy)
       void run(() => loadHistory(historyOffset));
   }
@@ -148,7 +174,8 @@ export function App() {
       !window.confirm(
         "Есть несохранённые количества. Продолжить и сбросить эти изменения после успешной операции?",
       )
-    ) return;
+    )
+      return;
     await run(fn);
   }
   function show(p: Plan) {
@@ -238,168 +265,25 @@ export function App() {
   const salesOnly =
     selectedDataset?.target === "item_line_count" ||
     selectedDataset?.unit === "item_line";
-  const replay = target <= businessDate();
-  const period = selectedDataset
-    ? formatDatasetPeriod(selectedDataset)
-    : "Период не указан";
-  const sourceLabel = selectedDataset
-    ? datasetSourceLabel(selectedDataset.source)
-    : "";
-  const nav = [
-    { id: "planning", label: "План", icon: "plan" },
-    { id: "import", label: "Данные", icon: "data" },
-    { id: "history", label: "История", icon: "history" },
-  ] as const;
   return (
     <div className="app-shell">
       <a className="skip-link" href="#workspace">
         Перейти к содержимому
       </a>
-      <aside className="sidebar">
-        <a
-          className="brand"
-          href="#workspace"
-          onClick={() => changeView("planning")}
-          aria-label="BakePlan"
-        >
-          <span className="brand-mark">
-            <BrandMark />
-          </span>
-          <span>
-            BakePlan
-            <small>
-              {planningKind === "procurement"
-                ? "Закупки под контролем"
-                : "Пекарня под контролем"}
-            </small>
-          </span>
-        </a>
-        <div className="workspace-label">РАБОЧЕЕ МЕСТО</div>
-        <nav className="section-nav" aria-label="Разделы BakePlan">
-          {nav.map((item) => (
-            <button
-              key={item.id}
-              type="button"
-              aria-current={view === item.id ? "page" : undefined}
-              aria-controls={`panel-${item.id}`}
-              onClick={() => changeView(item.id)}
-            >
-              <Icon name={item.icon} />
-              <span>{item.label}</span>
-            </button>
-          ))}
-        </nav>
-        <details
-          ref={moreMenu}
-          className={`secondary-nav${view === "model" ? " has-current" : ""}`}
-        >
-          <summary>Дополнительно</summary>
-          <button
-            type="button"
-            aria-current={view === "model" ? "page" : undefined}
-            aria-controls="panel-model"
-            onClick={() => {
-              changeView("model");
-              // On phones the menu is an overlay; close it once a section is chosen.
-              if (
-                moreMenu.current &&
-                window.matchMedia?.("(max-width: 820px)").matches
-              )
-                moreMenu.current.open = false;
-            }}
-          >
-            <Icon name="model" />
-            <span>Качество прогноза</span>
-          </button>
-        </details>
-        <div className="sidebar-note">
-          <span className="status-dot" />
-          Локальный прототип
-          <small>
-            {planningKind === "procurement" ? "Торговая точка" : "Одна пекарня"}{" "}
-            · Asia/Qyzylorda
-          </small>
-        </div>
-      </aside>
+      <WorkspaceNavigation
+        view={view}
+        kind={planningKind}
+        busy={busy}
+        onView={changeView}
+        onKind={(kind) => {
+          setPlanningKind(kind);
+          changeView("import");
+        }}
+      />
       <main id="workspace" tabIndex={-1}>
-        <header className="workspace-header">
-          <div>
-            <p className="eyebrow">ЕЖЕДНЕВНОЕ ПЛАНИРОВАНИЕ</p>
-            <h1>
-              {planningKind === "procurement" ? "План закупки" : "План выпечки"}
-            </h1>
-            <p className="header-subtitle">
-              Данные → расчёт → проверка → подтверждение
-            </p>
-          </div>
-          <div className="date-summary">
-            <span className="muted">Выбранная дата плана</span>
-            <strong>{target || "Выберите дату"}</strong>
-            <span
-              className={`badge ${replay ? "badge-warning" : "badge-neutral"}`}
-            >
-              {replay ? "Историческое воспроизведение" : "Рабочий план"}
-            </span>
-          </div>
-        </header>
-        <div className="workspace-toolbar">
-          <div className="control-field mode-switch">
-            <label htmlFor="planning-kind">Как пополняем товары</label>
-            <select
-              id="planning-kind"
-              value={planningKind}
-              disabled={busy}
-              onChange={(event) => {
-                setPlanningKind(
-                  event.target.value as "production" | "procurement",
-                );
-                setView("import");
-              }}
-            >
-              <option value="production">Производим сами</option>
-              <option value="procurement">Закупаем готовое</option>
-            </select>
-          </div>
-          <ol className="journey" aria-label="Шаги подготовки плана">
-            {[
-              {
-                label: "Данные",
-                state: !selectedDataset ? "current" : "done",
-              },
-              {
-                label: "Расчёт",
-                state:
-                  selectedDataset && !selectedPlan
-                    ? "current"
-                    : selectedPlan
-                      ? "done"
-                      : "",
-              },
-              {
-                label: "Проверка и сохранение",
-                state:
-                  selectedPlan &&
-                  (selectedPlan.status !== "confirmed" || unsaved)
-                    ? "current"
-                    : selectedPlan && selectedPlan.status === "confirmed"
-                      ? "done"
-                      : "",
-              },
-            ].map((step, index) => (
-              <li
-                key={step.label}
-                className={step.state}
-                aria-current={step.state === "current" ? "step" : undefined}
-              >
-                <span className="step-index" aria-hidden="true">
-                  {step.state === "done" ? <Icon name="check" /> : index + 1}
-                </span>
-                <span className="sr-only">{index + 1}. </span>
-                {step.label}
-              </li>
-            ))}
-          </ol>
-        </div>
+        {view === "planning" && (
+          <PlanHeader kind={planningKind} target={target} />
+        )}
         {((dataset && !selectedDataset) || (plan && !selectedPlan)) && (
           <aside className="status-note" data-testid="mode-selection-notice">
             <p>
@@ -419,7 +303,7 @@ export function App() {
                         ? "procurement"
                         : "production",
                     );
-                    setView("planning");
+                    changeView("planning");
                   }}
                 >
                   Вернуться к несохранённому плану
@@ -429,51 +313,13 @@ export function App() {
           </aside>
         )}
         {(selectedDataset || selectedPlan) && (
-          <div className="provenance-strip" data-testid="workspace-source">
-            <span className={`source-icon ${selectedDataset ? "loaded" : ""}`}>
-              <Icon name="data" />
-            </span>
-            <div>
-              {selectedDataset ? (
-                <>
-                  <strong>{sourceLabel} · для нового расчёта</strong>
-                  <span>
-                    {selectedDataset.row_count ?? "—"} строк · {period}
-                  </span>
-                  <small>{selectedDataset.provenance}</small>
-                </>
-              ) : (
-                <>
-                  <strong>
-                    {selectedPlan
-                      ? "Набор для нового расчёта не выбран"
-                      : "История продаж ещё не загружена"}
-                  </strong>
-                  <span>
-                    {selectedPlan
-                      ? "Открытый план использует свой сохранённый снимок данных."
-                      : "Начните с CSV или безопасных демонстрационных данных."}
-                  </span>
-                </>
-              )}
-            </div>
-            <button
-              className="text-button"
-              onClick={() => changeView("import")}
-            >
-              {selectedDataset ? "Открыть данные" : "Загрузить данные"}
-              <Icon name="arrow" />
-            </button>
-          </div>
+          <DatasetContext
+            dataset={selectedDataset}
+            onImport={
+              view === "import" ? undefined : () => changeView("import")
+            }
+          />
         )}
-        <p className="safety-note">
-          <Icon name="info" />
-          Прогноз — ориентир, а не гарантия спроса. Синтетические данные только
-          для демонстрации.{" "}
-          {planningKind === "procurement"
-            ? "Проверьте остаток и условия поставки вручную."
-            : "Загрузку печи проверьте вручную."}
-        </p>
         {error && (
           <div role="alert" className="error" tabIndex={-1} ref={errorBox}>
             <strong className="notice-title">
@@ -538,14 +384,14 @@ export function App() {
               active={view === "model"}
             />
           ) : (
-            <section className="empty-state">
+            <section className="quality-empty empty-state">
               <Icon name="model" />
-              <h2>Для проверки прогноза нужны данные</h2>
+              <h1>Для проверки прогноза нужны данные</h1>
               <p>
                 Загрузите историю продаж. Подготовка экспериментального расчёта
                 необязательна для первого плана.
               </p>
-              <button onClick={() => setView("import")}>
+              <button onClick={() => changeView("import")}>
                 Перейти к данным
               </button>
             </section>
@@ -554,6 +400,7 @@ export function App() {
         <div id="panel-history" hidden={view !== "history"}>
           {
             <HistorySection
+              onPlan={() => changeView("planning")}
               history={history}
               offset={historyOffset}
               loaded={historyLoaded}
@@ -582,15 +429,27 @@ export function App() {
                     }
                   }
                   show(storedPlan);
-                  setView("planning");
+                  changeView("planning");
                 })
               }
             />
           }
         </div>
-        <footer>
-          Без реальной истории точность и экономия не заявляются.
-          <span>BakePlan · локальный прототип</span>
+        {view === "planning" && (
+          <PlanProgress
+            dataset={selectedDataset}
+            plan={selectedPlan}
+            unsaved={unsaved}
+          />
+        )}
+        <footer className="workspace-footer">
+          <p>
+            <Icon name="info" />
+            {planningKind === "procurement"
+              ? "Проверьте прогноз, остаток и условия поставки перед заказом."
+              : "Проверьте прогноз и загрузку печи перед подтверждением плана."}
+          </p>
+          <span>Локальный прототип · Asia/Qyzylorda</span>
         </footer>
       </main>
     </div>

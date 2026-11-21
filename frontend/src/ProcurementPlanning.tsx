@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import type { PlanningSection } from "./PlanningSection";
+import type { PlanWorkflowProps } from "./PlanningSection";
 import type { DeliverySource, ExpectedDelivery, Plan } from "./types";
 import { ExpectedDeliveries } from "./ExpectedDeliveries";
 import { DeliveryRegistry } from "./DeliveryRegistry";
@@ -14,7 +14,7 @@ import { methodText, procurementNotes } from "./explanations";
 import { Icon } from "./Icon";
 import { SupplierOrderText } from "./SupplierOrderText";
 
-export function ProcurementPlanning(p: Parameters<typeof PlanningSection>[0]) {
+export function ProcurementPlanning(p: PlanWorkflowProps) {
   const runReplacingPlan = p.runReplacingPlan ?? p.run;
   useEffect(() => {
     if (p.method === "B0") p.setMethod("B1");
@@ -132,14 +132,17 @@ export function ProcurementPlanning(p: Parameters<typeof PlanningSection>[0]) {
     ? procurementNotes(plan.items[0]).slice(0, 2)
     : [];
   return (
-    <section id="planning" aria-labelledby="planning-heading">
+    <section
+      id="planning"
+      className="plan-workbench procurement-workbench"
+      aria-labelledby="planning-heading"
+    >
       <div className="section-heading">
         <div>
-          <p className="eyebrow">ЗАКАЗ НА ДЕНЬ</p>
           <h2 id="planning-heading">Сколько заказываем?</h2>
           <p className="section-copy">
-            Закупаем готовое · прогноз продаж на целевую дату и отдельное
-            решение о заказе.
+            Выберите день продаж и проверьте, сколько товара будет в наличии к
+            открытию.
           </p>
         </div>
         <span
@@ -159,16 +162,6 @@ export function ProcurementPlanning(p: Parameters<typeof PlanningSection>[0]) {
             Перейти к данным
           </button>
         </div>
-      )}
-      {!!dataset?.catalog?.length && (
-        <DeliveryRegistry
-          key={dataset.id}
-          datasetId={dataset.id}
-          branch={dataset.bakery_id}
-          catalog={dataset.catalog}
-          run={p.run}
-          disabled={p.busy}
-        />
       )}
       <div className="controls planning-controls">
         <div className="control-field">
@@ -225,36 +218,22 @@ export function ProcurementPlanning(p: Parameters<typeof PlanningSection>[0]) {
         </details>
       </div>
       <div className="data-guide stock-guide">
-        <h3>Допущение о доступном остатке</h3>
+        <h3>Доступно к открытию</h3>
         <p>
-          Укажите, сколько единиц останется к открытию в день продаж, включая
-          уже принятый товар. Ожидаемые поступления BakePlan добавит отдельно.
+          Введите остаток с уже принятым товаром. Поставки в пути учитываются
+          отдельно.
         </p>
         <p className="stock-rule">
-          Пустое поле = остаток неизвестен: автоматический заказ отключён,
-          рекомендация 0 означает ручное решение. Явный 0 означает отсутствие
-          пригодного остатка.
+          Если остаток неизвестен, оставьте поле пустым и выберите заказ
+          вручную. Введите 0, если товара точно нет.
         </p>
-        <details>
-          <summary>Как остаток влияет на заказ</summary>
-          <p>
-            Предложенный заказ учитывает прогноз продаж, указанный остаток,
-            упаковку и лимит. Проверьте, что товар успеет поступить к дате
-            продаж. Прогноз относится к одному дню, а не ко всему сроку
-            поставки.
-          </p>
-          <p>
-            Историческая доступность товара и дефицит могут быть неизвестны.
-            Прогноз описывает наблюдавшиеся продажи и не оценивает весь
-            неудовлетворённый спрос.
-          </p>
-        </details>
         {!!dataset?.catalog?.length && (
           <div className="stock-grid">
             {dataset.catalog.map((i) => (
               <div className="control-field" key={i.product_id}>
                 <label htmlFor={`stock-${i.product_id}`}>
-                  Доступный остаток: {i.name}
+                  <span className="sr-only">Доступный остаток: </span>
+                  {i.name}
                 </label>
                 <input
                   id={`stock-${i.product_id}`}
@@ -278,8 +257,20 @@ export function ProcurementPlanning(p: Parameters<typeof PlanningSection>[0]) {
             ))}
           </div>
         )}
+        <details className="stock-explanation">
+          <summary>Как остаток влияет на заказ</summary>
+          <p>
+            Заказ учитывает прогноз продаж за один день, доступный остаток,
+            ожидаемые поставки, упаковку и лимит. Убедитесь, что заказ успеет
+            поступить к дате продаж.
+          </p>
+          <p>
+            История отражает продажи. Если товар заканчивался, часть спроса
+            могла остаться незаписанной.
+          </p>
+        </details>
         {!!dataset?.catalog?.length && !replay && (
-          <label className="control-field">
+          <label className="control-field delivery-source">
             Источник поставок
             <select
               value={source}
@@ -315,6 +306,16 @@ export function ProcurementPlanning(p: Parameters<typeof PlanningSection>[0]) {
             </>
           ))}
       </div>
+      {!!dataset?.catalog?.length && (
+        <DeliveryRegistry
+          key={dataset.id}
+          datasetId={dataset.id}
+          branch={dataset.bakery_id}
+          catalog={dataset.catalog}
+          run={p.run}
+          disabled={p.busy}
+        />
+      )}
       {inputError && (
         <p role="alert" className="field-error">
           {inputError}
@@ -337,7 +338,7 @@ export function ProcurementPlanning(p: Parameters<typeof PlanningSection>[0]) {
         }
         onClick={() =>
           void runReplacingPlan(async () =>
-            p.show(
+            p.showCalculated(
               await api<Plan>("/plans", {
                 dataset_id: dataset?.id,
                 target_date: p.target,
@@ -368,20 +369,22 @@ export function ProcurementPlanning(p: Parameters<typeof PlanningSection>[0]) {
           <div className="plan-heading">
             <div className="section-heading">
               <div>
-                <p className="eyebrow">ПРОВЕРКА ЗАКАЗА</p>
-                <h3>
+                <h3 id="plan-review-heading" tabIndex={-1}>
                   Заказ от {plan.order_date} · продажи {plan.target_date}
                 </h3>
               </div>
-              <span
-                className={`badge ${dirty ? "badge-warning" : plan.status === "confirmed" ? "badge-success" : "badge-neutral"}`}
-              >
-                {dirty
-                  ? "Есть несохранённые изменения"
-                  : plan.status === "confirmed"
-                    ? "Подтверждён"
-                    : "Ожидает проверки"}
-              </span>
+              <div className="review-state">
+                <span
+                  className={`badge ${dirty ? "badge-warning" : plan.status === "confirmed" ? "badge-success" : "badge-neutral"}`}
+                >
+                  {dirty
+                    ? "Есть несохранённые изменения"
+                    : plan.status === "confirmed"
+                      ? "Подтверждён"
+                      : "Ожидает проверки"}
+                </span>
+                <a href="#plan-confirm">К подтверждению</a>
+              </div>
             </div>
             <p>
               Источник: {plan.provenance || plan.source} ·{" "}
@@ -469,6 +472,7 @@ export function ProcurementPlanning(p: Parameters<typeof PlanningSection>[0]) {
             </p>
           )}
           <div
+            id="plan-items"
             className="table plan-table-scroll"
             role="region"
             aria-label="Прогноз продаж и заказ"
@@ -637,7 +641,7 @@ export function ProcurementPlanning(p: Parameters<typeof PlanningSection>[0]) {
               Исправьте количества заказа: соблюдайте упаковку и лимит.
             </p>
           )}
-          <div className="confirm-bar">
+          <div className="confirm-bar" id="plan-confirm" tabIndex={-1}>
             <div>
               <strong>
                 {stale
@@ -651,6 +655,7 @@ export function ProcurementPlanning(p: Parameters<typeof PlanningSection>[0]) {
                         : "Подтвердите заказ"}
               </strong>
               <p>Проверьте остаток, упаковки и срок поставки.</p>
+              <a href="#plan-items">К товарам</a>
             </div>
             <div className="actions">
               <button

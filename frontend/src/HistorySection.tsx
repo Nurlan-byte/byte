@@ -1,3 +1,4 @@
+import { formatPlanDate } from "./dates";
 import { Icon } from "./Icon";
 import type { PlanSummary } from "./types";
 export const HISTORY_PAGE_SIZE = 20;
@@ -8,19 +9,8 @@ type Props = {
   loaded: boolean;
   onPage: (offset: number) => void;
   onLoad: (id: string) => void;
+  onPlan?: () => void;
 };
-
-function planDate(value: string) {
-  const date = new Date(`${value}T00:00:00Z`);
-  return Number.isNaN(date.getTime())
-    ? value
-    : date.toLocaleDateString("ru-RU", {
-        day: "numeric",
-        month: "long",
-        year: "numeric",
-        timeZone: "UTC",
-      });
-}
 
 const sources: Record<string, string> = {
   synthetic: "Синтетические данные",
@@ -39,25 +29,29 @@ export function HistorySection({
   loaded,
   onPage,
   onLoad,
+  onPlan,
 }: Props) {
   return (
-    <section id="history" aria-labelledby="history-heading">
+    <section
+      className="archive-workspace"
+      id="history"
+      aria-labelledby="history-heading"
+    >
       <div className="section-heading">
         <div>
-          <p className="eyebrow">Сохранённые решения</p>
-          <h2 id="history-heading">История планов</h2>
+          <h1 id="history-heading">История планов</h1>
+          <p className="section-copy">
+            Откройте сохранённую редакцию или скачайте её в CSV.
+          </p>
         </div>
         <button className="secondary" disabled={busy} onClick={() => onPage(0)}>
           Обновить историю
         </button>
       </div>
-      <p className="section-copy">
-        Откройте план, чтобы проверить количества или подготовить новую
-        редакцию. CSV содержит сохранённые значения; несохранённые правки в файл
-        не попадут.
-      </p>
+
       {!history.length ? (
-        <div className="empty-note">
+        <div className="empty-note archive-empty">
+          <Icon name="history" />
           <strong>
             {!loaded
               ? "Загрузите сохранённые планы"
@@ -72,10 +66,15 @@ export function HistorySection({
                 ? "Рассчитайте первый план в разделе «План». Он появится здесь как черновик."
                 : "Вернитесь на предыдущую страницу или обновите историю."}
           </p>
+          {loaded && offset === 0 && onPlan && (
+            <button type="button" onClick={onPlan} disabled={busy}>
+              Перейти к плану <Icon name="arrow" />
+            </button>
+          )}
         </div>
       ) : (
         <>
-          <p className="muted">
+          <p className="history-range">
             Планы {offset + 1}–{offset + history.length} · сначала последние
             созданные
           </p>
@@ -83,73 +82,87 @@ export function HistorySection({
             {history.map((p) => (
               <li
                 key={p.id}
-                className="history-card"
+                className="history-card history-entry"
                 data-plan-id={p.id}
                 data-target-date={p.target_date}
                 data-status={p.status}
               >
-                <div className="section-heading">
-                  <h3>
-                    <time dateTime={p.target_date}>
-                      {planDate(p.target_date)}
-                    </time>
-                  </h3>
+                <div className="history-identity">
+                  <Icon
+                    name={p.planning_kind === "procurement" ? "data" : "bread"}
+                  />
+                  <div>
+                    <h2>
+                      <time dateTime={p.target_date}>
+                        {formatPlanDate(p.target_date)}
+                      </time>
+                    </h2>
+                    <p>
+                      {p.planning_kind === "procurement"
+                        ? "Закупаем готовое"
+                        : "Производим сами"}
+                    </p>
+                  </div>
+                </div>
+                <div className="history-detail">
                   <span
                     className={`badge ${p.status === "confirmed" ? "badge-success" : "badge-warning"}`}
                   >
                     {statuses[p.status] ?? "Статус не распознан"}
                   </span>
-                </div>
-                <p className="history-meta">
-                  {p.planning_kind === "procurement"
-                    ? "Закупаем готовое"
-                    : "Производим сами"}{" "}
-                  · {sources[p.source] ?? "Другой источник"} · редакция{" "}
-                  {p.revision}
-                </p>
-                <p className="muted">
-                  {p.planning_kind === "procurement"
-                    ? p.status === "confirmed"
-                      ? "Заказ подтверждён и сохранён."
-                      : "Черновик заказа: проверьте остаток и количества."
-                    : p.status === "confirmed"
-                      ? "Количество выпуска подтверждено и сохранено."
-                      : p.status === "draft"
-                        ? "Количества рассчитаны. Выпуск ещё не подтверждён."
-                        : "Проверьте состояние плана перед использованием."}
-                </p>
-                <div className="actions">
-                  <button
-                    className="secondary"
-                    disabled={busy}
-                    onClick={() => onLoad(p.id)}
-                  >
-                    Открыть план
-                  </button>
-                  <a
-                    className="button-link secondary"
-                    href={
-                      busy
-                        ? undefined
-                        : `/api/plans/${encodeURIComponent(p.id)}/export?revision=${p.revision}`
-                    }
-                    aria-disabled={busy || undefined}
-                  >
-                    <Icon name="download" />
-                    Экспорт CSV
-                  </a>
-                </div>
-                {p.created_at && (
-                  <p className="muted">
-                    Создан: {new Date(p.created_at).toLocaleString("ru-RU")}
+                  <p className="history-meta">
+                    {sources[p.source] ?? "Другой источник"} · редакция{" "}
+                    {p.revision}
                   </p>
-                )}
+                  {p.created_at && (
+                    <p className="history-created">
+                      Создан:{" "}
+                      <time dateTime={p.created_at}>
+                        {new Date(p.created_at).toLocaleString("ru-RU")}
+                      </time>
+                    </p>
+                  )}
+                </div>
+                <div className="history-tools">
+                  <p className="muted">
+                    {p.planning_kind === "procurement"
+                      ? p.status === "confirmed"
+                        ? "Заказ подтверждён и сохранён."
+                        : "Черновик заказа: проверьте остаток и количества."
+                      : p.status === "confirmed"
+                        ? "Количество выпуска подтверждено и сохранено."
+                        : p.status === "draft"
+                          ? "Количества рассчитаны. Выпуск ещё не подтверждён."
+                          : "Проверьте состояние плана перед использованием."}
+                  </p>
+                  <div className="actions">
+                    <button
+                      className="secondary"
+                      disabled={busy}
+                      onClick={() => onLoad(p.id)}
+                    >
+                      Открыть план
+                    </button>
+                    <a
+                      className="button-link secondary"
+                      href={
+                        busy
+                          ? undefined
+                          : `/api/plans/${encodeURIComponent(p.id)}/export?revision=${p.revision}`
+                      }
+                      aria-disabled={busy || undefined}
+                    >
+                      <Icon name="download" />
+                      Экспорт CSV
+                    </a>
+                  </div>
+                </div>
               </li>
             ))}
           </ul>
         </>
       )}
-      {loaded && (
+      {loaded && (history.length > 0 || offset > 0) && (
         <nav className="actions" aria-label="Страницы истории">
           <button
             className="secondary"

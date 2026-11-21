@@ -42,11 +42,14 @@ function rememberReceipt(key: string, value: Receipt | null) {
   }
 }
 
-const statusText: Record<RegisteredDelivery["status"], string> = {
-  ordered: "В пути",
-  partial: "Принята частично",
-  received: "Принята",
-  cancelled: "Отменена",
+const deliveryStatuses: Record<
+  RegisteredDelivery["status"],
+  { label: string; badge: string }
+> = {
+  ordered: { label: "В пути", badge: "badge-neutral" },
+  partial: { label: "Принята частично", badge: "badge-warning" },
+  received: { label: "Принята", badge: "badge-success" },
+  cancelled: { label: "Отменена", badge: "badge-neutral" },
 };
 
 function DeliveryRow({
@@ -69,6 +72,7 @@ function DeliveryRow({
   const [quantity, setQuantity] = useState("");
   const [newDate, setNewDate] = useState("");
   const open = row.status === "ordered" || row.status === "partial";
+  const status = deliveryStatuses[row.status];
 
   function receive() {
     void run(async () => {
@@ -103,12 +107,18 @@ function DeliveryRow({
 
   return (
     <article className="delivery-record" aria-label={`${row.number} · ${name}`}>
-      <h4>
-        {row.number} · {name}
-      </h4>
-      <p>
-        {statusText[row.status]} · Ожидаемая дата {row.arrival_date}
-      </p>
+      <div className="delivery-record-heading">
+        <div>
+          <h4>
+            {row.number} · {name}
+          </h4>
+          <p>
+            Ожидаемая дата{" "}
+            <time dateTime={row.arrival_date}>{row.arrival_date}</time>
+          </p>
+        </div>
+        <span className={`badge ${status.badge}`}>{status.label}</span>
+      </div>
       <dl className="delivery-totals">
         <div>
           <dt>Заказано</dt>
@@ -123,6 +133,13 @@ function DeliveryRow({
           <dd>{row.remaining_qty} шт.</dd>
         </div>
       </dl>
+      {open && (
+        <progress
+          aria-hidden="true"
+          value={row.received_qty}
+          max={row.ordered_qty}
+        />
+      )}
       {open && row.arrival_date < businessDate() && (
         <p className="stock-rule">
           Срок прошёл. Примите товар или перенесите дату, чтобы учесть поставку
@@ -270,40 +287,28 @@ function RegistryContents({ datasetId, catalog, disabled, run }: Props) {
   }
   return (
     <>
-      <p>
-        При приёмке укажите фактически полученное количество. Принятые единицы
-        включите в доступный остаток при следующем расчёте.
-      </p>
-      {error && <p role="alert">{error}</p>}
-      {rows === null && !error ? (
-        <p role="status">Загрузка поставок…</p>
-      ) : (
-        <button
-          type="button"
-          className="secondary"
-          disabled={disabled}
-          onClick={() => void run(refresh)}
-        >
-          Обновить реестр
-        </button>
-      )}
+      <div className="registry-toolbar">
+        <p>
+          Укажите фактически полученное количество. При следующем расчёте
+          включите принятые единицы в доступный остаток.
+        </p>
+        {error && <p role="alert">{error}</p>}
+        {rows === null && !error ? (
+          <p role="status">Загрузка поставок…</p>
+        ) : (
+          <button
+            type="button"
+            className="secondary"
+            disabled={disabled}
+            onClick={() => void run(refresh)}
+          >
+            Обновить реестр
+          </button>
+        )}
+      </div>
       {rows && (
         <>
           {rows.length === 0 && <p>Поставок пока нет.</p>}
-          {rows.map((row) => (
-            <DeliveryRow
-              key={row.id}
-              row={row}
-              path={`${path}/${encodeURIComponent(row.id)}`}
-              name={
-                catalog.find((item) => item.product_id === row.product_id)
-                  ?.name ?? row.product_id
-              }
-              saved={saved}
-              run={run}
-              disabled={disabled}
-            />
-          ))}
           <fieldset className="delivery-fields" disabled={disabled}>
             <legend>Новая поставка</legend>
             <label>
@@ -372,6 +377,22 @@ function RegistryContents({ datasetId, catalog, disabled, run }: Props) {
               Записать поставку
             </button>
           </fieldset>
+          <div className="delivery-list">
+            {rows.map((row) => (
+              <DeliveryRow
+                key={row.id}
+                row={row}
+                path={`${path}/${encodeURIComponent(row.id)}`}
+                name={
+                  catalog.find((item) => item.product_id === row.product_id)
+                    ?.name ?? row.product_id
+                }
+                saved={saved}
+                run={run}
+                disabled={disabled}
+              />
+            ))}
+          </div>
         </>
       )}
     </>
