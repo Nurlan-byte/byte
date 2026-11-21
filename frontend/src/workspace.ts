@@ -45,7 +45,8 @@ export function workspaceReference(
 
 export function needsManualOrder(plan: Plan, item: Item) {
   return (
-    plan.dataset_schema_version === "pos-procurement-1" &&
+    (plan.dataset_schema_version === "pos-procurement-1" ||
+      (plan.planning_kind === "procurement" && plan.requested_method === "AUTO")) &&
     item.target_is_open !== false &&
     item.automatic_eligible === false
   );

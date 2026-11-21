@@ -1,7 +1,7 @@
 import { test, expect } from "@playwright/test";
 import fs from "node:fs/promises";
 import path from "node:path";
-import { navigate, openDetails } from "./helpers";
+import { navigate, readOrderCsv } from "./helpers";
 
 for (const example of [
   {
@@ -105,7 +105,7 @@ for (const example of [
   });
 }
 
-test("CGZ demo button imports six products and completes train, plan, confirm, export and reload", async ({
+test("CGZ demo produces one automatic order without model setup and preserves it through export and reload", async ({
   page,
 }, testInfo) => {
   const evidenceDir = testInfo.outputPath("evidence");
@@ -145,33 +145,15 @@ test("CGZ demo button imports six products and completes train, plan, confirm, e
   });
   await expect(page.getByTestId("dataset-summary")).toContainText("546");
 
-  await navigate(page, "Модель");
-  await page.getByLabel("Срез обучения и прогноза").fill("2026-10-14");
-  await page.getByLabel("Дата прогноза", { exact: true }).fill("2026-10-16");
-  const training = page.waitForResponse(
-    (r) => r.url().includes("/train") && r.request().method() === "POST",
-  );
   await page
-    .getByRole("button", { name: "Подготовить экспериментальный расчёт" })
+    .getByRole("button", { name: "Перейти к плану", exact: true })
     .click();
-  expect((await training).ok()).toBe(true);
-  await expect(page.getByTestId("model-summary")).toContainText("Расчёт готов");
-  await page.getByRole("button", { name: "Проверить прогноз" }).click();
-  await expect(page.getByTestId("forecast-table")).toContainText(
-    "По похожим дням недели",
-  );
-  await expect(page.getByTestId("forecast-table")).toContainText(
-    "Экспериментальный расчёт",
-  );
-
-  await navigate(page, "План");
+  await expect(page.getByLabel("Способ расчёта закупки")).toHaveCount(0);
   await page.getByLabel("Дата продаж", { exact: true }).fill("2026-10-16");
   await page
     .getByLabel("Данные доступны до", { exact: true })
     .fill("2026-10-14");
   await page.getByLabel("Срок поставки, дней").fill("1");
-  await openDetails(page, "Настройки прогноза");
-  await page.getByLabel("Способ расчёта закупки").selectOption("ML");
   for (const item of catalog)
     await page.getByLabel(`Доступный остаток: ${item.name}`).fill("0");
   const planning = page.waitForResponse(
@@ -180,20 +162,26 @@ test("CGZ demo button imports six products and completes train, plan, confirm, e
   await page
     .getByRole("button", { name: "Рассчитать заказ", exact: true })
     .click();
-  const plan = await (await planning).json();
+  const response = await planning;
+  expect(response.ok()).toBeTruthy();
+  expect(response.request().postDataJSON().method).toBe("AUTO");
+  const plan = await response.json();
   planId = plan.id;
+  expect(plan.requested_method).toBe("AUTO");
   expect(plan.items).toHaveLength(6);
-  expect(
-    plan.items.filter((item: { method: string }) => item.method === "ML"),
-  ).toHaveLength(3);
-  expect(
-    plan.items.filter((item: { method: string }) => item.method === "B1"),
-  ).toHaveLength(3);
+  expect(plan.items.map((i: { method: string }) => i.method)).toContain(
+    "Chronos-2",
+  );
+  for (const item of plan.items) {
+    expect(["Chronos-2", "B1"]).toContain(item.method);
+    await expect(
+      page.getByLabel(`Заказ: ${item.name}`, { exact: true }),
+    ).toHaveValue(String(item.recommended_qty));
+  }
   const water = page
     .getByTestId("procurement-table")
     .locator("tbody tr")
     .filter({ hasText: "Вода в бутылке" });
-  await expect(water).toContainText("24");
   await water.getByRole("spinbutton").fill("36");
   await expect(water.getByRole("spinbutton")).toHaveValue("36");
   await page.getByRole("button", { name: "Подтвердить заказ" }).click();
@@ -226,9 +214,24 @@ test("CGZ demo button imports six products and completes train, plan, confirm, e
   await expect(savedWater.getByRole("spinbutton")).toHaveValue("36");
   const saved = await page.request.get(`/api/plans/${planId}`);
   expect(saved.ok()).toBeTruthy();
+  const persisted = await saved.json();
+  expect(persisted.requested_method).toBe("AUTO");
+  const exportedRows = readOrderCsv(
+    path.join(evidenceDir, "confirmed-order.csv"),
+  );
+  expect(exportedRows).toHaveLength(persisted.items.length);
+  for (const item of persisted.items)
+    expect(
+      exportedRows.find((row) => row.product_id === item.product_id),
+    ).toMatchObject({
+      confirmed_order_units: String(item.confirmed_qty),
+      suggested_order_units: String(item.recommended_qty),
+      requested_method: "AUTO",
+      method: item.method,
+    });
   await fs.writeFile(
     path.join(evidenceDir, "confirmed-plan.json"),
-    JSON.stringify(await saved.json(), null, 2),
+    JSON.stringify(persisted, null, 2),
   );
   await page.screenshot({
     path: path.join(evidenceDir, "jury-cgz.png"),

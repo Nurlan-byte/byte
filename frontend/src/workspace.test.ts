@@ -91,4 +91,8 @@ test("an open POS order without an automatic quantity starts blank until the ope
   expect(
     initialQuantity({ ...plan, dataset_schema_version: undefined }, item),
   ).toBe("0");
+  const auto: Plan = { ...plan, planning_kind: "procurement", dataset_schema_version: "procurement-1", requested_method: "AUTO" };
+  expect(initialQuantity(auto, item)).toBe("");
+  expect(initialQuantity(auto, { ...item, confirmed_qty: 0 })).toBe("0");
+  expect(initialQuantity(auto, { ...item, target_is_open: false })).toBe("0");
 });

@@ -1,6 +1,8 @@
 import type { Item } from "./types";
 
 const reasons: Record<string, string> = {
+  b1_more_accurate_on_sparse_sales: "Товар продаётся редко. На прошлых датах прогноз по похожим дням недели был точнее.",
+  no_sales_history: "До выбранной даты нет подходящих данных о продажах.",
   not_better_than_b1_validation: "Проверка на прошлых данных не показала улучшения, поэтому используется расчёт по похожим дням.",
   forecast_horizon_mismatch: "Для этого срока экспериментальный прогноз не подходит; используется расчёт по похожим дням.",
   insufficient_history_dates: "Недостаточно истории продаж. Проверьте количество вручную.",
@@ -30,6 +32,7 @@ export function methodText(method: string) {
   const descriptions: Record<string, string> = {
     B0: "По прошлой неделе",
     B1: "По похожим дням недели",
+    "Chronos-2": "Прогноз по истории продаж",
     ML: "Экспериментальный расчёт",
     manual: "Нужно указать количество вручную",
   };
@@ -56,6 +59,6 @@ export function procurementNotes(item: Item): string[] {
   if (item.max_constraint_active)
     notes.push("Максимум поставщика ниже расчётной потребности; часть спроса может остаться непокрытой.");
   if (item.fallback_reason)
-    notes.push(`Экспериментальный прогноз не применён. ${reasonText(item.fallback_reason)}`);
+    notes.push(reasonText(item.fallback_reason));
   return notes;
 }

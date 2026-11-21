@@ -73,6 +73,19 @@ function planningProps(
   };
 }
 
+test("procurement and POS forecasts offer one automatic result without training or model controls", () => {
+  for (const dataset of [
+    { ...units, planning_kind: "procurement" as const },
+    { ...units, forecast_only: true, schema_version: "pos-units-1" },
+  ]) {
+    const html = renderToStaticMarkup(<ModelSection {...planningProps(dataset)} dataset={dataset} />);
+    expect(html).toContain("Проверить прогноз");
+    expect(html).not.toContain('id="diagnostic-method"');
+    expect(html).not.toContain("Подготовить экспериментальный расчёт");
+    expect(html).not.toContain("Сохранённые расчёты");
+  }
+});
+
 test("sales-only target or item-line unit hides production even with a previous units plan", () => {
   for (const dataset of [
     {

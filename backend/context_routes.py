@@ -9,7 +9,7 @@ from backend.context_sources import CITIES, WEATHER_SOURCE, load_demand_context
 from backend.demand_context import with_demand_context
 from backend.errors import ServiceError
 from backend.ml_core import protocol_for_dataset
-from backend.ml_service import create_forecast, train_dataset
+from backend.ml_service import create_forecast, train_dataset, uses_automatic_sales_forecast
 from backend.schemas import ForecastRequest, TrainRequest
 from backend.storage import get_dataset, save_dataset, timestamp
 
@@ -96,7 +96,9 @@ def forecast_for_day(ident: str, today: date):
         )
     model_id = None
     method = "B1"
-    if dataset.get("metadata_declared"):
+    if uses_automatic_sales_forecast(dataset):
+        method = "AUTO"
+    elif dataset.get("metadata_declared"):
         try:
             model, _ = train_dataset(
                 ident,

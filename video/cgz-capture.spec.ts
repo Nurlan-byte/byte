@@ -4,7 +4,7 @@ import path from 'node:path';
 import { createHash } from 'node:crypto';
 import { execFileSync } from 'node:child_process';
 import { performance } from 'node:perf_hooks';
-import { navigate, openDetails } from '../e2e/helpers';
+import { navigate } from '../e2e/helpers';
 
 const sha256 = (value: Buffer | string) => createHash('sha256').update(value).digest('hex');
 
@@ -120,36 +120,29 @@ test('record a real synthetic Cloud Game Zone procurement demonstration', async 
     await holdUntil(25);
 
     await navigate(page, 'Модель');
-    await page.getByLabel('Срез обучения и прогноза').fill('2026-10-14');
+    await page.getByLabel('Последний день истории продаж').fill('2026-10-14');
     await page.getByLabel('Дата прогноза', { exact: true }).fill('2026-10-16');
-    const training = page.waitForResponse(r => r.url().includes('/train') && r.request().method() === 'POST');
-    await page.getByRole('button', { name: 'Подготовить экспериментальный расчёт' }).click();
-    expect((await training).ok()).toBe(true);
-    await expect(page.getByTestId('model-summary')).toContainText('Расчёт готов');
-    scene('trained model with evaluation');
-    await holdUntil(37);
+    await expect(page.getByLabel('Способ прогноза')).toHaveCount(0);
     await page.getByRole('button', { name: 'Проверить прогноз' }).click();
-    await expect(page.getByTestId('forecast-table')).toContainText('По похожим дням недели');
-    await expect(page.getByTestId('forecast-table')).toContainText('Экспериментальный расчёт');
-    scene('ML and B1 forecast');
+    await expect(page.getByTestId('forecast-table').locator('tbody tr')).toHaveCount(6, { timeout: 60_000 });
+    scene('automatic sales forecast for six products');
     await holdUntil(46);
 
     await navigate(page, 'План');
     await page.getByLabel('Дата продаж', { exact: true }).fill('2026-10-16');
     await page.getByLabel('Данные доступны до', { exact: true }).fill('2026-10-14');
     await page.getByLabel('Срок поставки, дней').fill('1');
-    await openDetails(page, 'Настройки прогноза');
-    await page.getByLabel('Способ расчёта закупки').selectOption('ML');
+    await expect(page.getByLabel('Способ расчёта закупки')).toHaveCount(0);
     for (const item of catalog) await page.getByLabel(`Доступный остаток: ${item.name}`).fill('0');
     const planning = page.waitForResponse(r => r.url().endsWith('/api/plans') && r.request().method() === 'POST');
     await page.getByRole('button', { name: 'Рассчитать заказ', exact: true }).click();
     const plan = await (await planning).json();
     planId = plan.id;
     expect(plan.items).toHaveLength(6);
-    expect(plan.items.filter((item: { method: string }) => item.method === 'ML')).toHaveLength(3);
-    expect(plan.items.filter((item: { method: string }) => item.method === 'B1')).toHaveLength(3);
+    expect(plan.requested_method).toBe('AUTO');
+    expect(plan.items.map((item: { method: string }) => item.method)).toContain('Chronos-2');
     const water = page.getByTestId('procurement-table').locator('tbody tr').filter({ hasText: 'Вода в бутылке' });
-    await expect(water).toContainText('24');
+    await expect(water.getByRole('spinbutton')).toHaveValue(String(plan.items.find((item: { product_id: string }) => item.product_id === 'water').recommended_qty));
     scene('six proposed orders');
     await holdUntil(61);
     await water.getByRole('spinbutton').fill('36');

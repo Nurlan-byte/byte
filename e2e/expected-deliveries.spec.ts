@@ -1,6 +1,8 @@
 import { expect, test } from "@playwright/test";
+import { calculateAutomatically } from "./helpers";
 
 test("deliveries due by opening reduce the suggested order and survive reload", async ({ page }) => {
+  test.slow();
   await page.goto("/");
   await page.getByLabel("Как пополняем товары").selectOption("procurement");
   await page.getByRole("button", { name: "Простой пример — 2 товара" }).click();
@@ -10,6 +12,7 @@ test("deliveries due by opening reduce the suggested order and survive reload", 
   await page.getByLabel("Данные доступны до", { exact: true }).fill("2026-08-23");
   await page.getByLabel("Срок поставки, дней").fill("2");
   await page.getByLabel("Доступный остаток: Чай в бутылке", { exact: true }).fill("0");
+  await page.getByLabel("Доступный остаток: Сок", { exact: true }).fill("50");
   await page.getByText("Товары в пути (0)", { exact: true }).click();
   const add = page.getByRole("button", { name: "Добавить поставку" });
   const calculate = page.getByRole("button", { name: "Рассчитать заказ", exact: true });
@@ -20,7 +23,7 @@ test("deliveries due by opening reduce the suggested order and survive reload", 
   const later = page.getByRole("group", { name: "Поставка 2" });
   await later.getByLabel("Дата поступления").fill("2026-09-02");
   await later.getByLabel("Количество, шт.", { exact: true }).fill("120");
-  await calculate.click();
+  await calculateAutomatically(page, "/plans", calculate);
   const tea = page.getByLabel("Заказ: Чай в бутылке", { exact: true });
   await expect(tea).toHaveValue("12");
   const row = page.getByRole("row").filter({ has: tea });

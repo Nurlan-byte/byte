@@ -9,7 +9,7 @@ permissions:
 jobs:
   verify:
     runs-on: windows-latest
-    timeout-minutes: 20
+    timeout-minutes: 40
     steps:
       - uses: actions/checkout@v4
         with:
@@ -28,6 +28,12 @@ jobs:
           npm.cmd ci
           npm.cmd --prefix frontend ci
           npx.cmd playwright install chromium
+      - uses: actions/cache@v4
+        with:
+          path: ~/.cache/bakeplan
+          key: chronos-assets-${{ hashFiles('backend/chronos_assets.py') }}
+      - name: Provision and verify the offline order model
+        run: .\.venv\Scripts\python.exe -m backend.chronos_assets
       - name: Backend and offline evaluation
         run: |
           $PSNativeCommandUseErrorActionPreference = $true
@@ -98,7 +104,7 @@ jobs:
           if-no-files-found: warn
   controlled-demo:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 40
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -107,6 +113,7 @@ jobs:
       - name: Verify Linux snapshot, deployment, and replay contracts
         run: |
           python -m pip install -r backend/requirements.lock
+          python -m backend.chronos_assets
           python -m ruff check scripts
           python -m pytest backend/tests/test_deployment.py backend/tests/test_demo_replay.py backend/tests/test_pos_connection_store.py backend/tests/test_pos_sync.py -q
       - name: Build and exercise isolated controlled demo

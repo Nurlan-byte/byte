@@ -37,7 +37,7 @@ def shop(tmp_path, monkeypatch):
         })
         assert imported.status_code == 201, imported.text
         yield client, {
-            "dataset_id": imported.json()["id"], "target_date": "2026-03-02",
+            "dataset_id": imported.json()["id"], "method": "B1", "target_date": "2026-03-02",
             "cutoff": "2026-02-23", "lead_time_days": 1,
             "usable_stock_assumption": dict.fromkeys(products, 0),
         }

@@ -2,6 +2,7 @@
 
 from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, date, datetime, timedelta
+import json
 from time import monotonic, sleep
 
 from fastapi.testclient import TestClient
@@ -18,6 +19,12 @@ START = datetime(2026, 10, 12, 1, tzinfo=UTC)
 
 @pytest.fixture
 def shop(tmp_path, monkeypatch):
+    # Only the model's numerical inference is substituted. Re-import, date
+    # slicing, forecast selection, retries and persistence use the real code.
+    monkeypatch.setattr(
+        "backend.chronos_order._predict",
+        lambda inputs, horizon: [float(item["target"][-1]) for item in inputs],
+    )
     keyfile = tmp_path / "master.key"
     pos_vault.init_key(keyfile)
     monkeypatch.setenv("BAKEPLAN_DB", str(tmp_path / "shop.db"))
@@ -81,6 +88,8 @@ def test_once_then_daily_after_restart_without_key_or_browser(shop, provider):
         assert first["forecast"] == original["forecast"]
         assert first["dataset"] == original["dataset"]
         assert first["forecast"]["cutoff"] == "2026-10-11"
+        assert first["forecast"]["method"] == "AUTO"
+        assert first["forecast"]["result"]["items"][0]["method"] == "Chronos-2"
         assert first["forecast"]["targetDate"] == "2026-10-13"
         pos_sync.run_due(START + timedelta(hours=1))
         # 04:59 local the next day still belongs to the prior scheduled work.
@@ -172,6 +181,46 @@ def test_outage_and_changed_account_preserve_previous_forecast(shop, monkeypatch
         assert client.get(latest).status_code == 404 and client.get(URL).json() == []
         pos_sync.run_due(shop["now"] + timedelta(days=1))
         assert len(shop["reads"]) == 2
+
+
+@pytest.mark.parametrize("legacy_snapshot", [False, True])
+def test_daily_forecast_service_outage_keeps_pair_until_successful_retry(shop, monkeypatch, legacy_snapshot):
+    from backend import chronos_order
+    from backend.storage import connection
+
+    predict = chronos_order._predict
+
+    def unavailable(*args):
+        raise chronos_order.ChronosUnavailable("runtime unavailable")
+
+    with TestClient(app) as client:
+        old = register(client).json()
+        latest = f"{URL}/{old['connection']['id']}/latest"
+        if legacy_snapshot:
+            # A previous release already completed today's sync using Ridge.
+            first = old["forecast"]
+            first["method"] = "ML"
+            first["result"].pop("protocol_version")
+            first["result"]["model_id"] = "legacy-ridge-id"
+            first["result"]["items"] = [dict(product_id="9", method="ML", forecast_mean=17)]
+            with connection() as db:
+                db.execute("UPDATE pos_connections SET forecast=? WHERE id=?",
+                           (json.dumps(first), old["connection"]["id"]))
+            assert client.get(latest).json()["forecast"] == first
+        shop["now"] += timedelta(days=1)
+        monkeypatch.setattr(chronos_order, "_predict", unavailable)
+        pos_sync.run_due(shop["now"])
+        kept = client.get(latest).json()
+        assert "пересчитать прогноз" in kept["connection"]["error"]
+        assert kept["dataset"] == old["dataset"] and kept["forecast"] == old["forecast"]
+        monkeypatch.setattr(chronos_order, "_predict", predict)
+        pos_sync.run_due(shop["now"] + timedelta(minutes=20))
+        recovered = client.get(latest).json()
+        assert recovered["connection"]["error"] is None
+        assert recovered["dataset"]["id"] != old["dataset"]["id"]
+        assert recovered["forecast"]["result"]["dataset_id"] == recovered["dataset"]["id"]
+        assert recovered["forecast"]["result"]["protocol_version"] == chronos_order.PROTOCOL_VERSION
+        assert recovered["forecast"]["method"] == "AUTO" and recovered["forecast"]["result"]["model_id"] is None
 
 
 def test_durable_connect_requires_private_mode_master_and_verified_key(

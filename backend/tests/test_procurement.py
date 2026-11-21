@@ -132,7 +132,7 @@ def test_saved_csv_distinguishes_suggested_order_from_manual_quantity(client):
     dataset_id = client.post("/api/datasets", json=history).json()["id"]
     plan = client.post("/api/plans", json={
         "dataset_id": dataset_id, "target_date": "2026-10-11", "cutoff": "2026-10-09",
-        "mode": "replay", "lead_time_days": 1, "usable_stock_assumption": {"tea": 0},
+        "mode": "replay", "method": "B1", "lead_time_days": 1, "usable_stock_assumption": {"tea": 0},
     }).json()
     endpoint = f"/api/plans/{plan['id']}"
     assert plan["items"][0]["forecast_mean"] == 11
@@ -192,7 +192,7 @@ def test_scheduled_deliveries_are_counted_once_by_target_and_saved_with_revision
     ]
     body = {
         "dataset_id": dataset["id"], "target_date": "2026-10-11", "cutoff": "2026-10-09",
-        "mode": "replay", "lead_time_days": 1, "usable_stock_assumption": {"tea": 1},
+        "mode": "replay", "method": "B1", "lead_time_days": 1, "usable_stock_assumption": {"tea": 1},
         "expected_deliveries": deliveries,
     }
     result = client.post("/api/plans", json=body)
@@ -233,7 +233,7 @@ def test_registry_plan_uses_branch_outstanding_at_calculation_time(client, monke
     create(register, number="late", arrival_date="2026-10-12")
     create(register, number="overdue", arrival_date="2026-10-09")
     create(f"/api/datasets/{other}/deliveries", ordered_qty=24)
-    params = {"dataset_id": shop, "target_date": "2026-10-11", "cutoff": "2026-10-09",
+    params = {"dataset_id": shop, "method": "B1", "target_date": "2026-10-11", "cutoff": "2026-10-09",
               "lead_time_days": 1, "usable_stock_assumption": {"tea": 0}}
 
     def calculate(**changes):
@@ -283,7 +283,7 @@ def test_manual_plans_and_replays_do_not_mix_in_live_deliveries(client, monkeypa
     assert client.post(f"/api/datasets/{ident}/deliveries", json={
         **entry, "number": "101", "ordered_qty": 12,
     }).status_code == 201
-    params = {"dataset_id": ident, "target_date": "2026-10-11", "cutoff": "2026-10-09",
+    params = {"dataset_id": ident, "method": "B1", "target_date": "2026-10-11", "cutoff": "2026-10-09",
               "lead_time_days": 1, "usable_stock_assumption": {"tea": 0}}
     manual = [dict(entry, quantity=3)]
     for changes, expected in [

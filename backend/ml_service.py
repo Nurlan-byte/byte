@@ -185,6 +185,26 @@ def _b1(dataset, rows, product, target, cutoff, reason):
     }
 
 
+def uses_automatic_sales_forecast(dataset):
+    return (
+        dataset.get("planning_kind") == "procurement"
+        or dataset.get("schema_version") in {"pos-units-1", "sales-1"}
+    )
+
+
+def automatic_forecasts(dataset, target, cutoff, product_ids, model_id=None):
+    from backend import chronos_order
+
+    if not uses_automatic_sales_forecast(dataset) or model_id is not None:
+        raise ServiceError(422, "Автоматический прогноз продаж рассчитывается без сохранённой модели Ridge.")
+    if not 1 <= (target - cutoff).days <= chronos_order.MAX_HORIZON:
+        raise ServiceError(422, f"Для прогноза продаж укажите дату от 1 до {chronos_order.MAX_HORIZON} дней после среза.")
+    try:
+        return chronos_order.forecast_order(dataset, target, cutoff, product_ids)
+    except chronos_order.ChronosUnavailable:
+        raise ServiceError(503, "Сервис прогноза продаж временно недоступен. Повторите расчёт после восстановления сервиса.") from None
+
+
 def forecast_items(dataset, target, cutoff, model_id=None, method="ML"):
     dataset = identity(dataset)
     protocol_version = protocol_for_dataset(dataset)
@@ -276,9 +296,25 @@ def create_forecast(body, today):
     if body.cutoff >= today or body.cutoff >= body.target_date:
         raise ServiceError(422, "Срез должен быть раньше целевой даты и сегодня")
     dataset = identity(get_dataset(body.dataset_id))
-    result = forecast_items(
-        dataset, body.target_date, body.cutoff, body.model_id, body.method
+    method = body.method or (
+        "AUTO" if body.model_id is None and uses_automatic_sales_forecast(dataset) else "ML"
     )
+    if method == "AUTO":
+        from backend.chronos_order import PROTOCOL_VERSION
+
+        if dataset.get("catalog"):
+            products = [p["product_id"] for p in dataset["catalog"]]
+        else:
+            products = sorted({r["product_id"] for r in dataset["rows"] if r["date"] <= str(body.cutoff)})
+        predictions = automatic_forecasts(dataset, body.target_date, body.cutoff, products, body.model_id)
+        result = {
+            "items": [dict(predictions[p], product_id=p) for p in products],
+            "model_id": None, "protocol_version": PROTOCOL_VERSION,
+        }
+    else:
+        result = forecast_items(
+            dataset, body.target_date, body.cutoff, body.model_id, method
+        )
     return {
         key: dataset[key]
         for key in ("bakery_id", "target", "unit", "source", "provenance")
@@ -289,6 +325,6 @@ def create_forecast(body, today):
         "cutoff": str(body.cutoff),
         "model_id": result["model_id"],
         "items": result["items"],
-        "evaluation_applicability": result["evaluation_applicability"],
+        **{key: result[key] for key in ("evaluation_applicability", "protocol_version") if key in result},
         "warning": "Прогноз наблюдаемых продаж; скрытый спрос и экономия не оцениваются. Item-line не переводится в физические штуки.",
     }

@@ -16,9 +16,6 @@ import { SupplierOrderText } from "./SupplierOrderText";
 
 export function ProcurementPlanning(p: PlanWorkflowProps) {
   const runReplacingPlan = p.runReplacingPlan ?? p.run;
-  useEffect(() => {
-    if (p.method === "B0") p.setMethod("B1");
-  }, [p.method, p.setMethod]);
   const plan = p.plan?.planning_kind === "procurement" ? p.plan : null;
   const [reviewSelection, setReviewSelection] = useState<Set<string> | null>(
     null,
@@ -103,7 +100,6 @@ export function ProcurementPlanning(p: PlanWorkflowProps) {
     !!plan &&
     (p.target !== plan.target_date ||
       p.cutoff !== plan.cutoff ||
-      p.method !== plan.requested_method ||
       Number(lead) !== plan.lead_time_days ||
       (!selectedDatasetDiffers &&
         (!sameStock ||
@@ -203,19 +199,6 @@ export function ProcurementPlanning(p: PlanWorkflowProps) {
             </small>
           )}
         </div>
-        <details className="control-field">
-          <summary>Настройки прогноза</summary>
-          <label htmlFor="proc-method">Способ расчёта закупки</label>
-          <select
-            id="proc-method"
-            value={p.method}
-            disabled={p.busy}
-            onChange={(e) => p.setMethod(e.target.value)}
-          >
-            <option value="B1">По похожим дням недели</option>
-            <option value="ML">Экспериментальный расчёт</option>
-          </select>
-        </details>
       </div>
       <div className="data-guide stock-guide">
         <h3>Доступно к открытию</h3>
@@ -343,7 +326,7 @@ export function ProcurementPlanning(p: PlanWorkflowProps) {
                 dataset_id: dataset?.id,
                 target_date: p.target,
                 cutoff: p.cutoff,
-                method: p.method,
+                method: "AUTO",
                 mode: replay ? "replay" : "operational",
                 lead_time_days: Number(lead),
                 delivery_source: source,

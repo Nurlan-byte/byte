@@ -79,7 +79,7 @@ export function App() {
   ) {
     setCutoff(first.cutoff);
     setTarget(first.targetDate);
-    setMethod(first.method);
+    if (first.method !== "AUTO") setMethod(first.method);
     setFirstForecast((previous) => ({
       snapshot: first,
       connection,
@@ -253,7 +253,8 @@ export function App() {
     );
     setTarget(p.target_date);
     setCutoff(p.cutoff);
-    if (p.requested_method) setMethod(p.requested_method);
+    if (p.planning_kind !== "procurement" && p.requested_method)
+      setMethod(p.requested_method);
     const calendar = p.items.find((item) => item.target_is_open != null);
     if (calendar) setTargetOpen(calendar.target_is_open!);
     setQuantities(
@@ -465,10 +466,7 @@ export function App() {
         {busy && (
           <p role="status" className="pending">
             <span className="spinner" />
-            <span>
-              Выполняется запрос… Поля временно заблокированы.
-              {view === "model" && " Обучение может занять до 60 секунд."}
-            </span>
+            <span>Выполняется запрос… Поля временно заблокированы.</span>
           </p>
         )}
         <div id="panel-planning" hidden={view !== "planning"}>
@@ -511,17 +509,13 @@ export function App() {
                   : 0)
               }
               onOrderDataset={async (value) => {
-                const first = await prepareForecast(value.id);
                 setPlan(null);
                 workspaceReference("plan", null);
                 setDataset(value);
                 setPlanningKind("procurement");
                 changeView("planning");
                 setNotice(
-                  [
-                    "Упаковки сохранены. Проверьте остатки и срок поставки.",
-                    ...first.warnings,
-                  ].join(" "),
+                  "Упаковки сохранены. Проверьте остатки и срок поставки.",
                 );
               }}
               initial={
@@ -538,8 +532,9 @@ export function App() {
               <Icon name="model" />
               <h1>Для проверки прогноза нужны данные</h1>
               <p>
-                Загрузите историю продаж. Подготовка экспериментального расчёта
-                необязательна для первого плана.
+                {planningKind === "procurement"
+                  ? "Загрузите историю продаж, чтобы рассчитать заказ поставщику."
+                  : "Загрузите историю продаж. Подготовка экспериментального расчёта необязательна для первого плана."}
               </p>
               <button onClick={() => changeView("import")}>
                 Перейти к данным

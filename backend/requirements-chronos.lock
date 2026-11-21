@@ -1,0 +1,30 @@
+# Frozen CPU inference stack. Shared dependencies are pinned in requirements.lock.
+accelerate==1.16.0
+charset-normalizer==3.5.2
+chronos-forecasting==2.3.2
+einops==0.8.2
+filelock==4.2.12
+fsspec==2026.9.0
+hf-xet==1.8.0; platform_machine == "x86_64" or platform_machine == "amd64" or platform_machine == "arm64" or platform_machine == "aarch64"
+huggingface-hub==0.36.2
+jinja2==3.1.6
+markupsafe==3.0.4
+mpmath==1.3.0
+networkx==3.7
+pandas==3.1.1
+psutil==7.2.2
+python-dateutil==4.0.0
+pyyaml==6.0.4
+regex==2026.11.19
+requests==2.34.2
+safetensors==0.8.0
+setuptools==84.2.1
+sympy==1.14.0
+tokenizers==0.22.2
+torch @ https://download-r2.pytorch.org/whl/cpu/torch-2.9.1%2Bcpu-cp314-cp314-manylinux_2_28_x86_64.whl#sha256=88adf5157db5da1d54b1c9fe4a6c1d20ceef00e75d854e206a87dbf69e3037dc ; sys_platform == "linux" and python_version == "3.14" and platform_machine == "x86_64"
+torch @ https://download-r2.pytorch.org/whl/cpu/torch-2.9.1%2Bcpu-cp314-cp314-manylinux_2_28_aarch64.whl#sha256=65010ab4aacce6c9a1ddfc935f986c003ca8638ded04348fd326c3e74346237c ; sys_platform == "linux" and python_version == "3.14" and platform_machine == "aarch64"
+torch==2.9.1; sys_platform != "linux" or python_version != "3.14" or (platform_machine != "x86_64" and platform_machine != "aarch64")
+tqdm==4.70.1
+transformers==4.57.6
+tzdata==2026.6
+urllib3==2.8.0

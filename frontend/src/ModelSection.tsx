@@ -36,11 +36,18 @@ export function ModelSection({
   const [forecast, setForecast] = useState<ForecastSnapshot | null>(
     initial ?? null,
   );
-  const [forecastMethod, setForecastMethod] = useState(initial?.method ?? "ML");
+  const automatic =
+    dataset.planning_kind === "procurement" ||
+    dataset.forecast_only ||
+    dataset.schema_version === "sales-1";
+  const [diagnosticMethod, setDiagnosticMethod] = useState(
+    initial?.method ?? "ML",
+  );
+  const forecastMethod = automatic ? "AUTO" : diagnosticMethod;
   const [loadError, setLoadError] = useState("");
   const modelRead = useRef(0);
   useEffect(() => {
-    if (!active) return;
+    if (!active || automatic) return;
     const version = ++modelRead.current;
     void api<ModelSummary[]>(`/datasets/${dataset.id}/models`)
       .then((rows) => {
@@ -58,7 +65,7 @@ export function ModelSection({
     return () => {
       modelRead.current++;
     };
-  }, [active, dataset.id]);
+  }, [active, automatic, dataset.id]);
   const training = useRef<{ signature: string; key: string } | null>(null);
   const salesOnly =
     dataset.target === "item_line_count" || dataset.unit === "item_line";
@@ -82,8 +89,9 @@ export function ModelSection({
         <span className="badge">Необязательный шаг</span>
       </div>
       <p className="section-copy">
-        Посмотрите прогноз по товарам на выбранную дату и сравните методы на
-        прошлых продажах.
+        {automatic
+          ? "Проверьте ожидаемые продажи по товарам на выбранную дату."
+          : "Посмотрите прогноз по товарам на выбранную дату и сравните методы на прошлых продажах."}
       </p>
       {dataset.demand_context && (
         <div className="status-note">
@@ -121,7 +129,7 @@ export function ModelSection({
                 ? "Прогноз оценивает продажи в штуках. Заказ подтверждается отдельно после проверки остатка и упаковки."
                 : "Прогноз оценивает продажи в штуках. Количество для выпечки вы подтвердите отдельно в плане."}
         </p>
-        {dataset.metadata_declared === false && (
+        {!automatic && dataset.metadata_declared === false && (
           <p className="error">
             Этот старый набор не содержит явно объявленных метаданных. Для
             обучения повторно импортируйте исходный CSV, указав пекарню,
@@ -130,7 +138,11 @@ export function ModelSection({
         )}
         <div className="controls">
           <div className="control-field">
-            <label htmlFor="model-cutoff">Срез обучения и прогноза</label>
+            <label htmlFor="model-cutoff">
+              {automatic
+                ? "Последний день истории продаж"
+                : "Срез обучения и прогноза"}
+            </label>
             <input
               id="model-cutoff"
               type="date"
@@ -149,18 +161,20 @@ export function ModelSection({
               onChange={(e) => setTarget(e.target.value)}
             />
           </div>
-          <div className="control-field">
-            <label htmlFor="diagnostic-method">Способ прогноза</label>
-            <select
-              id="diagnostic-method"
-              disabled={busy}
-              value={forecastMethod}
-              onChange={(e) => setForecastMethod(e.target.value)}
-            >
-              <option value="ML">Экспериментальный расчёт</option>
-              <option value="B1">По похожим дням недели</option>
-            </select>
-          </div>
+          {!automatic && (
+            <div className="control-field">
+              <label htmlFor="diagnostic-method">Способ прогноза</label>
+              <select
+                id="diagnostic-method"
+                disabled={busy}
+                value={forecastMethod}
+                onChange={(e) => setDiagnosticMethod(e.target.value)}
+              >
+                <option value="ML">Экспериментальный расчёт</option>
+                <option value="B1">По похожим дням недели</option>
+              </select>
+            </div>
+          )}
         </div>
         <div className="actions quality-actions">
           <button
@@ -189,51 +203,61 @@ export function ModelSection({
             Проверить прогноз
           </button>
 
-          <button
-            disabled={busy || !cutoff || dataset.metadata_declared === false}
-            onClick={() =>
-              void run(async () => {
-                modelRead.current++;
-                const signature = JSON.stringify({
-                  dataset: dataset.id,
-                  cutoff,
-                });
-                if (training.current?.signature !== signature) {
-                  training.current = { signature, key: crypto.randomUUID() };
-                }
-                const model = await api<ModelSummary>(
-                  `/datasets/${dataset.id}/train`,
-                  {
+          {!automatic && (
+            <button
+              disabled={busy || !cutoff || dataset.metadata_declared === false}
+              onClick={() =>
+                void run(async () => {
+                  modelRead.current++;
+                  const signature = JSON.stringify({
+                    dataset: dataset.id,
                     cutoff,
-                    idempotency_key: training.current.key,
-                  },
-                );
-                setForecast(null);
-                setModels((previous) => [
-                  model,
-                  ...previous.filter((entry) => entry.id !== model.id),
-                ]);
-                setLoaded(true);
-                setLoadError("");
-                setNotice(
-                  model.status === "ready"
-                    ? "Модель сохранена. Это не подтверждение качества; проверьте оценку и фактический метод прогноза."
-                    : "Подготовка завершена, но экспериментальный расчёт пока недоступен. Причины показаны ниже; при подходящей истории можно использовать расчёт по похожим дням.",
-                );
-              })
-            }
-          >
-            Подготовить экспериментальный расчёт
-          </button>
+                  });
+                  if (training.current?.signature !== signature) {
+                    training.current = { signature, key: crypto.randomUUID() };
+                  }
+                  const model = await api<ModelSummary>(
+                    `/datasets/${dataset.id}/train`,
+                    {
+                      cutoff,
+                      idempotency_key: training.current.key,
+                    },
+                  );
+                  setForecast(null);
+                  setModels((previous) => [
+                    model,
+                    ...previous.filter((entry) => entry.id !== model.id),
+                  ]);
+                  setLoaded(true);
+                  setLoadError("");
+                  setNotice(
+                    model.status === "ready"
+                      ? "Модель сохранена. Это не подтверждение качества; проверьте оценку и фактический метод прогноза."
+                      : "Подготовка завершена, но экспериментальный расчёт пока недоступен. Причины показаны ниже; при подходящей истории можно использовать расчёт по похожим дням.",
+                  );
+                })
+              }
+            >
+              Подготовить экспериментальный расчёт
+            </button>
+          )}
         </div>
         <details>
           <summary>Как работает прогноз</summary>
-          <p>
-            По похожим дням недели можно рассчитать прогноз без подготовки. Для
-            экспериментального способа сначала подготовьте модель на выбранном
-            срезе. При нехватке данных BakePlan объяснит, какой способ удалось
-            использовать.
-          </p>
+          {automatic ? (
+            <p>
+              BakePlan рассчитывает прогноз по каждому товару. Для редких продаж
+              он использует похожие дни недели, если на прошлых датах они дали
+              меньшую ошибку.
+            </p>
+          ) : (
+            <p>
+              По похожим дням недели можно рассчитать прогноз без подготовки.
+              Для экспериментального способа сначала подготовьте модель на
+              выбранном срезе. При нехватке данных BakePlan объяснит, какой
+              способ удалось использовать.
+            </p>
+          )}
           <p>
             Модель использует только продажи до среза включительно. Пропущенная
             запись означает неизвестное значение. Синтетические наборы служат
@@ -264,95 +288,108 @@ export function ModelSection({
           onReady={onOrderDataset}
         />
       )}
-      <div className="saved-models-heading">
-        <h2 className="subheading">Сохранённые расчёты</h2>
-        <button
-          className="secondary"
-          disabled={busy}
-          onClick={() =>
-            void run(async () => {
-              modelRead.current++;
-              setModels(
-                await api<ModelSummary[]>(`/datasets/${dataset.id}/models`),
-              );
-              setLoaded(true);
-              setLoadError("");
-              setNotice("Статусы сохранённых моделей обновлены.");
-            })
-          }
-        >
-          Обновить расчёты
-        </button>
-      </div>
-      {loadError && (
-        <p role="alert" className="error">
-          {loadError}
-        </p>
-      )}
-      {!models.length && (
-        <div className="empty-note">
-          <strong>
-            {loaded
-              ? "Сохранённых моделей пока нет"
-              : "Модели ещё не загружены"}
-          </strong>
-          <p>
-            Обновите список или подготовьте экспериментальный расчёт. Прогноз по
-            похожим дням можно получить без подготовки при достаточной истории.
-          </p>
-        </div>
-      )}
-      {models.map((model) => (
-        <article
-          key={model.id}
-          className="model-card"
-          data-testid="model-summary"
-        >
-          <div className="section-heading">
-            <h3>
-              {model.status === "ready" ? "Расчёт готов" : "Расчёт недоступен"}
-            </h3>
-            <span
-              className={`badge ${model.status === "ready" ? "badge-success" : "badge-warning"}`}
+      {!automatic && (
+        <>
+          <div className="saved-models-heading">
+            <h2 className="subheading">Сохранённые расчёты</h2>
+            <button
+              className="secondary"
+              disabled={busy}
+              onClick={() =>
+                void run(async () => {
+                  modelRead.current++;
+                  setModels(
+                    await api<ModelSummary[]>(`/datasets/${dataset.id}/models`),
+                  );
+                  setLoaded(true);
+                  setLoadError("");
+                  setNotice("Статусы сохранённых моделей обновлены.");
+                })
+              }
             >
-              {model.status === "ready"
-                ? "Доступна для расчёта"
-                : "Нужна проверка"}
-            </span>
+              Обновить расчёты
+            </button>
           </div>
-          {model.reason && <p>Причина: {reasonText(model.reason)}</p>}
-          <p>
-            Срез обучения: {model.training_cutoff} ·{" "}
-            {model.unit === "item_line" ? "строки продаж" : "физические штуки"}.
-          </p>
-          <p className="muted">
-            Готовность означает возможность расчёта, а не доказанную точность.
-          </p>
-          {model.training_cutoff !== cutoff && (
-            <p className="muted">
-              Срез этой модели отличается от выбранного. Сервер проверит
-              совместимость перед использованием.
+          {loadError && (
+            <p role="alert" className="error">
+              {loadError}
             </p>
           )}
-          <ModelEvaluation
-            procurement={dataset.planning_kind === "procurement"}
-            evaluation={model.evaluation}
-            unitLabel={unitLabel}
-          />
-          <details className="model-products">
-            <summary>Готовность по товарам</summary>
-            <ul>
-              {Object.entries(model.products ?? {}).map(([product, status]) => (
-                <li key={product}>
-                  {product}:{" "}
-                  {status.status === "ready" ? "готова" : "не готова"}
-                  {status.reason ? ` · ${reasonText(status.reason)}` : ""}
-                </li>
-              ))}
-            </ul>
-          </details>
-        </article>
-      ))}
+          {!models.length && (
+            <div className="empty-note">
+              <strong>
+                {loaded
+                  ? "Сохранённых моделей пока нет"
+                  : "Модели ещё не загружены"}
+              </strong>
+              <p>
+                Обновите список или подготовьте экспериментальный расчёт.
+                Прогноз по похожим дням можно получить без подготовки при
+                достаточной истории.
+              </p>
+            </div>
+          )}
+          {models.map((model) => (
+            <article
+              key={model.id}
+              className="model-card"
+              data-testid="model-summary"
+            >
+              <div className="section-heading">
+                <h3>
+                  {model.status === "ready"
+                    ? "Расчёт готов"
+                    : "Расчёт недоступен"}
+                </h3>
+                <span
+                  className={`badge ${model.status === "ready" ? "badge-success" : "badge-warning"}`}
+                >
+                  {model.status === "ready"
+                    ? "Доступна для расчёта"
+                    : "Нужна проверка"}
+                </span>
+              </div>
+              {model.reason && <p>Причина: {reasonText(model.reason)}</p>}
+              <p>
+                Срез обучения: {model.training_cutoff} ·{" "}
+                {model.unit === "item_line"
+                  ? "строки продаж"
+                  : "физические штуки"}
+                .
+              </p>
+              <p className="muted">
+                Готовность означает возможность расчёта, а не доказанную
+                точность.
+              </p>
+              {model.training_cutoff !== cutoff && (
+                <p className="muted">
+                  Срез этой модели отличается от выбранного. Сервер проверит
+                  совместимость перед использованием.
+                </p>
+              )}
+              <ModelEvaluation
+                procurement={dataset.planning_kind === "procurement"}
+                evaluation={model.evaluation}
+                unitLabel={unitLabel}
+              />
+              <details className="model-products">
+                <summary>Готовность по товарам</summary>
+                <ul>
+                  {Object.entries(model.products ?? {}).map(
+                    ([product, status]) => (
+                      <li key={product}>
+                        {product}:{" "}
+                        {status.status === "ready" ? "готова" : "не готова"}
+                        {status.reason ? ` · ${reasonText(status.reason)}` : ""}
+                      </li>
+                    ),
+                  )}
+                </ul>
+              </details>
+            </article>
+          ))}
+        </>
+      )}
     </section>
   );
 }

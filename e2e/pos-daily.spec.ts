@@ -93,7 +93,7 @@ test("one POS key updates tomorrow’s forecast after a server restart while the
   page,
   request,
 }, testInfo) => {
-  test.setTimeout(120_000);
+  test.setTimeout(180_000);
   page.setDefaultTimeout(12_000);
   const folder = await fs.mkdtemp(path.join(os.tmpdir(), "bakeplan-daily-"));
   let server: Awaited<ReturnType<typeof startApi>> | undefined;
@@ -143,12 +143,14 @@ test("one POS key updates tomorrow’s forecast after a server restart while the
       (r) =>
         r.url().endsWith("/api/pos/connections") &&
         r.request().method() === "POST",
+      { timeout: 65_000 },
     );
     await connect.click();
     const first = await (await connected).json();
     expect(first.status).toBe("connected");
     expect(first.connection.last_success_day).toBe("2026-10-19");
     expect(first.forecast.targetDate).toBe("2026-10-20");
+    expect(first.forecast.method).toBe("AUTO");
     await expect(page.getByTestId("forecast-result")).toContainText(
       "2026-10-20",
     );
@@ -181,6 +183,7 @@ test("one POS key updates tomorrow’s forecast after a server restart while the
     expect(latest.dataset.rows.at(-1).date).toBe("2026-10-19");
     expect(latest.forecast.targetDate).toBe("2026-10-21");
     expect(latest.forecast.result.dataset_id).toBe(latest.dataset.id);
+    expect(latest.forecast.method).toBe("AUTO");
     expect(JSON.stringify(latest)).not.toContain(token);
     await page.goto("/");
     await expect(page.getByTestId("forecast-result")).toContainText(

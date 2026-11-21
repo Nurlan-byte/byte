@@ -65,7 +65,9 @@ class PlanRequest(BaseModel):
     dataset_id: str
     target_date: date
     cutoff: date
-    method: Literal["B0", "B1", "ML"] = "B1"
+    method: Literal["B0", "B1", "ML", "AUTO"] | None = Field(
+        default=None, description="Omit for automatic procurement orders or the production B1 baseline."
+    )
     model_id: str | None = None
     mode: Literal["replay", "operational"] = "operational"
     target_is_open: bool = True
@@ -99,5 +101,7 @@ class ForecastRequest(BaseModel):
     dataset_id: str
     target_date: date
     cutoff: date
-    method: Literal["B1", "ML"] = "ML"
+    method: Literal["B1", "ML", "AUTO"] | None = Field(
+        default=None, description="Omit for automatic sales forecasts or the existing production model."
+    )
     model_id: str | None = None

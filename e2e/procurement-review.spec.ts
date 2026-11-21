@@ -29,7 +29,7 @@ test("reviewed orders preserve hidden lines and expose only the saved supplier m
   const copy = supplier.getByRole("button", { name: "Скопировать заказ" });
 
   await expect(tea).toHaveValue("24");
-  await expect(juice).toHaveValue("0");
+  await expect(juice).toHaveValue("");
   await expect(supplier).toBeHidden();
   const teaRow = page.getByRole("row").filter({ has: tea });
   await expect(teaRow.locator(".recommendation-cell")).toContainText("4 уп.");

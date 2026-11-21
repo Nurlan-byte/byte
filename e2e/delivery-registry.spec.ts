@@ -1,6 +1,6 @@
 import { expect, test, type Page } from "@playwright/test";
 import { businessDate } from "../frontend/src/dates";
-import { navigate, openDetails } from "./helpers";
+import { calculateAutomatically, navigate, openDetails } from "./helpers";
 
 async function shop(page: Page, branch: string) {
   const dataset = await page.request.post("/api/datasets", {
@@ -62,10 +62,13 @@ test("a lost receipt response can be retried after reload; saved and current shi
   await page.getByLabel("Срок поставки, дней").fill("1");
   await page.getByLabel("Доступный остаток: Вода").fill("0");
   await expect(page.getByLabel("Источник поставок")).toHaveValue("registry");
-  await planButton.click();
+  test.slow();
+  const plan = await calculateAutomatically(page, "/plans", planButton);
+  const demand = Math.ceil(plan.items[0].forecast_mean);
+  expect(demand).toBeGreaterThan(12);
   const order = page.getByLabel("Заказ: Вода", { exact: true });
   const snapshot = page.locator("[data-delivery-id]");
-  await expect(order).toHaveValue("8");
+  await expect(order).toHaveValue(String(demand - 12));
   await expect(snapshot).toContainText("12 шт.");
   let originalKey = "";
   await page.route(
@@ -92,7 +95,7 @@ test("a lost receipt response can be retried after reload; saved and current shi
   await expect(row).toContainText("5 шт.");
   await expect(snapshot).toContainText("12 шт.");
   await planButton.click();
-  await expect(order).toHaveValue("13");
+  await expect(order).toHaveValue(String(demand - 7));
   await expect(snapshot).toContainText("7 шт.");
   await row.getByText("Изменить поставку").click();
   await row.getByLabel("Новая дата поступления").fill(businessDate(2));
@@ -100,7 +103,7 @@ test("a lost receipt response can be retried after reload; saved and current shi
   await expect(row).toContainText(businessDate(2));
   await expect(snapshot).toContainText(businessDate(1));
   await planButton.click();
-  await expect(order).toHaveValue("20");
+  await expect(order).toHaveValue(String(demand));
   await expect(snapshot).toHaveCount(0);
   page.once("dialog", (dialog) => dialog.accept());
   await row.getByRole("button", { name: "Отменить остаток" }).click();

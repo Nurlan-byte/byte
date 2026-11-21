@@ -181,6 +181,7 @@ export type Forecast = {
     forecast_mean: number | null;
     b1_mean: number | null;
     demand_features?: Record<string, number>;
+    reason?: string | null;
     method: string;
     fallback_reason?: string | null;
     used_dates?: string[];

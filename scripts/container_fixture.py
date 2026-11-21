@@ -80,6 +80,13 @@ def seed(state_path):
         "catalog": [{"product_id": "water", "name": "Water", "pack_size": 6}],
         "csv_text": "date,product_id,opening,received,sold,waste,closing\n2026-01-01,water,0,12,12,0,0",
     }, expected=201)
+    order = request("/api/plans", {
+        "dataset_id": shop["id"], "target_date": "2026-01-03", "cutoff": "2026-01-01",
+        "mode": "replay", "lead_time_days": 1, "usable_stock_assumption": {"water": 0},
+    }, expected=201)
+    item, = order["items"]
+    assert order["requested_method"] == "AUTO" and item["method"] == "Chronos-2"
+    assert item["forecast_mean"] is not None and item["recommended_qty"] % 6 == 0
     registry = f"/api/datasets/{shop['id']}/deliveries"
     delivery = request(registry, {
         "number": "TEST-12", "product_id": "water", "arrival_date": "2026-10-12", "ordered_qty": 12,
@@ -95,6 +102,7 @@ def seed(state_path):
                 "forecast": forecast,
                 "forecast_body": forecast_body,
                 "plan": plan,
+                "order": order,
                 "export": export,
                 "import_body": import_body,
                 "train_body": train_body,
@@ -116,6 +124,7 @@ def verify(state_path):
     assert request(f"/api/datasets/{dataset['id']}/train", state["train_body"]) == model
     assert request("/api/forecasts", state["forecast_body"]) == state["forecast"]
     assert request(f"/api/plans/{plan['id']}") == plan
+    assert request(f"/api/plans/{state['order']['id']}") == state["order"]
     assert request(f"/api/plans/{plan['id']}/confirm", state["confirm_body"]) == plan
     revisions = request(f"/api/plans/{plan['id']}/revisions")
     assert len(revisions) == 2 and revisions[-1] == plan

@@ -146,6 +146,9 @@ def create_plan(body: PlanRequest, today: date):
         raise ServiceError(422, "Для заказа нужны продажи в штуках. По строкам чеков доступен прогноз частоты покупок.")
     if dataset["planning_kind"] == "procurement":
         return _create_procurement_plan(body, today, dataset)
+    method = body.method or "B1"
+    if method == "AUTO":
+        raise ServiceError(422, "Автоматический заказ доступен для закупаемых товаров.")
     if (body.lead_time_days is not None or body.usable_stock_assumption is not None
             or body.expected_deliveries or body.delivery_source is not None):
         raise ServiceError(422, "Procurement assumptions require a procurement dataset")
@@ -160,13 +163,13 @@ def create_plan(body: PlanRequest, today: date):
             product,
             body.target_date,
             body.cutoff,
-            "B1" if body.method == "ML" else body.method,
+            "B1" if method == "ML" else method,
             body.target_is_open,
         )
         for product in CATALOG
     ]
     model = None
-    if body.method == "ML":
+    if method == "ML":
         from backend.ml_service import forecast_items
 
         result = forecast_items(dataset, body.target_date, body.cutoff, body.model_id)
@@ -234,7 +237,7 @@ def create_plan(body: PlanRequest, today: date):
         bakery_id=dataset["bakery_id"],
         target=dataset["target"],
         unit=dataset["unit"],
-        requested_method=body.method,
+        requested_method=method,
         model_id=model["id"] if model else None,
         protocol_version=model["protocol_version"] if model else None,
         dataset_version=dataset["version"],
@@ -263,8 +266,9 @@ def _create_procurement_plan(body: PlanRequest, today: date, dataset: dict):
     order_date = today if body.mode == "operational" else body.cutoff + timedelta(days=1)
     if body.target_date < order_date + timedelta(days=body.lead_time_days):
         raise ServiceError(422, "Target date is earlier than the explicit supplier lead time")
-    if body.method == "B0":
-        raise ServiceError(422, "Procurement supports B1 or ML, not B0")
+    method = body.method or "AUTO"
+    if method == "B0":
+        raise ServiceError(422, "Для закупки метод B0 не поддерживается.")
     source = body.delivery_source
     if source is None:
         # An explicitly supplied list (even an empty one) is an existing client's manual scenario.
@@ -278,19 +282,29 @@ def _create_procurement_plan(body: PlanRequest, today: date, dataset: dict):
             raise ServiceError(422, "Поставка относится к товару вне выбранного каталога.")
         if delivery.arrival_date < order_date:
             raise ServiceError(422, "Дата ожидаемой поставки предшествует дате заказа. Проверьте остаток.")
-    model = None
     model_id = None
+    protocol = None
     predictions = {}
-    if body.method == "ML":
+    if method == "AUTO":
+        from backend.chronos_order import PROTOCOL_VERSION
+        from backend.ml_service import automatic_forecasts
+
+        protocol = PROTOCOL_VERSION
+        predictions = automatic_forecasts(
+            dataset, body.target_date, body.cutoff,
+            list(by_id) if body.target_is_open else [], body.model_id,
+        )
+    elif method == "ML":
         from backend.ml_service import forecast_items
 
         result = forecast_items(dataset, body.target_date, body.cutoff, body.model_id)
-        model = result.get("model")
         model_id = result["model_id"]
+        if result.get("model"):
+            protocol = result["model"]["protocol_version"]
         predictions = {item["product_id"]: item for item in result["items"]}
     prepared = prepare_procurement_items(
         dataset["rows"], products, body.target_date, body.cutoff,
-        body.method, body.target_is_open, predictions, model_id,
+        method, body.target_is_open, predictions, model_id,
     )
     manual = [delivery.model_dump(mode="json") for delivery in body.expected_deliveries]
     plan = {
@@ -302,10 +316,9 @@ def _create_procurement_plan(body: PlanRequest, today: date, dataset: dict):
         "delivery_source": source, "expected_deliveries": manual,
         "provenance": dataset["provenance"],
         "bakery_id": dataset["bakery_id"], "target": dataset["target"],
-        "unit": dataset["unit"], "requested_method": body.method,
-        "model_id": model["id"] if model else None,
-        "protocol_version": model["protocol_version"] if model else None,
-        "dataset_version": dataset["version"], "config_version": "procurement-4",
+        "unit": dataset["unit"], "requested_method": method,
+        "model_id": model_id, "protocol_version": protocol,
+        "dataset_version": dataset["version"], "config_version": "procurement-5" if method == "AUTO" else "procurement-4",
         "config_hash": hashlib.sha256(json.dumps(products, sort_keys=True).encode()).hexdigest(),
         "mode": body.mode, "timezone": "Asia/Qyzylorda",
         "availability_assumption": "Sales are observed units. Availability and stockouts remain unknown unless explicitly recorded; usable target-day stock is supplied as a scenario.",
@@ -536,7 +549,7 @@ def _export_procurement_csv(plan: dict):
             "confirmed_order_packs": item.get("confirmed_packs"),
             "used_dates": ";".join(item.get("used_dates") or []),
         }
-        if (plan.get("dataset_schema_version") == "pos-procurement-1"
+        if ((plan.get("requested_method") == "AUTO" or plan.get("dataset_schema_version") == "pos-procurement-1")
                 and item.get("target_is_open") is not False
                 and item.get("automatic_eligible") is False):
             record["suggested_order_units"] = None

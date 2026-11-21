@@ -15,14 +15,20 @@ FROM ${PYTHON_IMAGE} AS api
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     PIP_DISABLE_PIP_VERSION_CHECK=1 \
+    HF_HUB_OFFLINE=1 \
+    BAKEPLAN_CHRONOS_MODEL_PATH=/opt/bakeplan/chronos-2 \
     BAKEPLAN_DB=/data/bakeplan.sqlite3
 WORKDIR /app
-COPY backend/requirements.lock /app/backend/requirements.lock
+COPY backend/requirements.lock backend/requirements-chronos.lock /app/backend/
 RUN python -m pip install --no-cache-dir -r backend/requirements.lock \
     && groupadd --gid 10001 bakeplan \
     && useradd --uid 10001 --gid 10001 --no-create-home bakeplan \
     && mkdir /data /backups \
     && chown 10001:10001 /data /backups
+COPY backend/chronos_assets.py /app/backend/chronos_assets.py
+RUN python -m backend.chronos_assets \
+    && cp /usr/local/lib/python*/site-packages/chronos_forecasting-*.dist-info/licenses/LICENSE /opt/bakeplan/chronos-2/LICENSE \
+    && chmod -R a+rX /opt/bakeplan/chronos-2
 COPY backend/ /app/backend/
 COPY scripts/ /app/scripts/
 USER 10001:10001

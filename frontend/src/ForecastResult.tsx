@@ -45,7 +45,9 @@ export function ForecastResult({
         Продажи учтены по {snapshot.cutoff}. Проверьте результат по каждому
         товару.
       </p>
-      <EvaluationNotice value={snapshot.result.evaluation_applicability} />
+      {snapshot.method !== "AUTO" && (
+        <EvaluationNotice value={snapshot.result.evaluation_applicability} />
+      )}
       {procurement && (
         <p className="status-note">
           Прогноз продаж не является заказом. Проверьте остаток, упаковку и срок
@@ -85,6 +87,9 @@ export function ForecastResult({
                   </td>
                   <td>
                     <strong>{methodText(item.method)}</strong>
+                    {snapshot.method === "AUTO" && item.reason && (
+                      <small>{reasonText(item.reason)}</small>
+                    )}
                     {hasDemandContext && item.method === "ML" && (
                       <small>
                         {item.demand_features
@@ -98,7 +103,7 @@ export function ForecastResult({
                           : "Только история продаж"}
                       </small>
                     )}
-                    {item.fallback_reason && (
+                    {snapshot.method !== "AUTO" && item.fallback_reason && (
                       <small className="unsaved">
                         Использован упрощённый прогноз.{" "}
                         {reasonText(item.fallback_reason)}

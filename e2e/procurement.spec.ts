@@ -35,7 +35,10 @@ test("real API preserves generic procurement import, order and export", async ({
     page.getByLabel("Заказ: Чай в бутылке", { exact: true }),
   ).toHaveValue("24");
   await expect(page.getByText("Сохранённый срок поставки: 2 дня.", { exact: false })).toBeVisible();
-  await expect(page.getByLabel("Заказ: Сок", { exact: true })).toHaveValue("0");
+  const juice = page.getByLabel("Заказ: Сок", { exact: true });
+  await expect(juice).toHaveValue("");
+  await expect(page.getByRole("button", { name: "Подтвердить заказ", exact: true })).toBeDisabled();
+  await juice.fill("0");
   await page
     .getByRole("button", { name: "Подтвердить заказ", exact: true })
     .click();
@@ -70,6 +73,7 @@ test("saved procurement order can be confirmed while another dataset is selected
   await page.locator("#proc-cutoff").fill("2026-08-23");
   await page.locator("#proc-lead").fill("2");
   await page.locator("#stock-tea").fill("0");
+  await page.locator("#stock-juice").fill("50");
   const planResponse = page.waitForResponse(
     (response) =>
       response.url().endsWith("/api/plans") &&

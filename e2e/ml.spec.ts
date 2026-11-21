@@ -1,5 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
-import { navigate, openDetails, openHistoryPlan, prepareImport } from './helpers';
+import { calculateAutomatically, navigate, openDetails, openHistoryPlan, prepareImport } from './helpers';
 
 const cutoff = '2026-10-11';
 const target = '2026-10-12';
@@ -38,7 +38,7 @@ async function importHistory(page: Page, options: { salesOnly?: boolean; days?: 
   await expect(page.getByTestId('dataset-summary')).toContainText('Synthetic automated integration test');
   await expect(page.getByTestId('dataset-summary')).not.toContainText(dataset.id);
   await navigate(page, 'Модель');
-  await page.getByLabel('Срез обучения и прогноза').fill(cutoff);
+  await page.locator('#model-cutoff').fill(cutoff);
   await page.getByLabel('Дата прогноза', { exact: true }).fill(target);
   return dataset;
 }
@@ -135,14 +135,11 @@ test('sales-only forecast cannot expose production controls or inherit a units m
   await navigate(page, 'План');
   await expect(page.getByTestId('sales-only-notice')).toContainText('не преобразуются');
   await navigate(page, 'Модель');
-  await page.getByRole('button', { name: 'Проверить прогноз' }).click();
+  await expect(page.getByLabel('Способ прогноза')).toHaveCount(0);
+  await calculateAutomatically(page, '/forecasts', page.getByRole('button', { name: 'Проверить прогноз' }));
   await expect(page.getByTestId('forecast-result')).toContainText('Прогноз по истории продаж');
-  await expect(page.getByTestId('forecast-table').locator('tbody tr').first()).toContainText('По похожим дням недели');
-  await expect(page.getByTestId('forecast-table').locator('tbody tr').first()).toContainText('Использован упрощённый прогноз');
-  await page.getByRole('button', { name: 'Подготовить экспериментальный расчёт', exact: true }).click();
-  await expect(page.getByTestId('model-summary')).toContainText('Расчёт готов', { timeout: 65_000 });
-  await page.getByRole('button', { name: 'Проверить прогноз' }).click();
-  await expect(page.getByTestId('forecast-table').locator('tbody tr').first()).toContainText('Экспериментальный расчёт');
+  await expect(page.getByTestId('forecast-table').locator('tbody tr').first()).toContainText('Прогноз по истории продаж');
+  await expect(page.getByRole('button', { name: 'Подготовить экспериментальный расчёт', exact: true })).toHaveCount(0);
   await expect(page.getByRole('spinbutton')).toHaveCount(0);
   const blocked = await request.post(`${base}/plans`, { data: { dataset_id: sales.id, target_date: target, cutoff, method: 'ML', mode: 'replay' } });
   expect(blocked.status()).toBe(422);

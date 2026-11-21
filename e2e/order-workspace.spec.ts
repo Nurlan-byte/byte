@@ -24,6 +24,7 @@ async function startOrder(page: Page) {
   await page.locator("#proc-cutoff").fill("2026-08-23");
   await page.locator("#proc-lead").fill("2");
   await page.locator("#stock-tea").fill("0");
+  await page.locator("#stock-juice").fill("50");
   const response = page.waitForResponse(
     (r) => r.url().endsWith("/api/plans") && r.request().method() === "POST",
   );

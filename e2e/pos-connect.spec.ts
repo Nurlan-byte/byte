@@ -7,10 +7,10 @@ import {
 } from "@playwright/test";
 import fs from "node:fs/promises";
 import { existsSync } from "node:fs";
-import { spawn, execFileSync, type ChildProcess } from "node:child_process";
+import { spawn, type ChildProcess } from "node:child_process";
 import path from "node:path";
 import os from "node:os";
-import { navigate, openDetails } from "./helpers";
+import { navigate, openDetails, readOrderCsv } from "./helpers";
 
 test.use({
   viewport: { width: 360, height: 800 },
@@ -27,6 +27,9 @@ async function confirmAndExport(
   sourceId: string,
 ) {
   await openDetails(page, "Подготовить заказ поставщику");
+  await expect(page.getByLabel("Способ прогноза", { exact: true })).toHaveCount(
+    0,
+  );
   await page.getByLabel("Штук в упаковке: Чай").fill("4");
   await page.getByLabel("Штук в упаковке: Вода").fill("2");
   const converted = page.waitForResponse((r) =>
@@ -36,6 +39,7 @@ async function confirmAndExport(
   const catalog = await (await converted).json();
   expect(catalog.source_dataset_id).toBe(sourceId);
   expect(catalog.forecast_only).toBe(false);
+  await expect(page.getByLabel("Способ расчёта закупки")).toHaveCount(0);
   await page.getByLabel("Срок поставки, дней").fill("1");
   await page.getByLabel("Доступный остаток: Чай", { exact: true }).fill("2");
   await expect(
@@ -84,14 +88,7 @@ async function confirmAndExport(
   await link.click();
   const output = testInfo.outputPath("confirmed-order.csv");
   await (await downloaded).saveAs(output);
-  const parse = [
-    "import csv, json, sys",
-    'with open(sys.argv[1], encoding="utf-8-sig", newline="") as stream:',
-    "    print(json.dumps(list(csv.DictReader(stream))))",
-  ].join("\n");
-  const rows = JSON.parse(
-    execFileSync(python, ["-c", parse, output], { encoding: "utf8" }),
-  );
+  const rows = readOrderCsv(output, python);
   expect(rows).toMatchObject([
     {
       plan_id: saved.id,

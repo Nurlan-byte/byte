@@ -43,7 +43,7 @@ def _recommend_order(
     sales = forecast["forecast_mean"]
     automatic = (
         target_is_open and available is not None and sales is not None
-        and forecast["eligible_weekday_n"] > 0
+        and (forecast["diagnostic_method"] == "Chronos-2" or forecast["eligible_weekday_n"] > 0)
     )
     packs = 0
     if automatic:
@@ -69,6 +69,17 @@ def _select_forecast(
     rows: list[dict], product_id: str, target: date, cutoff: date, method: str,
     target_is_open: bool, prediction: dict | None, model_id: str | None,
 ) -> dict:
+    if method == "AUTO":
+        if not target_is_open:
+            return dict(forecast_mean=0, diagnostic_method="manual", used_dates=[], n=0, eligible_weekday_n=0)
+        # Each automatic prediction carries its own evidence. A missing Chronos
+        # result must never silently turn into a weekday-baseline order.
+        if prediction is None:
+            raise ValueError("Missing automatic procurement forecast")
+        return {
+            **prediction, "diagnostic_method": prediction["method"],
+            "fallback_reason": prediction.get("reason") if prediction["method"] == "B1" else None,
+        }
     baseline_method = "B1" if method == "ML" else method
     forecast = baseline(
         rows, product_id=product_id, target_date=target, cutoff=cutoff,
@@ -120,8 +131,8 @@ class ProcurementForecast:
             warnings.append("Target day is marked closed; order must be zero.")
         if usable_stock is None:
             warnings.append("Enter estimated usable stock at target-day opening for an automatic order.")
-        if self.forecast["n"] == 0:
-            warnings.append("No suitable weekday history: manual order only; zero is not a sales forecast.")
+        if self.target_is_open and self.forecast["n"] == 0:
+            warnings.append("No suitable sales history: manual order only; zero is not a sales forecast.")
         if decision["constraint_reason"]:
             warnings.append(CAP_WARNINGS[decision["constraint_reason"]])
         if self.ml_warning:
@@ -159,7 +170,7 @@ def prepare_procurement_items(
         ml_warning = None
         if method == "ML" and prediction is None:
             ml_warning = "No model forecast for this product; B1 remains in use."
-        elif forecast.get("fallback_reason"):
+        elif method == "ML" and forecast.get("fallback_reason"):
             ml_warning = "ML fallback: " + forecast["fallback_reason"]
         prepared.append(ProcurementForecast(
             product=product, forecast=forecast, target_is_open=target_is_open,
