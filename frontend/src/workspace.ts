@@ -29,7 +29,7 @@ export function savedDataset(result: Dataset): Dataset {
 
 // Store references only. Quantities and CSV drafts are never restored as saved data.
 export function workspaceReference(
-  key: "dataset" | "plan" | "pos-mode",
+  key: "dataset" | "plan" | "pos-mode" | "pos-connection",
   value?: string | null,
 ) {
   try {

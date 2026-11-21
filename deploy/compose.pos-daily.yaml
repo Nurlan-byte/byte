@@ -1,0 +1,12 @@
+# Use with compose.yaml and compose.pos.yaml in a private operator workspace.
+services:
+  api:
+    environment:
+      BAKEPLAN_POS_ENABLED: "1"
+      BAKEPLAN_POS_MASTER_KEY_FILE: /run/secrets/pos_master
+    secrets:
+      - pos_master
+
+secrets:
+  pos_master:
+    file: ${BAKEPLAN_POS_MASTER_KEY_FILE:?Set the host path of the private encryption key file}

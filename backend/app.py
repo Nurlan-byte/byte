@@ -23,6 +23,7 @@ from backend.dataset_identity import identity
 from backend import deliveries
 from backend.pos import router as pos_router
 from backend.pos_order_setup import router as pos_order_router
+from backend.pos_sync import router as pos_sync_router, scheduler
 from backend.ml_service import train_dataset, models_for_dataset, create_forecast
 from backend.services import (
     ServiceError,
@@ -49,13 +50,15 @@ from backend.storage import (
 @asynccontextmanager
 async def lifespan(app):
     initialize_database()
-    yield
+    async with scheduler():
+        yield
 
 
 app = FastAPI(title="BakePlan", version="0.3.0", lifespan=lifespan)
 app.include_router(context_router)
 app.include_router(pos_router)
 app.include_router(pos_order_router)
+app.include_router(pos_sync_router)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"],

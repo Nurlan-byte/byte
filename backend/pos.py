@@ -59,45 +59,83 @@ def enabled():
     return os.getenv("BAKEPLAN_POS_ENABLED") == "1"
 
 
-@router.get("/status")
-def status():
-    return {"enabled": enabled()}
+class NoSales(ServiceError):
+    """The verified outlet has no sales in the completed-day window."""
 
 
-@router.post("/import")
-def connect(body: PosRequest):
+def require_enabled():
     if not enabled():
         raise ServiceError(
             403, "Подключение кассы выключено в этом рабочем пространстве."
         )
+
+
+def branch_id(provider, outlet):
+    digest = hashlib.sha256(
+        f"{provider}/{outlet.account}/{outlet.id}".encode()
+    ).hexdigest()[:32]
+    return f"{provider}-{digest}"
+
+
+@router.get("/status")
+def status():
+    if not enabled():
+        return {"enabled": False}
+    from backend import pos_connection_store, pos_vault
+
+    if os.getenv(pos_vault.KEY_FILE_ENV) or pos_connection_store.has_connections():
+        return {
+            "enabled": True,
+            "daily_configured": True,
+            "daily_enabled": pos_vault.available(),
+        }
+    return {"enabled": True}
+
+
+@router.post("/import")
+def connect(body: PosRequest):
+    require_enabled()
     reader = pos_providers.VendorReader(body.provider, body.api_key.get_secret_value())
-    today = business_today()
-    start = today - timedelta(days=body.days)
-    sales = pos_providers.Observations(start, today - timedelta(days=1))
+    selected, choices = select_outlet(reader, body.location_id)
+    if selected is None:
+        return choices
+    return import_outlet(reader, selected, body.days, body.city, business_today())
+
+
+def select_outlet(reader, location_id):
     try:
         outlets = pos_providers.locations(reader)
-        if body.location_id is None and len(outlets) > 1:
-            return {
+        if location_id is None and len(outlets) > 1:
+            return None, {
                 "status": "choose_location",
                 "locations": [s.public() for s in outlets],
             }
         selected = (
             outlets[0]
-            if body.location_id is None
-            else next((s for s in outlets if s.id == body.location_id), None)
+            if location_id is None
+            else next((s for s in outlets if s.id == location_id), None)
         )
         if selected is None:
             raise ServiceError(
                 422, "Выберите одну из доступных этому ключу торговых точек."
             )
-        if body.provider == "poster":
+        return selected, None
+    except pos_providers.BAD_PAYLOAD:
+        raise pos_providers.invalid_response() from None
+
+
+def import_outlet(reader, selected, days, city, today):
+    start = today - timedelta(days=days)
+    sales = pos_providers.Observations(start, today - timedelta(days=1))
+    try:
+        if reader.provider == "poster":
             pos_providers.poster_sales(reader, selected, sales)
         else:
             pos_providers.moysklad_sales(reader, selected, sales)
     except pos_providers.BAD_PAYLOAD:
         raise pos_providers.invalid_response() from None
     if not sales.lines:
-        raise ServiceError(
+        raise NoSales(
             422,
             "За выбранные завершённые дни продаж по этой точке нет. Увеличьте период.",
         )
@@ -121,18 +159,15 @@ def connect(body: PosRequest):
     from backend.context_sources import load_demand_context, resolve_city
 
     city = (
-        body.city
-        if body.city is not None
+        city
+        if city is not None
         else (resolve_city(selected.address) or resolve_city(selected.name))
     )
     context, warnings = load_demand_context(
         start, today + timedelta(days=1), today, None if city == "none" else city
     )
-    branch = hashlib.sha256(
-        f"{body.provider}/{selected.account}/{selected.id}".encode()
-    ).hexdigest()[:32]
     provenance = (
-        f"{PROVIDER_NAMES[body.provider]} · {selected.name} · {sales.start} — {sales.end}. "
+        f"{PROVIDER_NAMES[reader.provider]} · {selected.name} · {sales.start} — {sales.end}. "
         "Продажи до вычета возвратов, без складского баланса. "
         + (
             "Количество в штуках."
@@ -142,7 +177,7 @@ def connect(body: PosRequest):
     )
     request = ImportRequest(
         source="local",
-        bakery_id=f"{body.provider}-{branch}",
+        bakery_id=branch_id(reader.provider, selected),
         provenance=provenance,
         csv_text=stream.getvalue(),
         schema_version="pos-units-1" if sales.physical else "sales-1",
@@ -154,7 +189,7 @@ def connect(body: PosRequest):
         request,
         today,
         pos_metadata={
-            "pos_provider": body.provider,
+            "pos_provider": reader.provider,
             "pos_location": selected.public(),
             "forecast_only": True,
             "product_names": sales.names,

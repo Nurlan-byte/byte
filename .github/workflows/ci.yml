@@ -108,6 +108,6 @@ jobs:
         run: |
           python -m pip install -r backend/requirements.lock
           python -m ruff check scripts
-          python -m pytest backend/tests/test_deployment.py backend/tests/test_demo_replay.py -q
+          python -m pytest backend/tests/test_deployment.py backend/tests/test_demo_replay.py backend/tests/test_pos_connection_store.py backend/tests/test_pos_sync.py -q
       - name: Build and exercise isolated controlled demo
         run: bash scripts/test_containers.sh

@@ -2,10 +2,22 @@ import { useEffect, useRef, useState } from "react";
 import { api } from "./api";
 import type { Dataset } from "./types";
 import type { ImportProps } from "./ImportSection";
+import {
+  DailyConnections,
+  type DailyForecast,
+  type PosConnectionSummary,
+} from "./DailyPos";
 
 type Location = { id: string; name: string };
 type ImportResult =
   | { status: "choose_location"; locations: Location[] }
+  | {
+      status: "connected";
+      connection: PosConnectionSummary;
+      dataset: Dataset | null;
+      forecast: DailyForecast | null;
+      context_warnings: string[];
+    }
   | {
       status: "imported";
       dataset: Dataset;
@@ -16,6 +28,7 @@ export type AdoptDataset = (
   dataset: Dataset,
   warnings: string[],
   fromPos: boolean,
+  connection?: { summary: PosConnectionSummary; forecast: DailyForecast },
 ) => Promise<void>;
 
 function CityField({
@@ -66,10 +79,14 @@ function KeyForm({
   busy,
   run,
   adopt,
+  dailyEnabled,
+  onConnected,
 }: {
   busy: boolean;
   run: ImportProps["run"];
   adopt: AdoptDataset;
+  dailyEnabled: boolean;
+  onConnected: (connection: PosConnectionSummary) => void;
 }) {
   const [provider, setProvider] = useState("poster");
   const [key, setKey] = useState("");
@@ -77,40 +94,17 @@ function KeyForm({
   const [location, setLocation] = useState("");
   const [city, setCity] = useState("");
   const [days, setDays] = useState("56");
-  const [enabled, setEnabled] = useState<boolean | null>(null);
+  const [daily, setDaily] = useState(dailyEnabled);
   const [failure, setFailure] = useState("");
   const file = useRef<HTMLInputElement>(null);
-  useEffect(() => {
-    let active = true;
-    void api<{ enabled: boolean }>("/pos/status")
-      .then((status) => {
-        if (active) setEnabled(status.enabled);
-      })
-      .catch(() => {
-        if (active)
-          setFailure(
-            "Не удалось проверить подключение к серверу. Откройте форму ещё раз.",
-          );
-      });
-    return () => {
-      active = false;
-    };
-  }, []);
+  const readVersion = useRef(0);
   function updateKey(value: string) {
+    ++readVersion.current;
     setKey(value);
     setLocations([]);
     setLocation("");
     setFailure("");
   }
-  if (failure && enabled === null) return <p role="alert">{failure}</p>;
-  if (enabled === null) return <p>Проверяем доступ к интеграциям…</p>;
-  if (!enabled)
-    return (
-      <p>
-        Ввод ключей выключен на этом сервере. На рабочем сервере администратор
-        может включить подключение к кассам. Здесь доступны CSV и примеры.
-      </p>
-    );
   return (
     <form
       onSubmit={(event) => {
@@ -119,13 +113,16 @@ function KeyForm({
           setFailure("");
           let result: ImportResult;
           try {
-            result = await api<ImportResult>("/pos/import", {
-              provider,
-              api_key: key.trim(),
-              days: Number(days),
-              location_id: location || undefined,
-              city: city || undefined,
-            });
+            result = await api<ImportResult>(
+              daily ? "/pos/connections" : "/pos/import",
+              {
+                provider,
+                api_key: key.trim(),
+                days: Number(days),
+                location_id: location || undefined,
+                city: city || undefined,
+              },
+            );
           } catch (err) {
             setFailure(
               err instanceof Error
@@ -141,6 +138,16 @@ function KeyForm({
           }
           setKey("");
           if (file.current) file.current.value = "";
+          if (result.status === "connected") {
+            onConnected(result.connection);
+            if (result.dataset && result.forecast) {
+              await adopt(result.dataset, result.context_warnings, true, {
+                summary: result.connection,
+                forecast: result.forecast,
+              });
+            }
+            return;
+          }
           await adopt(result.dataset, result.context_warnings, true);
         });
       }}
@@ -175,6 +182,17 @@ function KeyForm({
           />
         </label>
       </div>
+      {dailyEnabled && (
+        <label className="daily-choice">
+          <input
+            type="checkbox"
+            checked={daily}
+            disabled={busy}
+            onChange={(e) => setDaily(e.target.checked)}
+          />
+          Обновлять продажи и прогноз каждый день
+        </label>
+      )}
       <details>
         <summary>Файл ключа, город и период продаж</summary>
         <label className="control-field">
@@ -187,6 +205,7 @@ function KeyForm({
             onChange={async (e) => {
               const chosen = e.target.files?.[0];
               if (!chosen) return;
+              const version = ++readVersion.current;
               if (chosen.size > 4096) {
                 updateKey("");
                 setFailure("Выберите текстовый файл до 4 КБ с одним ключом.");
@@ -194,6 +213,7 @@ function KeyForm({
               }
               try {
                 const content = (await chosen.text()).trim();
+                if (version !== readVersion.current) return;
                 if (!/^[!-~]{1,1024}$/.test(content)) {
                   updateKey("");
                   setFailure(
@@ -203,6 +223,7 @@ function KeyForm({
                 }
                 updateKey(content);
               } catch {
+                if (version !== readVersion.current) return;
                 updateKey("");
                 setFailure("Не удалось прочитать файл ключа.");
               }
@@ -248,16 +269,143 @@ function KeyForm({
         </p>
       )}
       <p className="muted">
-        Ключ нужен один раз для этого импорта. BakePlan сохранит дневные продажи
-        и рассчитает прогноз. Для нескольких точек появится выбор. По умолчанию
-        используется календарь Казахстана.
+        {daily
+          ? "BakePlan сохранит ключ на сервере в зашифрованном виде. Обновление проходит каждый день в 05:00 по времени Казахстана, даже когда браузер закрыт."
+          : "Ключ используется для одного импорта. Для следующей загрузки введите его снова."}{" "}
+        Если доступно несколько точек, появится выбор.
       </p>
       <button
         disabled={busy || !key.trim() || (locations.length > 0 && !location)}
       >
-        Загрузить продажи и получить прогноз
+        {daily
+          ? "Подключить ежедневное обновление"
+          : "Загрузить продажи и получить прогноз"}
       </button>
     </form>
+  );
+}
+
+type PosStatus = {
+  enabled: boolean;
+  daily_enabled?: boolean;
+  daily_configured?: boolean;
+};
+
+function ConnectionPanel({
+  busy,
+  run,
+  adopt,
+}: {
+  busy: boolean;
+  run: ImportProps["run"];
+  adopt: AdoptDataset;
+}) {
+  const [status, setStatus] = useState<PosStatus | null>(null);
+  const [connections, setConnections] = useState<PosConnectionSummary[]>([]);
+  const [issue, setIssue] = useState("");
+  const [loading, setLoading] = useState(true);
+  const [adding, setAdding] = useState(false);
+  useEffect(() => {
+    let active = true;
+    void (async () => {
+      try {
+        const available = await api<PosStatus>("/pos/status");
+        if (!active) return;
+        setStatus(available);
+        if (
+          available.enabled &&
+          (available.daily_enabled || available.daily_configured)
+        ) {
+          const rows = await api<PosConnectionSummary[]>("/pos/connections");
+          if (active) setConnections(rows);
+        }
+      } catch (error) {
+        if (active)
+          setIssue(
+            error instanceof Error
+              ? error.message
+              : "Не удалось проверить подключения.",
+          );
+      } finally {
+        if (active) setLoading(false);
+      }
+    })();
+    return () => {
+      active = false;
+    };
+  }, []);
+  if (loading) return <p>Проверяем подключения к кассам…</p>;
+  if (!status) return <p role="alert">{issue} Откройте форму ещё раз.</p>;
+  if (!status.enabled)
+    return (
+      <p>
+        Ввод ключей выключен на этом сервере. На рабочем сервере администратор
+        может включить подключение к кассам. Здесь доступны CSV и примеры.
+      </p>
+    );
+  const form = (
+    <KeyForm
+      busy={busy}
+      run={run}
+      adopt={adopt}
+      dailyEnabled={!!status.daily_enabled}
+      onConnected={(saved) =>
+        setConnections((rows) => [
+          saved,
+          ...rows.filter((row) => row.id !== saved.id),
+        ])
+      }
+    />
+  );
+  return (
+    <>
+      {issue && (
+        <p role="alert" className="field-error">
+          {issue}
+        </p>
+      )}
+      {status.daily_configured && !status.daily_enabled && (
+        <p className="status-note">
+          Хранилище ключей временно недоступно. Проверьте настройку ключа
+          шифрования на сервере. Доступен разовый импорт.
+        </p>
+      )}
+      {(connections.length > 0 ||
+        (issue && (status.daily_enabled || status.daily_configured))) && (
+        <DailyConnections
+          connections={connections}
+          dailyAvailable={!!status.daily_enabled}
+          adopt={adopt}
+          busy={busy}
+          run={run}
+          refresh={async () => {
+            try {
+              const rows =
+                await api<PosConnectionSummary[]>("/pos/connections");
+              setConnections(rows);
+              setIssue("");
+            } catch (error) {
+              setIssue(
+                error instanceof Error
+                  ? error.message
+                  : "Не удалось прочитать подключения.",
+              );
+            }
+          }}
+        />
+      )}
+      {connections.length > 0 ? (
+        <details
+          className="additional-connection"
+          onToggle={(event) => setAdding(event.currentTarget.open)}
+        >
+          <summary>Подключить ещё одну кассу или заменить ключ</summary>
+          {adding && form}
+        </details>
+      ) : (
+        form
+      )}
+    </>
   );
 }
 
@@ -280,7 +428,9 @@ export function PosConnection({
       onToggle={(e) => setOpen(e.currentTarget.open)}
     >
       <summary>Подключить кассу по ключу API</summary>
-      {open && active && <KeyForm busy={busy} run={run} adopt={adopt} />}
+      {open && active && (
+        <ConnectionPanel busy={busy} run={run} adopt={adopt} />
+      )}
     </details>
   );
 }

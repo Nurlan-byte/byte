@@ -384,7 +384,7 @@ def test_v3_database_and_trained_model_survive_registry_migration(db):
         assert backup.execute("PRAGMA user_version").fetchone()[0] == 3
         assert old_rows(backup) == original
     with storage.connection(db) as live:
-        assert live.execute("PRAGMA user_version").fetchone()[0] == 4
+        assert live.execute("PRAGMA user_version").fetchone()[0] == storage.SQLITE_SCHEMA_VERSION
         assert old_rows(live) == original
         for name in ("deliveries", "delivery_receipts"):
             assert live.execute(f"SELECT count(*) FROM {name}").fetchone()[0] == 0

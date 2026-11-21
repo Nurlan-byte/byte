@@ -112,7 +112,7 @@ def test_existing_v3_snapshot_can_be_verified_before_upgrade(tmp_path):
         assert snapshots.restore_backup(backup, restored, app_stopped=True) == manifest
         assert restored.read_bytes() == original
         storage.initialize_database(restored)
-        assert snapshots.inspect_database(restored)["schema_version"] == 4
+        assert snapshots.inspect_database(restored)["schema_version"] == storage.SQLITE_SCHEMA_VERSION
         assert backup.read_bytes() == original
 
 
@@ -132,6 +132,7 @@ def test_backup_restore_preserves_all_state_and_retry_keys(
         "confirmations": 1,
         "deliveries": 1,
         "delivery_receipts": 1,
+        "pos_connections": 0,
     }
     assert snapshots.verify_backup(backup) == summary
     restored = tmp_path / "restored.sqlite3"

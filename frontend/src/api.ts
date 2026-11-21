@@ -56,15 +56,21 @@ export async function api<T>(
   const response = await fetch("/api" + path, {
     method,
     headers:
-      body === undefined
+      method === "GET" || method === "HEAD"
         ? undefined
-        : { "Content-Type": "application/json", "X-BakePlan-Request": "1" },
+        : {
+            ...(body === undefined
+              ? {}
+              : { "Content-Type": "application/json" }),
+            "X-BakePlan-Request": "1",
+          },
     body: body === undefined ? undefined : JSON.stringify(body),
   }).catch(() => {
     throw new Error(
       "Нет ответа API. Проверьте запуск сервера и соединение. Если подтверждали план, проверьте его в истории или повторите действие с теми же параметрами.",
     );
   });
+  if (response.status === 204) return undefined as T;
   const text = await response.text();
   let data: unknown;
   try {

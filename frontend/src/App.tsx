@@ -15,10 +15,15 @@ import {
   WorkspaceNavigation,
   type View,
 } from "./WorkspaceChrome";
-import { api } from "./api";
+import { api, ApiError } from "./api";
 import type { Dataset, DatasetTarget, Plan, PlanSummary } from "./types";
 import type { ForecastSnapshot } from "./ForecastResult";
 import type { AdoptDataset } from "./DemandSources";
+import type {
+  DailyForecast,
+  PosConnectionSummary,
+  StoredPosResult,
+} from "./DailyPos";
 import { businessDate } from "./dates";
 import { validQuantity } from "./quantities";
 import { ImportSection } from "./ImportSection";
@@ -63,6 +68,24 @@ export function App() {
   const [historyOffset, setHistoryOffset] = useState(0);
   const [historyLoaded, setHistoryLoaded] = useState(false);
   const [restored, setRestored] = useState(false);
+  const [firstForecast, setFirstForecast] = useState<{
+    snapshot: ForecastSnapshot;
+    connection?: PosConnectionSummary;
+    sequence: number;
+  } | null>(null);
+  function showForecast(
+    first: ForecastSnapshot,
+    connection?: PosConnectionSummary,
+  ) {
+    setCutoff(first.cutoff);
+    setTarget(first.targetDate);
+    setMethod(first.method);
+    setFirstForecast((previous) => ({
+      snapshot: first,
+      connection,
+      sequence: (previous?.sequence ?? 0) + 1,
+    }));
+  }
   const errorBox = useRef<HTMLDivElement>(null);
   useEffect(() => {
     if (error) errorBox.current?.focus();
@@ -71,6 +94,11 @@ export function App() {
     let active = true;
     const datasetId = workspaceReference("dataset");
     const planId = workspaceReference("plan");
+    const [followedDataset, connectionId] = (
+      workspaceReference("pos-connection") ?? ""
+    ).split("/");
+    const follow =
+      !planId && datasetId && datasetId === followedDataset && connectionId;
     void Promise.allSettled([
       datasetId
         ? api<Dataset>(`/datasets/${encodeURIComponent(datasetId)}`)
@@ -79,10 +107,18 @@ export function App() {
         ? api<Plan>(`/plans/${encodeURIComponent(planId)}`)
         : Promise.resolve(null),
       api<PlanSummary[]>(`/plans?limit=${HISTORY_PAGE_SIZE}&offset=0`),
-    ]).then(([data, previousPlan, plans]) => {
+      follow
+        ? api<StoredPosResult>(
+            `/pos/connections/${encodeURIComponent(connectionId)}/latest`,
+          )
+        : Promise.resolve(null),
+    ]).then(([data, previousPlan, plans, latest]) => {
       if (!active) return;
-      if (data.status === "fulfilled" && data.value) {
-        const stored = savedDataset(data.value);
+      const fresh = latest.status === "fulfilled" ? latest.value : null;
+      const restoredDataset =
+        fresh?.dataset ?? (data.status === "fulfilled" ? data.value : null);
+      if (restoredDataset) {
+        const stored = savedDataset(restoredDataset);
         setDataset(stored);
         setPlanningKind(
           stored.forecast_only &&
@@ -97,13 +133,37 @@ export function App() {
         setDataTarget(stored.target);
         setProvenance(stored.provenance);
       }
+      if (fresh) {
+        showForecast(fresh.forecast, fresh.connection);
+        workspaceReference(
+          "pos-connection",
+          `${fresh.dataset.id}/${connectionId}`,
+        );
+        setView("model");
+        if (fresh.connection.status === "ready")
+          setNotice("Открыт последний сохранённый прогноз кассы.");
+      } else if (follow && latest.status === "rejected") {
+        if (latest.reason instanceof ApiError && latest.reason.status === 404) {
+          workspaceReference("pos-connection", null);
+          setNotice(
+            "Подключение отключено. Ранее загруженные продажи доступны.",
+          );
+        } else {
+          setNotice(
+            "Не удалось получить последний прогноз кассы. Статус подключения доступен в разделе «Данные».",
+          );
+        }
+      }
       if (previousPlan.status === "fulfilled" && previousPlan.value)
         show(previousPlan.value);
       if (plans.status === "fulfilled") {
         setHistory(plans.value);
         setHistoryLoaded(true);
       }
-      if (data.status === "rejected" || previousPlan.status === "rejected") {
+      if (
+        (!fresh && data.status === "rejected") ||
+        previousPlan.status === "rejected"
+      ) {
         setError(
           "Не удалось открыть прошлый набор или план. Откройте сохранённый набор в «Данных» или план в «Истории». Если сервер временно недоступен, обновите страницу.",
         );
@@ -267,25 +327,20 @@ export function App() {
     show,
     refreshHistory: () => loadHistory(0),
   };
-  const [firstForecast, setFirstForecast] = useState<{
-    snapshot: ForecastSnapshot;
-    sequence: number;
-  } | null>(null);
   async function prepareForecast(datasetId: string) {
-    const first = await api<ForecastSnapshot & { warnings: string[] }>(
+    const first = await api<DailyForecast>(
       `/datasets/${datasetId}/first-forecast`,
       {},
     );
-    setCutoff(first.cutoff);
-    setTarget(first.targetDate);
-    setMethod(first.method);
-    setFirstForecast((previous) => ({
-      snapshot: first,
-      sequence: (previous?.sequence ?? 0) + 1,
-    }));
+    showForecast(first);
     return first;
   }
-  const adopt: AdoptDataset = async (result, contextWarnings, fromPos) => {
+  const adopt: AdoptDataset = async (
+    result,
+    contextWarnings,
+    fromPos,
+    connection,
+  ) => {
     const saved = savedDataset(result);
     setDataset(saved);
     setPlan(null);
@@ -297,14 +352,23 @@ export function App() {
     setProvenance(saved.provenance);
     setBakeryId(saved.bakery_id);
     if (fromPos) setCsv("");
-    const first = await prepareForecast(saved.id);
+    const first = connection?.forecast ?? (await prepareForecast(saved.id));
+    if (connection) showForecast(first, connection.summary);
+    workspaceReference(
+      "pos-connection",
+      connection ? `${saved.id}/${connection.summary.id}` : null,
+    );
     changeView("model");
     setNotice(
       [
-        "Продажи сохранены. Прогноз готов.",
+        connection && connection.summary.status !== "ready"
+          ? ""
+          : "Продажи сохранены. Прогноз готов.",
         ...contextWarnings,
         ...first.warnings,
-      ].join(" "),
+      ]
+        .filter(Boolean)
+        .join(" "),
     );
   };
   const salesOnly =
@@ -424,6 +488,18 @@ export function App() {
           />
         </div>
         <div id="panel-model" hidden={view !== "model"}>
+          {firstForecast?.connection &&
+            firstForecast.connection.status !== "ready" &&
+            firstForecast.snapshot.result.dataset_id ===
+              selectedDataset?.id && (
+              <p role="status" className="status-note">
+                {firstForecast.connection.status === "error"
+                  ? `Касса не обновилась. ${firstForecast.connection.error ?? ""}`
+                  : "Идёт обновление кассы."}{" "}
+                Показан последний успешный прогноз от{" "}
+                {firstForecast.connection.last_success_day}.
+              </p>
+            )}
           {selectedDataset ? (
             <ModelSection
               key={

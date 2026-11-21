@@ -80,8 +80,11 @@ def add_context(ident: str, choice: ContextChoice, response: Response):
 
 @router.post("/api/datasets/{ident}/first-forecast")
 def first_forecast(ident: str):
+    return forecast_for_day(ident, business_today())
+
+
+def forecast_for_day(ident: str, today: date):
     dataset = get_dataset(ident)
-    today = business_today()
     yesterday = today - timedelta(days=1)
     last = max(date.fromisoformat(row["date"]) for row in dataset["rows"])
     cutoff = yesterday if dataset.get("pos_provider") else min(last, yesterday)

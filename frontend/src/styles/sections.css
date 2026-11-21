@@ -344,3 +344,11 @@
 .demand-source .control-field { max-width: 34rem; margin: 10px 0; }
 .demand-source form > button, .demand-source > button { margin: 8px 0 14px; }
 .demand-source p { font-size: 14px; }
+.daily-choice { display: flex; align-items: center; gap: 0.65rem; margin-block: 1rem; }
+.daily-choice input { width: 1.1rem; height: 1.1rem; flex: none; }
+.daily-connections { padding-block: 0.4rem 1rem; }
+.daily-connection { padding-block: 0.8rem; border-top: 1px solid var(--line); }
+.daily-connection > strong, .daily-connection > span { display: block; overflow-wrap: anywhere; }
+.daily-connection > span { color: var(--muted); font-size: 0.875rem; }
+.daily-connection .actions { flex-wrap: wrap; }
+.additional-connection { border-top: 1px solid var(--line); }

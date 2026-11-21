@@ -20,7 +20,7 @@ from pathlib import Path
 from backend import model_storage
 from backend.storage import SQLITE_SCHEMA_COLUMNS as COLUMNS
 from backend.storage import SQLITE_SCHEMA_VERSION as SCHEMA_VERSION
-from backend.storage import SQLITE_V3_COLUMNS
+from backend.storage import SQLITE_V3_COLUMNS, SQLITE_V4_COLUMNS
 
 FORMAT = "bakeplan-sqlite-snapshot-1"
 
@@ -64,7 +64,7 @@ def _connect(path, *, snapshot=False):
 
 
 def inspect_database(path):
-    """Validate current and legacy v3 snapshots without migrating their contents."""
+    """Validate current and legacy snapshots without migrating their contents."""
     path = _regular_file(path)
     _no_sidecars(path)
     try:
@@ -72,7 +72,7 @@ def inspect_database(path):
             if con.execute("PRAGMA integrity_check").fetchall() != [("ok",)]:
                 raise SnapshotError("SQLite integrity_check failed")
             version = con.execute("PRAGMA user_version").fetchone()[0]
-            expected_columns = {3: SQLITE_V3_COLUMNS, SCHEMA_VERSION: COLUMNS}.get(version)
+            expected_columns = {3: SQLITE_V3_COLUMNS, 4: SQLITE_V4_COLUMNS, SCHEMA_VERSION: COLUMNS}.get(version)
             if expected_columns is None:
                 raise SnapshotError(f"Unsupported BakePlan schema version {version}")
             tables = {
@@ -146,6 +146,18 @@ def inspect_database(path):
                     ) LIMIT 1
                 """).fetchone():
                     raise SnapshotError("Delivery receipt quantities do not match the received total")
+            if "pos_connections" in expected_columns:
+                for ident, target, forecast in con.execute(
+                    "SELECT dataset_id,target_date,forecast FROM pos_connections WHERE dataset_id IS NOT NULL"
+                ):
+                    snapshot = json.loads(forecast)
+                    if (
+                        not isinstance(snapshot, dict)
+                        or not isinstance(snapshot.get("result"), dict)
+                        or snapshot["result"].get("dataset_id") != ident
+                        or snapshot.get("targetDate") != target
+                    ):
+                        raise SnapshotError("POS forecast does not match its saved dataset and target")
             counts = {
                 table: con.execute(f"SELECT count(*) FROM {table}").fetchone()[0]
                 for table in sorted(expected_columns)

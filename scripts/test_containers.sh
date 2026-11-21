@@ -53,6 +53,7 @@ if [ -n "$published" ] && [ "${published##*:}" != "0" ]; then
     exit 1
 fi
 python3 -m scripts.container_fixture probe
+python3 -c 'from scripts.container_fixture import request; assert not request("/api/pos/status").get("daily_enabled")'
 python3 -m scripts.container_fixture seed --state "$private_dir/state.json"
 "${compose[@]}" restart api
 "${compose[@]}" up -d --wait --wait-timeout 90
@@ -67,4 +68,15 @@ export BAKEPLAN_DB_FILE="restored.sqlite3"
 python3 -m scripts.container_fixture probe
 python3 -m scripts.container_fixture verify --state "$private_dir/state.json"
 echo 'Container loopback auth, synthetic workflow, restart, backup and restore checks passed.'
+
+# Exercise the actual file mount and API uid used by the private deployment.
+export BAKEPLAN_POS_MASTER_KEY_FILE="$private_dir/pos-master.key"
+docker run --rm --user 0:0 --mount "type=bind,src=$private_dir,dst=/key-init" \
+    "bakeplan-api:$BAKEPLAN_RELEASE" sh -ec \
+    'python -m backend.pos_vault init /key-init/pos-master.key && chown 10001:10001 /key-init/pos-master.key'
+compose+=(-f deploy/compose.pos.yaml -f deploy/compose.pos-daily.yaml)
+"${compose[@]}" up -d --wait --wait-timeout 90
+python3 -c 'from scripts.container_fixture import request; assert request("/api/pos/status")["daily_enabled"]; assert request("/api/pos/connections") == []'
+"${compose[@]}" exec -T gateway sh -ec 'test ! -e /run/secrets/pos_master'
+echo 'The private API reads its master key and the gateway has no copy.'
 echo 'Public DNS, trusted HTTPS issuance/renewal, real hosting and manual browser QA remain separate.'

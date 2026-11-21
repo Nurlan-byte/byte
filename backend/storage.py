@@ -10,7 +10,7 @@ from pathlib import Path
 
 SCHEMA_VERSION = "history-1"
 MAX_SQLITE_INTEGER = 2**63 - 1
-SQLITE_SCHEMA_VERSION = 4
+SQLITE_SCHEMA_VERSION = 5
 SQLITE_V3_COLUMNS = {
     "datasets": {
         "id", "payload", "schema_version", "source", "content_hash", "created_at",
@@ -28,13 +28,21 @@ SQLITE_V3_COLUMNS = {
     "confirmations": {"plan_id", "key", "body", "response"},
     "dataset_import_keys": {"source", "schema_version", "content_hash", "dataset_id"},
 }
-SQLITE_SCHEMA_COLUMNS = {
+SQLITE_V4_COLUMNS = {
     **SQLITE_V3_COLUMNS,
     "deliveries": {
         "id", "bakery_id", "number", "product_id", "arrival_date", "initial_arrival_date",
         "ordered_qty", "received_qty", "cancelled",
     },
     "delivery_receipts": {"delivery_id", "idempotency_key", "quantity", "received_at", "response"},
+}
+SQLITE_SCHEMA_COLUMNS = {
+    **SQLITE_V4_COLUMNS,
+    "pos_connections": {
+        "id", "provider", "bakery_id", "location_id", "location_name", "days", "city", "ciphertext",
+        "updated_at", "last_attempt_at", "attempt_day", "last_success_day", "error", "retry_at",
+        "lease_token", "lease_until", "dataset_id", "forecast", "target_date",
+    },
 }
 
 
@@ -98,7 +106,7 @@ def initialize_database(path=None):
     with connection(path) as con:
         if con.execute("PRAGMA user_version").fetchone()[0] == SQLITE_SCHEMA_VERSION:
             return
-        migrations = ((2, _migrate_v2), (3, _migrate_v3), (4, _migrate_v4))
+        migrations = ((2, _migrate_v2), (3, _migrate_v3), (4, _migrate_v4), (5, _migrate_v5))
         while True:
             con.execute("BEGIN IMMEDIATE")
             version = con.execute("PRAGMA user_version").fetchone()[0]
@@ -228,6 +236,26 @@ def _migrate_v4(con):
         )
     """)
     con.execute("PRAGMA user_version=4")
+
+
+def _migrate_v5(con):
+    con.execute("""
+        CREATE TABLE pos_connections(
+            id TEXT PRIMARY KEY NOT NULL, provider TEXT NOT NULL, bakery_id TEXT NOT NULL,
+            location_id TEXT NOT NULL, location_name TEXT NOT NULL,
+            days INTEGER NOT NULL CHECK(days BETWEEN 1 AND 120), city TEXT,
+            ciphertext BLOB NOT NULL, updated_at TEXT NOT NULL, last_attempt_at TEXT NOT NULL,
+            attempt_day TEXT NOT NULL, last_success_day TEXT, error TEXT, retry_at TEXT,
+            lease_token TEXT, lease_until TEXT, dataset_id TEXT REFERENCES datasets(id),
+            forecast TEXT, target_date TEXT,
+            UNIQUE(provider, bakery_id, location_id),
+            CHECK ((lease_token IS NULL) = (lease_until IS NULL)),
+            CHECK ((dataset_id IS NULL) = (forecast IS NULL)),
+            CHECK ((dataset_id IS NULL) = (last_success_day IS NULL)),
+            CHECK ((dataset_id IS NULL) = (target_date IS NULL))
+        )
+    """)
+    con.execute("PRAGMA user_version=5")
 
 
 def fetch(con, table, ident):
