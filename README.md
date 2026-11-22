@@ -6,14 +6,14 @@
 
 > **In English.** BakePlan is AI demand forecasting and purchase planning for bakeries, cafés, clubs and mini-markets. It turns a CSV of sales history into tomorrow's production plan or supplier order. The manager of the Cloud Game Zone computer-club chain reports use at four branches. Purchase orders use offline Chronos-2 forecasts. A same-weekday baseline can replace Chronos for a sparse product when it wins on paired historical dates. Bakery production also supports the original Ridge model. Automated checks run on Windows and Linux. Digital Taraz top-10 finalist.
 >
-> **[Live demo](https://bakeplan.spotlightdesk.xyz/)** (data resets hourly) · **[Demo video](presentation/BakePlan_CGZ_demo.mp4)**\
+> **[Live demo](https://bakeplan.spotlightdesk.xyz/)** · **[Demo video](presentation/BakePlan-demo.webm)**\
 > The interface and the rest of this README are in Russian: in the demo, open «Данные» and press «Загрузить демо CSV».
 
 <p align="center"><b>AI-планирование выпуска и закупок для малого бизнеса — от истории продаж до утверждённого заказа</b></p>
 
 <p align="center">
   <a href="https://bakeplan.spotlightdesk.xyz/">Открыть BakePlan</a> ·
-  <a href="presentation/BakePlan_CGZ_demo.mp4">Смотреть видеодемонстрацию</a> ·
+  <a href="presentation/BakePlan-demo.webm">Смотреть видеодемонстрацию</a> ·
   <a href="presentation/">Презентация для жюри</a> ·
   <a href="#интерфейс">Интерфейс</a> ·
   <a href="#быстрый-старт">Быстрый старт</a> ·
