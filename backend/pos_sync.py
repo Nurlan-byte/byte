@@ -69,6 +69,7 @@ def _update(claim, day, clock, verified=None):
 
 def _update_stages(claim, day, clock, verified):
     failure = "vault_unavailable"
+    observations = None
     try:
         if verified is None:
             reader = pos_providers.VendorReader(
@@ -79,10 +80,11 @@ def _update_stages(claim, day, clock, verified):
             if pos_import.branch_id(reader.provider, outlet) != claim["bakery_id"]:
                 raise ServiceError(422, "Изменилась учётная запись кассы.")
         else:
-            reader, outlet = verified
+            reader, outlet, observations = verified
         failure = "sync_failed"
         with pos_monitoring.span("pos.import"):
-            imported = pos_import.import_outlet(reader, outlet, claim["days"], claim["city"], day, require_last_day=True)
+            imported = pos_import.import_outlet(reader, outlet, claim["days"], claim["city"], day,
+                                                require_last_day=True, observations=observations)
             dataset = imported["dataset"]
             dataset_id = dataset["id"]
             observed = max((r["date"] for r in dataset["rows"]), default=None)
@@ -137,6 +139,14 @@ def register_connection(provider, key, location_id, days, city):
     if selected is None:
         return choices
     now = now_utc()
+    day = now.astimezone(LOCAL_TIME).date()
+    observations = None
+    if provider == "smartshell":
+        # A club token can identify the venue but still lack report permissions.
+        # Verify the actual read before saving or replacing a working credential.
+        observations = pos_import.read_observations(
+            reader, selected, day - timedelta(days=days), day - timedelta(days=1)
+        )
     claim = store.start_connection(
         provider,
         selected.id,
@@ -148,7 +158,7 @@ def register_connection(provider, key, location_id, days, city):
         now,
     )
     if not _update(
-        claim, now.astimezone(LOCAL_TIME).date(), now_utc, (reader, selected)
+        claim, day, now_utc, (reader, selected, observations)
     ):
         raise ServiceError(
             409,

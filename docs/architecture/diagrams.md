@@ -13,7 +13,7 @@ graph TB
 
     1["Администратор филиала<br/>[Person]"]
     style 1 fill:#e8eef8,stroke:#a2a6ad,color:#192c49
-    2["Poster / МойСклад<br/>[Software System]"]
+    2["SmartShell / Poster / МойСклад<br/>[Software System]"]
     style 2 fill:#ffffff,stroke:#444444,color:#444444
     3["Open-Meteo<br/>[Software System]"]
     style 3 fill:#ffffff,stroke:#444444,color:#444444
@@ -40,7 +40,7 @@ graph TB
 
     1["Администратор филиала<br/>[Person]"]
     style 1 fill:#e8eef8,stroke:#a2a6ad,color:#192c49
-    2["Poster / МойСклад<br/>[Software System]"]
+    2["SmartShell / Poster / МойСклад<br/>[Software System]"]
     style 2 fill:#ffffff,stroke:#444444,color:#444444
 
     subgraph 6 ["BakePlan"]

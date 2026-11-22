@@ -6,14 +6,14 @@ import io
 import os
 from datetime import timedelta
 
-from backend import pos_providers
+from backend import pos_providers, smartshell_sales
 from backend.branch_access import current_branch, require_branch
 from backend.dataset_identity import identity
 from backend.errors import ServiceError
 from backend.schemas import ImportRequest
 from backend.services import import_history
 
-PROVIDER_NAMES = {"poster": "Poster POS", "moysklad": "МойСклад"}
+PROVIDER_NAMES = {"poster": "Poster POS", "moysklad": "МойСклад", "smartshell": "SmartShell"}
 
 
 def enabled():
@@ -70,18 +70,28 @@ def select_outlet(reader, location_id):
         raise pos_providers.invalid_response() from None
 
 
-def import_outlet(reader, selected, days, city, today, *, require_last_day=False):
-    bakery_id = branch_id(reader.provider, selected)
-    require_branch(bakery_id)
-    start = today - timedelta(days=days)
-    sales = pos_providers.Observations(start, today - timedelta(days=1))
+def read_observations(reader, selected, start, end):
+    require_branch(branch_id(reader.provider, selected))
+    sales = pos_providers.Observations(start, end)
     try:
         if reader.provider == "poster":
             pos_providers.poster_sales(reader, selected, sales)
+        elif reader.provider == "smartshell":
+            smartshell_sales.read_sales(reader, sales)
         else:
             pos_providers.moysklad_sales(reader, selected, sales)
     except pos_providers.BAD_PAYLOAD:
         raise pos_providers.invalid_response() from None
+    return sales
+
+
+def import_outlet(reader, selected, days, city, today, *, require_last_day=False, observations=None):
+    bakery_id = branch_id(reader.provider, selected)
+    require_branch(bakery_id)
+    start = today - timedelta(days=days)
+    sales = observations if observations is not None else read_observations(
+        reader, selected, start, today - timedelta(days=1)
+    )
     if not sales.lines:
         raise NoSales(
             422,
@@ -118,7 +128,8 @@ def import_outlet(reader, selected, days, city, today, *, require_last_day=False
     )
     provenance = (
         f"{PROVIDER_NAMES[reader.provider]} · {selected.name} · {sales.start} — {sales.end}. "
-        "Продажи до вычета возвратов, без складского баланса. "
+        + ("Количество из колонки «Продано» отчёта по товарам, без складского баланса. "
+           if reader.provider == "smartshell" else "Продажи до вычета возвратов, без складского баланса. ")
         + (
             "Количество в штуках."
             if sales.physical

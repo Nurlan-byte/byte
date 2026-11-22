@@ -20,6 +20,7 @@ from backend.errors import ServiceError
 
 POSTER = "https://joinposter.com/api/"
 MOYSKLAD = "https://api.moysklad.ru/api/remap/1.2/entity/"
+SMARTSHELL = "https://billing.smartshell.gg/api/graphql"
 MAX_PAGE_BYTES = 8_000_000
 MAX_DOCUMENTS = 25_000
 
@@ -49,21 +50,52 @@ class VendorReader:
         self.opener = build_opener(NoRedirect())
 
     def get(self, path, **params):
+        headers = {"Accept": "application/json", "Accept-Encoding": "gzip"}
+        if self.provider == "poster":
+            url = POSTER + path
+            params["token"] = self.key
+        elif self.provider == "moysklad":
+            url = MOYSKLAD + path
+            headers["Authorization"] = "Bearer " + self.key
+            headers["Accept"] = "application/json;charset=utf-8"
+        else:
+            raise ValueError("Unsupported POS transport")
+        request = Request(url + "?" + urlencode(params), headers=headers, method="GET")
+        return self._read(request)
+
+    def smartshell_query(self, query, variables=None):
+        if self.provider != "smartshell":
+            raise ValueError("Unsupported POS transport")
+        request = Request(
+            SMARTSHELL,
+            data=json.dumps({"query": query, "variables": variables or {}}).encode(),
+            headers={"Accept": "application/json", "Content-Type": "application/json",
+                     "Accept-Encoding": "gzip", "Authorization": "Bearer " + self.key},
+            method="POST",
+        )
+        envelope = self._read(request)
+        if envelope.get("errors"):
+            # Even with HTTP 200, a partially authorized report may contain both data and errors.
+            errors = envelope["errors"]
+            codes = {str(e["extensions"].get("code")) for e in errors
+                     if isinstance(e, dict) and isinstance(e.get("extensions"), dict)}
+            if codes & {"401", "403", "UNAUTHENTICATED", "FORBIDDEN"}:
+                raise ServiceError(403, "SmartShell отклонил токен или права чтения клуба.")
+            if "429" in codes:
+                raise ServiceError(429, "SmartShell ограничил частоту запросов. Повторите позже.")
+            raise invalid_response()
+        data = envelope.get("data")
+        if not isinstance(data, dict):
+            raise invalid_response()
+        return data
+
+    def _read(self, request):
         self.calls += 1
         remaining = self.deadline - time.monotonic()
         if self.calls > 160 or remaining <= 0 or self.bytes >= 100_000_000:
             raise ServiceError(
                 422, "Слишком большой импорт для одного запроса. Выберите меньше дней."
             )
-        headers = {"Accept": "application/json", "Accept-Encoding": "gzip"}
-        if self.provider == "poster":
-            url = POSTER + path
-            params["token"] = self.key
-        else:
-            url = MOYSKLAD + path
-            headers["Authorization"] = "Bearer " + self.key
-            headers["Accept"] = "application/json;charset=utf-8"
-        request = Request(url + "?" + urlencode(params), headers=headers, method="GET")
         try:
             with self.opener.open(request, timeout=min(10, remaining)) as response:
                 raw = response.read(MAX_PAGE_BYTES + 1)
@@ -187,7 +219,12 @@ def page_rows(reader, path, *, first=None, **params):
 
 
 def locations(reader):
-    if reader.provider == "poster":
+    if reader.provider == "smartshell":
+        # salesReport is scoped by the credential, so bind only its current club.
+        club = reader.smartshell_query("query BakePlanClub { currentClub { id name city } }")["currentClub"]
+        ident = positive_id(club["id"])
+        result = [Location(ident, name_text(club["name"]), ident, str(club.get("city") or ""))]
+    elif reader.provider == "poster":
         shops = reader.get("spots.getSpots")
         if not isinstance(shops, list):
             raise invalid_response()

@@ -2,3 +2,4 @@
 # Preserve exact historical reference bytes for integrity checks on every OS.
 tools/protocol_v3/reference_v2.py text eol=lf
 frontend/src/generated/order-api.d.ts text eol=lf
+scripts/check_smartshell.cmd text eol=crlf

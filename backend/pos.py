@@ -16,7 +16,7 @@ ConnectionID = Annotated[UUID, Path()]
 
 
 class PosRequest(BaseModel):
-    provider: Literal["poster", "moysklad"]
+    provider: Literal["poster", "moysklad", "smartshell"]
     api_key: SecretStr
     location_id: str | None = Field(default=None, min_length=1, max_length=64)
     days: StrictInt = Field(default=56, ge=1, le=120)

@@ -4,6 +4,7 @@ import type { Dataset } from "./types";
 import type { ImportProps } from "./ImportSection";
 import {
   DailyConnections,
+  posProviderNames,
   type DailyForecast,
   type PosConnectionSummary,
 } from "./DailyPos";
@@ -164,8 +165,11 @@ function KeyForm({
               if (file.current) file.current.value = "";
             }}
           >
-            <option value="poster">Poster POS</option>
-            <option value="moysklad">МойСклад</option>
+            {Object.entries(posProviderNames).map(([id, name]) => (
+              <option key={id} value={id}>
+                {name}
+              </option>
+            ))}
           </select>
         </label>
         <label className="control-field">
@@ -178,10 +182,19 @@ function KeyForm({
             maxLength={1024}
             required
             value={key}
+            aria-describedby={
+              provider === "smartshell" ? "smartshell-token-help" : undefined
+            }
             onChange={(e) => updateKey(e.target.value)}
           />
         </label>
       </div>
+      {provider === "smartshell" && (
+        <p id="smartshell-token-help" className="muted">
+          Токен создаётся в карточке клуба в личном кабинете владельца
+          SmartShell.
+        </p>
+      )}
       {dailyEnabled && (
         <label className="daily-choice">
           <input

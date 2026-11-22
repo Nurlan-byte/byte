@@ -3,7 +3,7 @@ workspace "BakePlan" "Ежедневный заказ филиала в прив
 
     model {
         operator = person "Администратор филиала" "Проверяет продажи и остатки, подтверждает заказ и скачивает CSV."
-        pos = softwareSystem "Poster / МойСклад" "Касса филиала предоставляет наблюдения о продажах."
+        pos = softwareSystem "SmartShell / Poster / МойСклад" "Касса филиала предоставляет наблюдения о продажах."
         weather = softwareSystem "Open-Meteo" "Возвращает данные о погоде для выбранного города."
         health = softwareSystem "Healthchecks.io" "Принимает сигнал о готовности свежего расчёта, если настроен."
         collector = softwareSystem "Приёмник трасс" "Получает технические трассы по адресу, заданному оператором."

@@ -6,9 +6,15 @@ import type { ImportProps } from "./ImportSection";
 import type { Dataset } from "./types";
 import { useWorkspaceReference } from "./WorkspaceAccess";
 
+export const posProviderNames = {
+  poster: "Poster POS",
+  moysklad: "МойСклад",
+  smartshell: "SmartShell",
+};
+
 export type PosConnectionSummary = {
   id: string;
-  provider: "poster" | "moysklad";
+  provider: keyof typeof posProviderNames;
   location: { id: string; name: string };
   status: "ready" | "syncing" | "error";
   last_success_day: string | null;
@@ -52,9 +58,7 @@ export function DailyConnections({
       {connections.map((connection) => (
         <div className="daily-connection" key={connection.id}>
           <strong>{connection.location.name}</strong>
-          <span>
-            {connection.provider === "poster" ? "Poster POS" : "МойСклад"}
-          </span>
+          <span>{posProviderNames[connection.provider]}</span>
           <p>
             {!dailyAvailable
               ? "Обновления приостановлены до восстановления хранилища ключей."
