@@ -2,7 +2,7 @@ import { expect, test } from "vitest";
 import { procurementDemos } from "./procurementDemos";
 
 test.each([
-  ["cgz-synthetic-demo", 6, 546],
+  ["club-synthetic-demo", 6, 546],
   ["procurement-demo", 2, 168],
 ] as const)(
   "%s contains a complete synthetic procurement example",

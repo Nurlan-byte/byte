@@ -54,7 +54,7 @@ function webmDurationSeconds(bytes: Buffer): number {
   return duration * scale / 1_000_000_000;
 }
 
-test('record a real synthetic Cloud Game Zone procurement demonstration', async ({ browser, request }, testInfo) => {
+test('record a real synthetic computer club procurement demonstration', async ({ browser, request }, testInfo) => {
   test.setTimeout(180_000);
   const evidenceDir = testInfo.outputPath('evidence');
   await fs.mkdir(evidenceDir, { recursive: true });
@@ -95,7 +95,7 @@ test('record a real synthetic Cloud Game Zone procurement demonstration', async 
     scene('procurement workspace');
     await holdUntil(5);
     await navigate(page, 'Данные');
-    await page.locator('#proc-file').setInputFiles('fixtures/cloud_game_zone_synthetic.csv');
+    await page.locator('#proc-file').setInputFiles({ name: 'computer_club_synthetic.csv', mimeType: 'text/csv', buffer: csv });
     await expect(page.locator('#import [role="status"]')).toContainText('Файл:');
     for (const [index, item] of catalog.entries()) {
       if (index) await page.getByRole('button', { name: 'Добавить товар' }).click();
@@ -105,8 +105,8 @@ test('record a real synthetic Cloud Game Zone procurement demonstration', async 
       await page.locator(`#proc-max-${index}`).fill(String(item.max_order_qty));
     }
     await page.locator('#proc-source').selectOption('synthetic');
-    await page.locator('#proc-shop').fill('cgz-synthetic-demo');
-    await page.locator('#proc-provenance').fill('Полностью синтетический сценарий Cloud Game Zone; предварительные допущения');
+    await page.locator('#proc-shop').fill('club-synthetic-demo');
+    await page.locator('#proc-provenance').fill('Полностью синтетический сценарий компьютерного клуба; предварительные допущения');
     scene('synthetic CSV and provisional catalog');
     await holdUntil(18);
     const importing = page.waitForResponse(r => r.url().endsWith('/api/datasets') && r.request().method() === 'POST');
@@ -168,7 +168,7 @@ test('record a real synthetic Cloud Game Zone procurement demonstration', async 
   } finally {
     await context.close();
     if (complete) {
-      const target = path.join(evidenceDir, 'cgz-synthetic-demo.webm');
+      const target = path.join(evidenceDir, 'club-synthetic-demo.webm');
       await video!.saveAs(target);
       const bytes = await fs.readFile(target);
       const duration = webmDurationSeconds(bytes);
@@ -176,7 +176,7 @@ test('record a real synthetic Cloud Game Zone procurement demonstration', async 
       expect(duration).toBeLessThanOrEqual(120);
       await fs.writeFile(path.join(evidenceDir, 'manifest.json'), JSON.stringify({
         capture_status: 'complete', source_sha: sourceSha, source_dirty: sourceDirty,
-        provenance: 'Uncut silent Chromium recording of real Vite/FastAPI UI using only fully synthetic, provisional Cloud Game Zone fixtures; separate temporary SQLite; no mocked responses or private source data.',
+        provenance: 'Uncut silent Chromium recording of real Vite/FastAPI UI using only fully synthetic, provisional computer club fixtures; separate temporary SQLite; no mocked responses or private source data.',
         csv_raw_sha256: sha256(csv), csv_canonical_lf_sha256: csvCanonicalSha,
         plan_id: planId, export_sha256: exportHash,
         video_sha256: sha256(bytes), video_duration_seconds: duration,
