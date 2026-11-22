@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect } from "react";
+import { AiNotice } from "./AiNotice";
 import { OrderAdjustmentReport } from "./OrderAdjustmentReport";
 import { IssuedForecastReport } from "./IssuedForecastReport";
 import {
@@ -407,6 +408,7 @@ export function App() {
         }}
       />
       <main id="workspace" tabIndex={-1}>
+        <AiNotice />
         {assignedBranch && <p className="muted">Филиал: <strong>{assignedBranch}</strong></p>}
         {view === "planning" && (
           <PlanHeader kind={planningKind} target={target} />

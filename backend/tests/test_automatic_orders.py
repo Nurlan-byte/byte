@@ -9,6 +9,7 @@ from fastapi.testclient import TestClient
 
 from backend import chronos_order
 from backend.app import app
+from backend.ml_service import automatic_protocol
 from backend.tests.test_procurement import payload
 
 
@@ -53,7 +54,7 @@ def test_auto_selection_stays_with_single_order_through_export(catalog, monkeypa
     assert response.status_code == 201, response.text
     order = response.json()
     assert order["requested_method"] == "AUTO"
-    assert order["protocol_version"] == detail["protocol_version"] == chronos_order.PROTOCOL_VERSION
+    assert order["protocol_version"] == detail["protocol_version"] == automatic_protocol()
     assert order["model_id"] is None
     items = {r["product_id"]: r for r in order["items"]}
     assert [(r["method"], r["forecast_mean"]) for r in order["items"]] == [

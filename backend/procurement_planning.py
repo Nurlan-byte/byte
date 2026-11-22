@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from datetime import date
 
 from backend.forecasting import baseline
+from backend.sales_observations import is_demand_observation
 
 MAX_ORDER_QTY = 1_000_000_000
 CAP_WARNINGS = {
@@ -102,7 +103,7 @@ def _select_forecast(
     baseline_method = "B1" if method == "ML" else method
     forecast = baseline(
         rows, product_id=product_id, target_date=target, cutoff=cutoff,
-        method=baseline_method, eligible=lambda row: row.get("is_open") is not False,
+        method=baseline_method, eligible=is_demand_observation,
     )
     forecast["diagnostic_method"] = baseline_method
     if prediction is not None:

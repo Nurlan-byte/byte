@@ -21,6 +21,7 @@ import pytest
 from backend import branch_accounts, context_sources, pos_import, pos_monitoring, pos_providers, pos_sync, pos_vault, storage
 from backend.app import app
 from backend.errors import ServiceError
+from backend.ml_service import automatic_protocol
 from scripts import pos_branches
 
 URL = "/api/pos/connections"
@@ -575,7 +576,7 @@ def test_daily_forecast_service_outage_keeps_pair_until_successful_retry(shop, m
         assert recovered["connection"]["error"] is None
         assert recovered["dataset"]["id"] != old["dataset"]["id"]
         assert recovered["forecast"]["result"]["dataset_id"] == recovered["dataset"]["id"]
-        assert recovered["forecast"]["result"]["protocol_version"] == chronos_order.PROTOCOL_VERSION
+        assert recovered["forecast"]["result"]["protocol_version"] == automatic_protocol()
         assert recovered["forecast"]["method"] == "AUTO" and recovered["forecast"]["result"]["model_id"] is None
 
 
