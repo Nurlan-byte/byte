@@ -1,3 +1,4 @@
+import { reasonText } from "./explanations";
 import { MAX_QUANTITY, validQuantity } from "./quantities";
 import type { Item, OrderConstraint } from "./types";
 
@@ -93,7 +94,11 @@ export function reviewOrderItem(
   if (stock == null)
     reasons.push("Укажите остаток для автоматического расчёта или выберите количество заказа вручную.");
   if (item.forecast_mean == null) {
-    reasons.push("Прогноз отсутствует. Проверьте количество вручную.");
+    reasons.push(
+      item.reason === "stale_sales_history"
+        ? reasonText(item.reason)
+        : "Прогноз отсутствует. Проверьте количество вручную.",
+    );
   } else if (
     stock != null &&
     (item.method === "manual" || item.automatic_eligible === false)

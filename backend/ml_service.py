@@ -219,6 +219,12 @@ def automatic_forecasts(dataset, target, cutoff, product_ids, model_id=None):
         predictions = chronos_order.forecast_order(without_stockouts(dataset), target, cutoff, products)
     except chronos_order.ChronosUnavailable:
         raise ServiceError(503, "Сервис прогноза продаж временно недоступен. Повторите расчёт после восстановления сервиса.") from None
+    for prediction in predictions.values():
+        # An empty recent window means unknown sales. It is not evidence of current demand.
+        if prediction.get("method") in ("Chronos-2", "B1") and (
+            prediction.get("selection", {}).get("observed_days") == 0
+        ):
+            prediction.update(method="manual", forecast_mean=None, reason="stale_sales_history")
     forecast_cache.remember(key, predictions)
     return predictions
 
