@@ -89,8 +89,8 @@ def main() -> None:
                 raise SystemExit(f"Fixture differs from configuration: {path}")
         else:
             path.write_text(content, encoding="utf-8", newline="")
-    print("Synthetic Cloud Game Zone fixtures verified" if args.check else
-          "Synthetic Cloud Game Zone fixtures generated")
+    print("Synthetic computer club fixtures verified" if args.check else
+          "Synthetic computer club fixtures generated")
 
 
 if __name__ == "__main__":
