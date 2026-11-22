@@ -327,7 +327,7 @@ def _create_procurement_plan(body: PlanRequest, today: date, dataset: dict):
         "bakery_id": dataset["bakery_id"], "target": dataset["target"],
         "unit": dataset["unit"], "requested_method": method,
         "model_id": model_id, "protocol_version": protocol,
-        "dataset_version": dataset["version"], "config_version": "procurement-5" if method == "AUTO" else "procurement-4",
+        "dataset_version": dataset["version"], "config_version": "procurement-6" if method == "AUTO" else "procurement-4",
         "config_hash": hashlib.sha256(json.dumps(products, sort_keys=True).encode()).hexdigest(),
         "mode": body.mode, "timezone": "Asia/Qyzylorda",
         "availability_assumption": "Sales are observed units. Availability and stockouts remain unknown unless explicitly recorded; usable target-day stock is supplied as a scenario.",

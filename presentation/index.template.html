@@ -1,133 +1,15 @@
-<!doctype html>
-<html lang="ru">
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>BakePlan — Byte</title>
-  <style>
-    :root { color-scheme:light; --ink:#111111; --muted:#6B6B6B; --red:#8F1408; --line:#D9D9D9; }
-    * { box-sizing:border-box; }
-    html, body { margin:0; width:100%; height:100%; overflow:hidden; background:#fff; color:var(--ink); font-family:-apple-system,'Segoe UI',Roboto,Arial,sans-serif; }
-    #stage { position:absolute; left:50%; top:50%; width:1920px; height:1080px; transform:translate(-50%,-50%) scale(var(--scale,1)); transform-origin:center; }
-    .slide { position:absolute; inset:0; display:none; width:1920px; height:1080px; padding:120px; background:#fff; overflow:hidden; }
-    .slide.active { display:block; }
-    .brand, .number { position:absolute; top:120px; font-size:29px; font-weight:600; letter-spacing:-.02em; }
-    .brand { left:120px; } .number { right:120px; color:var(--muted); }
-    h1, h2, p, blockquote { margin:0; }
-    h1, h2 { font-weight:600; letter-spacing:-.045em; line-height:1.08; }
-    h1 { font-size:80px; } h2 { font-size:74px; }
-    .accent { color:var(--red); }
-    .bottom { position:absolute; left:120px; right:120px; bottom:120px; font-size:32px; color:var(--muted); }
-    .s1 .hero { position:absolute; top:274px; left:120px; right:120px; }
-    .s1 .logo { display:block; width:700px; height:auto; margin-left:-43px; margin-bottom:48px; }
-    .s1 h1 { font-size:82px; }
-    .s1 .sub { margin-top:40px; font-size:43px; line-height:1.25; color:var(--muted); }
-    .s2 .quote { margin-top:205px; padding-left:46px; border-left:10px solid var(--red); font-size:76px; font-weight:600; letter-spacing:-.04em; line-height:1.14; max-width:1530px; }
-    .s2 .attrib { margin-top:55px; padding-left:56px; font-size:32px; color:var(--muted); }
-    .s2 .bottom { font-size:36px; color:var(--ink); font-weight:600; }
-    .s3 h2 { margin-top:112px; }
-    .s3 .capabilities { position:absolute; top:430px; left:120px; right:120px; display:grid; grid-template-columns:repeat(3,1fr); gap:62px 42px; }
-    .s3 .capabilities div { border-top:2px solid var(--line); padding-top:29px; font-size:40px; line-height:1.2; font-weight:600; letter-spacing:-.025em; }
-    .s3 .bottom { font-size:34px; }
-    .s4 h2 { margin-top:104px; font-size:68px; }
-    .s4 .legend { position:absolute; top:334px; left:120px; font-size:27px; color:var(--muted); }
-    .s4 .crop { position:absolute; top:386px; left:120px; width:1680px; height:425px; overflow:hidden; outline:2px solid var(--line); }
-    .s4 .crop img { display:block; width:1680px; height:auto; max-width:none; }
-    .s4 .change { position:absolute; top:842px; left:120px; font-size:74px; line-height:1; font-weight:600; color:var(--red); letter-spacing:-.055em; }
-    .s4 .change span { display:inline-block; margin-left:30px; font-size:31px; font-weight:400; letter-spacing:-.02em; color:var(--ink); }
-    .s4 .bottom { font-size:25px; bottom:92px; }
-    .s5 .hero-number { margin-top:185px; font-size:218px; line-height:1; font-weight:600; letter-spacing:-.065em; color:var(--red); }
-    .s5 h2 { margin-top:45px; }
-    .s5 .bottom { font-size:35px; max-width:1540px; }
-    .s6 h2 { margin-top:116px; }
-    .s6 .checks { position:absolute; top:430px; left:120px; right:120px; display:grid; grid-template-columns:1fr 1fr; gap:64px 100px; }
-    .s6 .checks div { border-top:2px solid var(--line); padding-top:28px; font-size:44px; font-weight:600; letter-spacing:-.025em; }
-    .s6 .checks div:first-child { border-top-color:var(--red); }
-    .s7 h2 { margin-top:157px; }
-    .s7 .cols { display:grid; grid-template-columns:repeat(3,1fr); gap:50px; margin-top:160px; }
-    .s7 .cols div { padding-top:35px; border-top:2px solid var(--line); font-size:48px; font-weight:600; letter-spacing:-.03em; }
-    .s7 .cols div:first-child { border-top-color:var(--red); }
-    .s7 .bottom { font-size:33px; }
-    .s8 .team { margin-top:162px; font-size:84px; }
-    .s8 .roles { margin-top:56px; font-size:39px; line-height:1.45; }
-    .s8 .plan { margin-top:168px; font-size:54px; line-height:1.3; font-weight:600; letter-spacing:-.025em; }
-    .s8 .plan span { color:var(--red); }
-    .s8 .bottom { font-size:31px; }
-
-    .s2 .quote { margin-top:230px; font-size:72px; max-width:1540px; }
-    .s2 .bottom { font-size:34px; }
-    .s3 h2 { margin-top:112px; }
-    .s3 .capabilities { top:420px; gap:58px 42px; }
-    .s3 .capabilities div { font-size:38px; }
-    .s6 .client-count { position:absolute; left:120px; top:415px; font-size:165px; line-height:1; font-weight:600; letter-spacing:-.06em; color:var(--red); }
-    .s6 .client-note { position:absolute; left:120px; top:640px; font-size:40px; line-height:1.25; }
-    .s6 .bottom { font-size:31px; }
-    .s7 .cols div { font-size:46px; }
-    .s8 .team { margin-top:174px; }
-    .s8 .plan { margin-top:150px; font-size:49px; }
-    @media print {
-      @page { size:20in 11.25in; margin:0; }
-      html, body { width:1920px; height:auto; overflow:visible; }
-      #stage { position:static; transform:none; width:1920px; height:auto; }
-      .slide, .slide.active { position:relative; display:block; break-after:page; page-break-after:always; }
-      .slide:last-child { break-after:auto; page-break-after:auto; }
-    }
-  </style>
-</head>
-<body>
-<main id="stage" aria-label="Презентация BakePlan">
-  <section class="slide s1 active" aria-label="Слайд 1">
-    <div class="brand">BakePlan</div><div class="number">01 / 08</div>
-    <div class="hero"><img class="logo" src="__LOGO_DATA_URI__" alt="BakePlan — логотип v2"><h1>Завтрашний запас —<br>решение сегодня</h1><p class="sub">AI подсказывает, сколько подготовить.<br>Владелец утверждает.</p></div>
-    <p class="bottom">Команда Byte · Zhambyl Hub</p>
-  </section>
-  <section class="slide s2" aria-label="Слайд 2">
-    <div class="brand">BakePlan</div><div class="number">02 / 08</div>
-    <blockquote class="quote">«до этого закупали администраторы<br>как чувствуют»</blockquote>
-    <p class="attrib">Руководитель Cloud Game Zone · Шымкент</p>
-    <p class="bottom">Ежедневное решение о запасе должно быть проверяемым.</p>
-  </section>
-  <section class="slide s3" aria-label="Слайд 3">
-    <div class="brand">BakePlan</div><div class="number">03 / 08</div>
-    <h2>Один процесс. <span class="accent">Два бизнеса.</span></h2>
-    <div class="capabilities"><div>Пекарня: выпуск</div><div>Клуб: закупка</div><div>План по товарам</div><div>Упаковки и лимиты</div><div>Ручное утверждение</div><div>История и CSV</div></div>
-    <p class="bottom">Рабочий MVP: от данных до решения владельца.</p>
-  </section>
-  <section class="slide s4" aria-label="Слайд 4">
-    <div class="brand">BakePlan</div><div class="number">04 / 08</div>
-    <h2>Шесть товаров — одно решение</h2>
-    <p class="legend">Реальный интерфейс: упаковки, методы прогноза, предложения и утверждение</p>
-    <div class="crop"><img src="__CONFIRMED_SHOT_URI__" alt="Экран BakePlan: шесть товаров, упаковки, методы прогноза и утверждённые количества"></div>
-    <div class="change">24 → 36 <span>вода, шт. · предложено → утверждено владельцем</span></div>
-    <p class="bottom">Демо на синтетических данных: 91 день, 6 товаров. Интерфейс и ручное решение работают.</p>
-  </section>
-  <section class="slide s5" aria-label="Слайд 5">
-    <div class="brand">BakePlan</div><div class="number">05 / 08</div>
-    <div class="hero-number">3 из 6</div>
-    <h2>AI проходит самопроверку</h2>
-    <p class="bottom">В этом демо AI выбран для трёх товаров; для остальных — простой расчёт. Сравнение проводится на прошлых датах. Эффект на реальном спросе проверим в пилоте.</p>
-  </section>
-  <section class="slide s6" aria-label="Слайд 6">
-    <div class="brand">BakePlan</div><div class="number">06 / 08</div>
-    <h2>Первый клиент: Cloud Game Zone</h2>
-    <div class="client-count">4 филиала</div>
-    <p class="client-note">Со слов руководителя · Шымкент</p>
-    <p class="bottom">Следующий шаг — измерить результат на продажах и остатках.</p>
-  </section>
-  <section class="slide s7" aria-label="Слайд 7">
-    <div class="brand">BakePlan</div><div class="number">07 / 08</div>
-    <h2>За две недели измерим пользу</h2>
-    <div class="cols"><div>Остатки</div><div>Дефициты</div><div>Время команды</div></div>
-    <p class="bottom">Сверим с исходным периодом по филиалам. Эффект в тенге — после замеров.</p>
-  </section>
-  <section class="slide s8" aria-label="Слайд 8">
-    <div class="brand">BakePlan</div><div class="number">08 / 08</div>
-    <h2 class="team">Меньше интуиции — больше выручки.</h2>
-    <p class="plan">Реальные продажи <span>→</span> 2 недели пилота <span>→</span> Тараз</p>
-    <p class="bottom">Команда Byte: Нурлан — продукт и код; Асыл — клиент и презентация.</p>
-  </section>
-</main>
-<script>
+<!doctype html><html lang="ru"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>BakePlan · IT FEST 2026</title><style>@page{size:1920px 1080px;margin:0}*{box-sizing:border-box}html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#e6e6e3;font-family:Arial,sans-serif;color:#172727}#stage{position:absolute;left:50%;top:50%;width:1920px;height:1080px;transform:translate(-50%,-50%) scale(var(--scale,1))}.slide{display:none;position:absolute;inset:0;width:1920px;height:1080px;padding:76px 106px 104px;background:#fffdf8}.slide.active{display:block}.bar{display:flex;align-items:center;justify-content:space-between;border-bottom:2px solid #bfcac2;padding-bottom:22px;font-size:27px;color:#385750}.number{font-size:25px}.bar b{color:#8f251c}.content{padding-top:44px}h1,h2,h3,p{margin:0}h1{font-size:77px;letter-spacing:-3px;line-height:1.05}h2{font-size:70px;letter-spacing:-2.7px;line-height:1.04;margin-bottom:38px}h3{font-size:42px;line-height:1.1;letter-spacing:-1.3px;margin-bottom:15px;color:#265047}article p,.body,.steps p{font-size:35px;line-height:1.28}.lead{font-size:42px;line-height:1.29;max-width:1570px;margin-top:30px}.cols,.trio,.funnel,.screen{display:grid;gap:36px}.cols{grid-template-columns:1fr 1fr;margin-top:38px}.cols article{border-top:5px solid #a43426;padding:22px 18px 15px 0}.insight{font-size:35px;line-height:1.26;padding:20px 28px;border-left:8px solid #ad432d;background:#efe9db;margin-top:33px}.source{position:absolute;bottom:42px;left:106px;right:106px;font-size:23px;line-height:1.27;color:#465550}.source a{color:#754329}.logo{display:block;width:460px;height:130px;object-fit:contain;object-position:left center;margin:22px 0 50px}.trio{grid-template-columns:repeat(3,1fr);margin:35px 0}.stat{border-top:5px solid #406b5b;padding:21px 0}.stat strong{font-size:69px;line-height:1.12;letter-spacing:-3px;color:#205748}.stat p{font-size:31px;line-height:1.25;margin-top:8px}.compact strong{font-size:60px}.funnel{grid-template-columns:repeat(5,1fr);margin:40px 0}.funnel .stat strong{font-size:80px}.screen{grid-template-columns: .85fr 1.3fr;align-items:center}.screen img{width:100%;max-height:630px;object-fit:contain;border:2px solid #b8c9c1;background:#f4f4f3}.steps p{padding:12px 0;border-bottom:1px solid #cdd4cc}.steps b{color:#973728}.steps .minor{font-size:29px;border:0;color:#40574e}.body{margin:25px 0}table{width:100%;border-collapse:collapse;font-size:33px;line-height:1.22}td,th{padding:15px 23px;text-align:left;vertical-align:top;border-bottom:2px solid #c4cec3}th{background:#e4ece5;font-size:28px;color:#325044}td:first-child{font-weight:700}.s9 table td{padding:10px 23px}.s1 .content{padding-top:50px}.s12 .lead{margin-bottom:47px}a{color:inherit}@media print{html,body{width:auto;height:auto;overflow:visible;background:white}#stage{position:static;transform:none;width:auto;height:auto}.slide,.slide.active{display:block;position:relative;inset:auto;page-break-after:always;break-after:page}.slide:last-child{page-break-after:auto;break-after:auto}}</style></head><body><main id="stage"><section class="slide s1 active" aria-label="Слайд 1"><div class="bar"><span><b>BakePlan</b>  /  Закупка бара</span><span class="number">01 / 12</span></div><div class="content"><img class='logo' alt='BakePlan' src='__LOGO_DATA_URI__'><h1>Сколько напитков и снеков<br>заказать к следующей поставке?</h1><p class='lead'>BakePlan превращает историю продаж в заказ с учётом упаковок и остатков. Администратор проверяет количество, владелец филиала оплачивает подписку.</p></div><div class="source">Команда Byte · StartUp Battle · 22.11.2026</div></section>
+<section class="slide s2" aria-label="Слайд 2"><div class="bar"><span><b>BakePlan</b>  /  Проблема</span><span class="number">02 / 12</span></div><div class="content"><h2>У поставщика — упаковки.<br>У администратора — продажи поштучно.</h2><div class='cols'><article><h3>Когда запас велик</h3><p>Деньги уходят в товар, который ещё лежит на полке.</p></article><article><h3>Когда запас мал</h3><p>Популярный напиток может закончиться до следующей поставки.</p></article></div><p class='insight'>Первый клиентский контакт — сеть компьютерных клубов в Шымкенте. Регулярность заказов, оплаты и экономический эффект пока не подтверждены.</p></div><div class="source">Источник контекста — <a href="https://github.com/Nurlan-byte/byte/tree/e1c8861d88f512aecf59cf443069612e3d48ec15">описание проекта</a>. Статус доказательств на 22.11.2026.</div></section>
+<section class="slide s3" aria-label="Слайд 3"><div class="bar"><span><b>BakePlan</b>  /  Работающий продукт</span><span class="number">03 / 12</span></div><div class="content"><h2>От истории продаж до заказа в CSV</h2><div class='screen'><div class='steps'><p><b>01</b> Загрузить дневные продажи</p><p><b>02</b> Получить прогноз по товару</p><p><b>03</b> Проверить остаток и фасовку</p><p><b>04</b> Поправить и подтвердить заказ</p><p class='minor'>В примере администратор изменил заказ воды на 36 штук. Экспорт доступен после подтверждения.</p></div><img src='__CONFIRMED_SHOT_URI__' alt='В синтетическом заказе подтверждены количества. Кнопка экспорта CSV и сообщение для поставщика видны в интерфейсе.'></div></div><div class="source">Кадр непрерывной записи · синтетика · <a href="https://github.com/Nurlan-byte/byte/tree/e1c8861d88f512aecf59cf443069612e3d48ec15">проверенная сборка e1c8861</a> · 22.11.2026. <a href="https://bakeplan.spotlightdesk.xyz/">Публичное демо</a> показывает более раннюю версию.</div></section>
+<section class="slide s4" aria-label="Слайд 4"><div class="bar"><span><b>BakePlan</b>  /  Роль модели</span><span class="number">04 / 12</span></div><div class="content"><h2>Как BakePlan выбирает прогноз товара</h2><div class='cols'><article><h3>Chronos-2</h3><p>Локальная модель строит распределение продаж. Для закупки BakePlan извлекает ожидаемый объём.</p></article><article><h3>Среднее по дням недели</h3><p>Если в недавней истории больше половины наблюдений нулевые, система сравнивает модели. B1 выигрывает только при меньшей ошибке на прошлых датах.</p></article></div><p class='insight'>Затем правила учитывают товар в пути, остаток и размер упаковки. При недоступности модели API возвращает 503. Финальное решение принимает человек.</p></div><div class="source">Реализация команды: <a href="https://github.com/Nurlan-byte/byte/tree/e1c8861d88f512aecf59cf443069612e3d48ec15/backend/chronos_order.py">выбор модели</a> и <a href="https://github.com/Nurlan-byte/byte/tree/e1c8861d88f512aecf59cf443069612e3d48ec15/backend/services.py">расчёт заказа</a> · e1c8861, 22.11.2026. Ridge применяется отдельно в производстве.</div></section>
+<section class="slide s5" aria-label="Слайд 5"><div class="bar"><span><b>BakePlan</b>  /  Проверка качества</span><span class="number">05 / 12</span></div><div class="content"><h2>Ошибка на M5 снизилась на 4,58%</h2><div class='trio'><div class="stat"><strong>0,9329</strong><p>MAE гибрида Chronos-2/B1</p></div><div class="stat"><strong>0,9777</strong><p>MAE среднего по четырём таким же дням недели</p></div><div class="stat"><strong>1 008</strong><p>пар «товар × день», шесть магазинов одной сети</p></div></div><p class='body'>MAE — среднее абсолютное расхождение в штуках. Оба метода оценены по одним датам, 25.04–22.05.2016. Некоторые товары повторяются.</p><p class='insight'>Вендинг: нулевой прогноз точнее (0,482 против 0,639), смещение +32,9%. В кафе на 126 парах ошибка по чекам на 4,27% выше прежней модели. Эффект у клиента ещё не измерен.</p></div><div class="source">Пересчёт 22.11.2026 из <a href="https://github.com/Nurlan-byte/byte/tree/e1c8861d88f512aecf59cf443069612e3d48ec15/benchmarks/open-sales/results/sparse_bias.json">sparse_bias.json</a>. <a href="https://github.com/Nurlan-byte/byte/tree/e1c8861d88f512aecf59cf443069612e3d48ec15/benchmarks/open-sales/README.md">результаты по кафе</a>.</div></section>
+<section class="slide s6" aria-label="Слайд 6"><div class="bar"><span><b>BakePlan</b>  /  Данные и контроль</span><span class="number">06 / 12</span></div><div class="content"><h2>Количество утверждает администратор</h2><div class='cols'><article><h3>Что видит программа</h3><p>Дневные продажи, остаток, ожидаемые поставки. Известные дни дефицита и закрытия исключаются. Спрос покупателей при пустой полке остаётся неизвестным.</p></article><article><h3>Что видит человек</h3><p>Уведомление об ИИ и риске ошибки, прогноз и редактируемое количество. Без свежих данных требуется проверить дату среза и решить вручную.</p></article></div><p class='insight'>Предварительная самооценка: средний риск материального ущерба, низкая автономность. Владелец утверждает классификацию и порядок хранения и удаления данных.</p></div><div class="source">Источники: <a href="https://github.com/Nurlan-byte/byte/tree/e1c8861d88f512aecf59cf443069612e3d48ec15/frontend/src/AiNotice.tsx">AiNotice в e1c8861</a>, <a href="https://adilet.zan.kz/rus/docs/Z2500000230">Закон РК № 230-VIII, ст. 17, 18, 21</a>. На публичном стартовом экране 22.11 виден более ранний текст.</div></section>
+<section class="slide s7" aria-label="Слайд 7"><div class="bar"><span><b>BakePlan</b>  /  Рынок Казахстана</span><span class="number">07 / 12</span></div><div class="content"><h2>Первый сегмент — клубы с баром</h2><div class='trio'><div class="stat"><strong>1 056</strong><p>записей в каталоге Казахстана. Ценовой потолок 190,08 млн ₸/год</p></div><div class="stat"><strong>324</strong><p>подходящих филиала по модели. Доступная часть 58,32 млн ₸/год</p></div><div class="stat"><strong>18</strong><p>платящих к концу М12 по базовому плану. Годовой темп 3,24 млн ₸</p></div></div><p class='body'>Для доступного сегмента последовательно оставляем 95% уникальных записей, 90% действующих, 60% с баром, 75% с историей и 80% с экспортом. Округляем вниз.</p><p class='insight'>Плановая выручка за первый год — 1,71 млн ₸. Все доли отбора и цена 15 000 ₸ за филиал — допущения.</p></div><div class="source">Счётчик: <a href="https://langame.ru/kazakhstan">LANGAME, Казахстан</a>, проверка 22.11.2026. Прямой интеграции LANGAME нет. возможен CSV при выгрузке.</div></section>
+<section class="slide s8" aria-label="Слайд 8"><div class="bar"><span><b>BakePlan</b>  /  Конкуренты</span><span class="number">08 / 12</span></div><div class="content"><h2>Как владелец может решить задачу сегодня</h2><table><tr><th>Вариант</th><th>Цена в месяц</th><th>Когда удобнее</th></tr><tr><td>Excel</td><td>Имеющаяся лицензия</td><td>Мало товаров, владелец поддерживает свои формулы; есть FORECAST.ETS.</td></tr><tr><td>Poster</td><td>9 600 ₸ Starter<br>17 400 ₸ Mini</td><td>Нужны касса, склад и работа зала. У Poster есть помощник Postie.</td></tr><tr><td>МойСклад</td><td>0 ₸ · Базовый 8 400 ₸<br>Проф 24 600 ₸</td><td>Нужны документы, остатки и ожидания по поставкам.</td></tr><tr><td>BakePlan</td><td>15 000 ₸ / филиал<br>допущение</td><td>Касса уже есть. Ценность проверки — прогноз SKU и утверждённые упаковки заказа.</td></tr></table></div><div class="source">Помесячные тарифы проверены 22.11.2026: <a href="https://joinposter.kz/alternative/paloma365">Poster</a> — за заведение, <a href="https://www.moysklad.kz/subscription/">МойСклад</a> — за аккаунт. <a href="https://support.microsoft.com/ru-ru/excel/functions/forecast-ets-function">Microsoft Excel</a>.</div></section>
+<section class="slide s9" aria-label="Слайд 9"><div class="bar"><span><b>BakePlan</b>  /  Экономика</span><span class="number">09 / 12</span></div><div class="content"><h2>15 000 ₸ за филиал в месяц</h2><div class='trio compact'><div class="stat"><strong>11 000 ₸</strong><p>вклад после поддержки, сервисов, налога и оплаты</p></div><div class="stat"><strong>14 филиалов</strong><p>покрывают 150 000 ₸ постоянных затрат в месяц</p></div><div class="stat"><strong>1,82 мес.</strong><p>окупаемость 20 000 ₸ привлечения и подключения до пилотов</p></div></div><table><tr><th>Сценарий</th><th>Платящие в М12</th><th>Результат года</th></tr><tr><td>Осторожный</td><td>7</td><td>−1 702 500 ₸</td></tr><tr><td>Базовый</td><td>18</td><td>−1 113 000 ₸</td></tr><tr><td>Сильный</td><td>30</td><td>−478 500 ₸</td></tr></table></div><div class="source">Плановые допущения, 22.11.2026. Цена, продажи и расходы ещё не проверены продажами. Все три сценария первого года требуют финансирования.</div></section>
+<section class="slide s10" aria-label="Слайд 10"><div class="bar"><span><b>BakePlan</b>  /  Привлечение</span><span class="number">10 / 12</span></div><div class="content"><h2>Первые четыре недели в Шымкенте</h2><p class='lead'>Прямые звонки и визиты владельцам клубов с баром. Признак подходящего филиала — ручная закупка и доступная история продаж.</p><div class='funnel'><div class="stat"><strong>20</strong><p>контактов</p></div><div class="stat"><strong>10</strong><p>разговоров</p></div><div class="stat"><strong>6</strong><p>встреч</p></div><div class="stat"><strong>4</strong><p>пилота</p></div><div class="stat"><strong>2</strong><p>оплаты</p></div></div><p class='insight'>Это план. Первый контакт описан, рабочие заказы и оплаты не подтверждены. К концу года модель требует 21 нового подключения и допускает три ухода.</p></div><div class="source">Гипотеза канала, 22.11.2026. Расширение того же канала на другие города — после двухнедельного пилота и повторной оплаты.</div></section>
+<section class="slide s11" aria-label="Слайд 11"><div class="bar"><span><b>BakePlan</b>  /  Команда</span><span class="number">11 / 12</span></div><div class="content"><h2>Кто отвечает за продукт и пилот</h2><div class='cols'><article><h3>Assylzhan</h3><p>Клиентская работа, данные и презентация — по описанию команды в репозитории. Предмет защиты: как отбирать точки и измерить результат пилота.</p></article><article><h3>Nurlan</h3><p>Продукт, AI и код — по описанию команды в репозитории. Предмет защиты: выбор прогноза, кассовые данные и правила заказа.</p></article></div><p class='insight'>В проекте доступны для проверки бенчмарки, правила упаковок, кассовые адаптеры и интерфейс. Персональные решения каждого участника требуют его подтверждения.</p></div><div class="source">Источник: <a href="https://github.com/Nurlan-byte/byte/tree/e1c8861d88f512aecf59cf443069612e3d48ec15">раздел «Команда» и код</a> · 22.11.2026. Инструменты подготовки: Codex и Claude. назначение раскрыто в AI-карте.</div></section>
+<section class="slide s12" aria-label="Слайд 12"><div class="bar"><span><b>BakePlan</b>  /  Следующий шаг</span><span class="number">12 / 12</span></div><div class="content"><h2>Ищем владельцев для четырёх пилотов</h2><p class='lead'>Нужны клубы с баром, историей продаж и администратором, который готов фиксировать время заказа и остатки.</p><div class='cols'><article><h3>До пилота</h3><p>Согласуем ассортимент и соберём базу за 14 дней. Отметим дефициты и сопоставим дни недели.</p></article><article><h3>Через две недели</h3><p>Предложим подписку, если медианное время подготовки снизится на 20% без роста доли дней дефицита и среднего остатка. Нужно минимум четыре сопоставимых заказа в каждом периоде.</p></article></div></div><div class="source">Порог — план проверки на 22.11.2026. Решение об оплате принимает владелец. Репозиторий: <a href="https://github.com/Nurlan-byte/byte/tree/e1c8861d88f512aecf59cf443069612e3d48ec15">github.com/Nurlan-byte/byte</a>.</div></section></main><script>
   const slides = [...document.querySelectorAll('.slide')];
   let current = 0;
   function fit() { document.documentElement.style.setProperty('--scale', Math.min(innerWidth / 1920, innerHeight / 1080)); }
@@ -141,6 +23,4 @@
     if (['ArrowLeft','PageUp'].includes(event.key)) { event.preventDefault(); show(current - 1); }
   });
   fit();
-</script>
-</body>
-</html>
+</script></body></html>
