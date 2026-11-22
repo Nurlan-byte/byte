@@ -4,6 +4,7 @@ import pytest
 
 from backend import chronos_order, forecast_cache, ml_service
 from backend.procurement_planning import procurement_item
+from backend.sales_observations import HISTORY_RULE
 
 START = date(2025, 1, 1)
 TARGET = START + timedelta(days=30)
@@ -58,6 +59,25 @@ def test_history_with_only_stockouts_requires_manual_order():
     assert item["method"] == "manual" and item["forecast_mean"] is None
 
 
-def test_forecasts_with_new_history_rule_have_their_own_protocol():
-    assert ml_service.automatic_protocol() != chronos_order.PROTOCOL_VERSION
-    assert ml_service.automatic_protocol().startswith(chronos_order.PROTOCOL_VERSION)
+@pytest.mark.parametrize("status,cutoff,changed", [
+    ("occurred", CUTOFF, True),
+    ("occurred", STOCKOUT, True),
+    ("occurred", STOCKOUT - timedelta(days=1), False),
+    ("unknown", CUTOFF, False),
+    ("none", CUTOFF, False),
+])
+def test_only_changed_history_gets_its_own_protocol(status, cutoff, changed):
+    suffix = f"-{HISTORY_RULE}" if changed else ""
+    assert ml_service.automatic_protocol({"rows": rows(status)}, cutoff) == chronos_order.PROTOCOL_VERSION + suffix
+
+
+def test_forecast_reports_the_protocol_of_its_history(monkeypatch):
+    monkeypatch.setattr(forecast_cache, "_results", forecast_cache.OrderedDict())
+    monkeypatch.setattr(chronos_order, "forecast_order", lambda *args: {"x": {"forecast_mean": 1}})
+    protocols = []
+    for status in ("occurred", "none"):
+        dataset = {"id": "sample", "version": status, "rows": rows(status), "schema_version": "pos-units-1",
+                   "bakery_id": "x", "source": "synthetic", "provenance": "test",
+                   "target": "sold_units", "unit": "physical_unit"}
+        protocols.append(ml_service.forecast_from_dataset(dataset, TARGET, CUTOFF, "AUTO", None)["protocol_version"])
+    assert protocols == [f"{chronos_order.PROTOCOL_VERSION}-{HISTORY_RULE}", chronos_order.PROTOCOL_VERSION]

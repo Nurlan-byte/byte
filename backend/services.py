@@ -298,7 +298,7 @@ def _create_procurement_plan(body: PlanRequest, today: date, dataset: dict):
     if method == "AUTO":
         from backend.ml_service import automatic_forecasts, automatic_protocol
 
-        protocol = automatic_protocol()
+        protocol = automatic_protocol(dataset, body.cutoff)
         predictions = automatic_forecasts(
             dataset, body.target_date, body.cutoff,
             list(by_id) if body.target_is_open else [], body.model_id,

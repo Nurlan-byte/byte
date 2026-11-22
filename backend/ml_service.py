@@ -194,10 +194,13 @@ def uses_automatic_sales_forecast(dataset):
     )
 
 
-def automatic_protocol():
+def automatic_protocol(dataset, cutoff):
     from backend.chronos_order import PROTOCOL_VERSION
 
-    return f"{PROTOCOL_VERSION}-{HISTORY_RULE}"
+    # Without a marked stockout by the cutoff, the engine gets the evaluated method's input.
+    if any(row.get("stockout_status") == "occurred" and row["date"] <= str(cutoff) for row in dataset["rows"]):
+        return f"{PROTOCOL_VERSION}-{HISTORY_RULE}"
+    return PROTOCOL_VERSION
 
 
 def automatic_forecasts(dataset, target, cutoff, product_ids, model_id=None):
@@ -208,7 +211,7 @@ def automatic_forecasts(dataset, target, cutoff, product_ids, model_id=None):
     if not 1 <= (target - cutoff).days <= chronos_order.MAX_HORIZON:
         raise ServiceError(422, f"Для прогноза продаж укажите дату от 1 до {chronos_order.MAX_HORIZON} дней после среза.")
     products = tuple(product_ids)
-    key = forecast_cache.forecast_key(dataset, target, cutoff, products, automatic_protocol())
+    key = forecast_cache.forecast_key(dataset, target, cutoff, products, automatic_protocol(dataset, cutoff))
     cached = forecast_cache.lookup(key)
     if cached is not None:
         return cached
@@ -336,7 +339,7 @@ def forecast_from_dataset(dataset, target, cutoff, method, model_id):
         predictions = automatic_forecasts(dataset, target, cutoff, products, model_id)
         result = {
             "items": [dict(predictions[p], product_id=p) for p in products],
-            "model_id": None, "protocol_version": automatic_protocol(),
+            "model_id": None, "protocol_version": automatic_protocol(dataset, cutoff),
         }
     else:
         result = forecast_items(
