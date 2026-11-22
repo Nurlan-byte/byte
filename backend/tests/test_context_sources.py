@@ -82,7 +82,7 @@ def test_weather_window_for_long_and_historical_dates(monkeypatch):
 @pytest.mark.parametrize(
     "name, expected",
     [
-        ("Cloud Game Zone · г. Шымкент", "shymkent"),
+        ("Demo Club · г. Шымкент", "shymkent"),
         ("POSTER (AlMaTy)", "almaty"),
         ("Филиал №2, Қызылорда", "kyzylorda"),
         ("Ақтөбе HQ", "aktobe"),
