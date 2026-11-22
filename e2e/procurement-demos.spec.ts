@@ -5,15 +5,15 @@ import { navigate, readOrderCsv } from "./helpers";
 
 for (const example of [
   {
-    label: "Демо Cloud Game Zone — 6 товаров",
+    label: "Демо компьютерного клуба — 6 товаров",
     other: "Простой пример — 2 товара",
     products: 6,
     rows: 546,
-    id: "cgz-synthetic-demo",
+    id: "club-synthetic-demo",
   },
   {
     label: "Простой пример — 2 товара",
-    other: "Демо Cloud Game Zone — 6 товаров",
+    other: "Демо компьютерного клуба — 6 товаров",
     products: 2,
     rows: 168,
     id: "procurement-demo",
@@ -122,7 +122,7 @@ test("CGZ demo produces one automatic order without model setup and preserves it
   await navigate(page, "Данные");
   await page
     .getByRole("button", {
-      name: "Демо Cloud Game Zone — 6 товаров",
+      name: "Демо компьютерного клуба — 6 товаров",
       exact: true,
     })
     .click();

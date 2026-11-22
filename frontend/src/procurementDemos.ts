@@ -8,12 +8,12 @@ import {
 
 export const procurementDemos = [
   {
-    id: "cgz-synthetic-demo",
-    label: "Демо Cloud Game Zone — 6 товаров",
+    id: "club-synthetic-demo",
+    label: "Демо компьютерного клуба — 6 товаров",
     csv: cgzCsv,
     catalog: cgzCatalog,
     provenance:
-      "Полностью синтетический сценарий Cloud Game Zone; предварительные допущения",
+      "Полностью синтетический сценарий компьютерного клуба; предварительные допущения",
   },
   {
     id: "procurement-demo",
