@@ -65,8 +65,9 @@ def test_order_scans_sales_once_and_preserves_history_boundaries(shop, monkeypat
     assert [zero["product_id"], water["product_id"], tea["product_id"]] == ["zero", "water", "tea"]
     assert (zero["forecast_mean"], zero["method"], zero["recommended_qty"]) == (0, "B1", 0)
     assert (water["forecast_mean"], water["method"], water["unknown_open_n"]) == (None, "manual", 0)
-    assert tea["used_dates"] == ["2026-02-23", "2026-02-16", "2026-02-02", "2026-01-12"]
-    assert (tea["eligible_weekday_n"], tea["n"], tea["forecast_mean"], tea["recommended_qty"]) == (5, 4, 27, 27)
+    # 2026-02-16 is a marked stockout: its sales are not a measure of demand.
+    assert tea["used_dates"] == ["2026-02-23", "2026-02-02", "2026-01-12", "2026-01-05"]
+    assert (tea["eligible_weekday_n"], tea["n"], tea["forecast_mean"], tea["recommended_qty"]) == (4, 4, 26, 26)
     assert (tea["unknown_open_n"], tea["unknown_stockout_n"]) == (2, 3)
     assert scans == 1
 
@@ -105,7 +106,7 @@ def test_receipt_commits_during_order_preparation_and_is_in_the_saved_revision(s
     assert response.status_code == 201, response.text
     plan = response.json()
     tea = next(item for item in plan["items"] if item["product_id"] == "tea")
-    assert (tea["incoming_units"], tea["recommended_qty"]) == (7, 20)
+    assert (tea["incoming_units"], tea["recommended_qty"]) == (7, 19)
     assert plan["registry_deliveries"] == [{
         "id": delivery_id, "number": "PO-12", "product_id": "tea",
         "arrival_date": request["target_date"], "quantity": 7,

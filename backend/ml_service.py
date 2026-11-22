@@ -24,6 +24,7 @@ from backend.model_storage import (
     previous_training,
     save_training,
 )
+from backend.sales_observations import HISTORY_RULE, is_demand_observation, without_stockouts
 from backend.storage import connection, get_dataset
 
 TRAINING_TIMEOUT_SECONDS = 60
@@ -164,7 +165,7 @@ def train_dataset(ident, body, today):
 
 def _b1(dataset, rows, product, target, cutoff, reason):
     if dataset.get("planning_kind") == "procurement" or dataset.get("schema_version") == "pos-units-1":
-        kwargs = {"eligible": lambda row: row.get("is_open") is not False}
+        kwargs = {"eligible": is_demand_observation}
     elif dataset["target"] == "item_line_count":
         kwargs = {"eligible": lambda _: True, "value_key": "item_line_count"}
     else:
@@ -193,6 +194,15 @@ def uses_automatic_sales_forecast(dataset):
     )
 
 
+def automatic_protocol(dataset, cutoff):
+    from backend.chronos_order import PROTOCOL_VERSION
+
+    # Without a marked stockout by the cutoff, the engine gets the evaluated method's input.
+    if any(row.get("stockout_status") == "occurred" and row["date"] <= str(cutoff) for row in dataset["rows"]):
+        return f"{PROTOCOL_VERSION}-{HISTORY_RULE}"
+    return PROTOCOL_VERSION
+
+
 def automatic_forecasts(dataset, target, cutoff, product_ids, model_id=None):
     from backend import chronos_order, forecast_cache
 
@@ -201,12 +211,12 @@ def automatic_forecasts(dataset, target, cutoff, product_ids, model_id=None):
     if not 1 <= (target - cutoff).days <= chronos_order.MAX_HORIZON:
         raise ServiceError(422, f"Для прогноза продаж укажите дату от 1 до {chronos_order.MAX_HORIZON} дней после среза.")
     products = tuple(product_ids)
-    key = forecast_cache.forecast_key(dataset, target, cutoff, products, chronos_order.PROTOCOL_VERSION)
+    key = forecast_cache.forecast_key(dataset, target, cutoff, products, automatic_protocol(dataset, cutoff))
     cached = forecast_cache.lookup(key)
     if cached is not None:
         return cached
     try:
-        predictions = chronos_order.forecast_order(dataset, target, cutoff, products)
+        predictions = chronos_order.forecast_order(without_stockouts(dataset), target, cutoff, products)
     except chronos_order.ChronosUnavailable:
         raise ServiceError(503, "Сервис прогноза продаж временно недоступен. Повторите расчёт после восстановления сервиса.") from None
     forecast_cache.remember(key, predictions)
@@ -322,8 +332,6 @@ def forecast_from_dataset(dataset, target, cutoff, method, model_id):
         "AUTO" if model_id is None and uses_automatic_sales_forecast(dataset) else "ML"
     )
     if method == "AUTO":
-        from backend.chronos_order import PROTOCOL_VERSION
-
         if dataset.get("catalog"):
             products = [p["product_id"] for p in dataset["catalog"]]
         else:
@@ -331,7 +339,7 @@ def forecast_from_dataset(dataset, target, cutoff, method, model_id):
         predictions = automatic_forecasts(dataset, target, cutoff, products, model_id)
         result = {
             "items": [dict(predictions[p], product_id=p) for p in products],
-            "model_id": None, "protocol_version": PROTOCOL_VERSION,
+            "model_id": None, "protocol_version": automatic_protocol(dataset, cutoff),
         }
     else:
         result = forecast_items(

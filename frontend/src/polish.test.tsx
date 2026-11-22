@@ -83,3 +83,10 @@ test("home offers one primary start action and accessible navigation without pre
   expect(html).not.toContain('for="plan-cutoff"');
   expect(html).not.toContain('for="plan-open"');
 });
+test("workspace tells people about AI before any forecast is made", () => {
+  const html = renderToStaticMarkup(<App />);
+  expect(html).toContain('class="ai-notice" role="note"');
+  expect(html).toContain("BakePlan использует ИИ для прогноза продаж");
+  expect(html).toContain("может ошибаться");
+  expect(html.indexOf("ai-notice")).toBeLessThan(html.indexOf("<h1"));
+});

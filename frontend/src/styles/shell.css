@@ -274,6 +274,20 @@
   width: 16px;
   height: 16px;
 }
+.ai-notice {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin: 0 0 16px;
+  font-size: 14px;
+  line-height: 20px;
+}
+.ai-notice .icon {
+  flex: none;
+  width: 16px;
+  height: 16px;
+  margin-top: 2px;
+}
 .workspace-footer {
   display: flex;
   justify-content: space-between;
